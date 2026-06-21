@@ -80,6 +80,7 @@ func forumTaslakYaz(dataDir, kategori string, taslaklar []forumTaslak) {
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 type forumModel struct {
+	ctx       context.Context
 	identity  *stdcrypto.Identity
 	dataDir   string
 	forum     *forum.Forum
@@ -121,7 +122,7 @@ const fMaxIcerik = 2000
 const fMaxYanit = 1000
 const fMaxBaslik = 100
 
-func newForumModel(f *forum.Forum, identity *stdcrypto.Identity, dataDir string, env plugin.Env) forumModel {
+func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, env plugin.Env) forumModel {
 	bg := textinput.New()
 	bg.Placeholder = "konu başlığını buraya yaz…"
 	bg.CharLimit = fMaxBaslik
@@ -139,6 +140,7 @@ func newForumModel(f *forum.Forum, identity *stdcrypto.Identity, dataDir string,
 	ya.ShowLineNumbers = false
 
 	return forumModel{
+		ctx:         ctx,
 		identity:    identity,
 		dataDir:     dataDir,
 		forum:       f,
@@ -381,7 +383,7 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "n":
 		if !forum.PostCreationEnabled {
-			m.errMsg = "Forum eklentisi yok — konu oluşturmak için Eklentiler/forum/plugin.go gereklidir"
+			m.errMsg = "Bu düğüm salt okunur modda çalışıyor — yeni konu oluşturmak devre dışı."
 			return m, forumBildirimTemizle()
 		}
 		m.taslakDuzenle = false
@@ -396,7 +398,7 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case "d":
 		if !forum.PostCreationEnabled {
-			m.errMsg = "Forum eklentisi yok — konu oluşturmak için Eklentiler/forum/plugin.go gereklidir"
+			m.errMsg = "Bu düğüm salt okunur modda çalışıyor — yeni konu oluşturmak devre dışı."
 			return m, forumBildirimTemizle()
 		}
 		m.taslaklar = forumTaslakOku(m.dataDir, m.kategori)
@@ -424,7 +426,7 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			f, postID := m.forum, m.aktifKonu.ID
 			return m, func() tea.Msg {
-				return forumSilMsg{err: f.DeleteOwnPost(context.Background(), postID)}
+				return forumSilMsg{err: f.DeleteOwnPost(m.ctx, postID)}
 			}
 		default:
 			m.silOnay = false
@@ -547,7 +549,7 @@ func (m forumModel) forumTusOlustur(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		isDuzenle, duzenIdx := m.taslakDuzenle, m.taslakDuzenIdx
 		kat, f, dataDir, kalici := m.kategori, m.forum, m.dataDir, m.kaliciTalep
 		return m, func() tea.Msg {
-			if _, err := f.CreatePost(context.Background(), kat, baslik, icerik, kalici); err != nil {
+			if _, err := f.CreatePost(m.ctx, kat, baslik, icerik, kalici); err != nil {
 				return forumHataMsg(err.Error())
 			}
 			if isDuzenle {
@@ -609,7 +611,7 @@ func (m forumModel) forumTusTaslaklar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.gonderi = true
 		m.ekran = fEkKonular
 		return m, func() tea.Msg {
-			if _, err := f.CreatePost(context.Background(), kat, t.Baslik, t.Icerik, t.KaliciTalep); err != nil {
+			if _, err := f.CreatePost(m.ctx, kat, t.Baslik, t.Icerik, t.KaliciTalep); err != nil {
 				return forumHataMsg(err.Error())
 			}
 			ts := forumTaslakOku(dataDir, kat)
@@ -653,7 +655,7 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.gonderi = true
 		f, konuID := m.forum, m.aktifKonu.ID
 		return m, func() tea.Msg {
-			if _, err := f.CreateReply(context.Background(), konuID, icerik); err != nil {
+			if _, err := f.CreateReply(m.ctx, konuID, icerik); err != nil {
 				return forumHataMsg(err.Error())
 			}
 			return forumYanitGonderildiMsg{}

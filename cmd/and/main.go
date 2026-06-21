@@ -292,9 +292,12 @@ func run() error {
 		go publishSavedBans(ctx, modTopic, dir)
 	}
 
-	// Forum oluşturma herkese açık; sadece okunabilir mod için
-	// bootstrap.txt yanına "readonly" dosyası koy.
+	// Salt okunur mod: veri dizininde "readonly" dosyası varsa yeni konu/yanıt devre dışı.
 	forum.PostCreationEnabled = true
+	if _, err := os.Stat(filepath.Join(dir, "readonly")); err == nil {
+		forum.PostCreationEnabled = false
+		fmt.Fprintln(os.Stderr, "[AND] Salt okunur mod — yeni konu oluşturmak devre dışı.")
+	}
 
 	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"), mod)
 	if err != nil {

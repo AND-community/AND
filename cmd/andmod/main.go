@@ -46,6 +46,8 @@ func run(args []string) error {
 		return cmdGrant(args[1:])
 	case "ban":
 		return cmdBan(args[1:])
+	case "trusted":
+		return cmdTrusted(args[1:])
 	default:
 		printUsage()
 		return fmt.Errorf("bilinmeyen komut: %s", args[0])
@@ -65,6 +67,13 @@ Komutlar:
       Belirtilen public key'e moderatörlük sertifikası verir.
       --permanent ile süresiz sertifika oluşturulur.
       Çıktı: bans/mod_<ilk8karakter>.json
+
+  andmod trusted <yazar_pubkey_hex> [--days 30] [--permanent]
+      Belirtilen yazarın tüm forum konularını otomatik onaylar (kurucu imzası).
+      Onaylanan konular 5 günlük TTL'ye tabi tutulmaz, kalıcı olarak saklanır.
+      --permanent ile süresiz güven verilir.
+      Çıktı: bans/trusted_<ilk8karakter>.json
+      AND başlarken bu dosyayı ağda yayınlar.
 
   andmod ban <peer_id> <sebep> --cert <cert.json> [--days 30]
       Moderatör sertifikası ile bir peer'ı banlar.
@@ -298,4 +307,99 @@ func bansDir() string {
 		return "bans"
 	}
 	return filepath.Join(base, "and", "bans")
+}
+
+// ── trusted ───────────────────────────────────────────────────────────────────
+
+func cmdTrusted(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("kullanım: andmod trusted <yazar_pubkey_hex> [--days 30] [--permanent]")
+	}
+	authorHex := args[0]
+	days := 30
+	permanent := false
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--permanent":
+			permanent = true
+		case "--days":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--days değeri eksik")
+			}
+			n, err := strconv.Atoi(args[i+1])
+			if err != nil || n < 1 {
+				return fmt.Errorf("--days geçerli bir pozitif sayı olmalı")
+			}
+			days = n
+			i++
+		}
+	}
+
+	authorKey, err := hex.DecodeString(authorHex)
+	if err != nil || len(authorKey) != 32 {
+		return fmt.Errorf("geçersiz public key hex (32 byte / 64 hex karakter olmalı)")
+	}
+
+	id, err := unlockIdentity()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	var cert moderation.TrustedAuthorCert
+	var sureStr string
+
+	if permanent {
+		payload := fmt.Sprintf("trusted|%s|permanent", authorHex)
+		sig := ed25519.Sign(id.PrivateKey(), []byte(payload))
+		cert = moderation.TrustedAuthorCert{
+			AuthorKey: authorHex,
+			IssuedAt:  now,
+			Permanent: true,
+			Sig:       hex.EncodeToString(sig),
+		}
+		sureStr = "süresiz"
+	} else {
+		expires := now.Add(time.Duration(days) * 24 * time.Hour)
+		payload := fmt.Sprintf("trusted|%s|%d", authorHex, expires.Unix())
+		sig := ed25519.Sign(id.PrivateKey(), []byte(payload))
+		cert = moderation.TrustedAuthorCert{
+			AuthorKey: authorHex,
+			IssuedAt:  now,
+			ExpiresAt: expires,
+			Sig:       hex.EncodeToString(sig),
+		}
+		sureStr = fmt.Sprintf("%d gün (%s'e kadar)", days, expires.Format("2006-01-02 15:04"))
+	}
+
+	// Sertifikayı bir Envelope içine sar — AND başlarken bans/ klasöründen okuyup yayınlar.
+	type envelope struct {
+		Type    string                       `json:"type"`
+		Trusted *moderation.TrustedAuthorCert `json:"trusted,omitempty"`
+	}
+	env := envelope{Type: "trusted", Trusted: &cert}
+
+	outDir := bansDir()
+	if err := os.MkdirAll(outDir, 0o700); err != nil {
+		return fmt.Errorf("bans/ dizini oluşturulamadı: %w", err)
+	}
+
+	shortKey := authorHex
+	if len(shortKey) > 8 {
+		shortKey = shortKey[:8]
+	}
+	outPath := filepath.Join(outDir, "trusted_"+shortKey+".json")
+
+	data, _ := json.MarshalIndent(env, "", "  ")
+	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+		return fmt.Errorf("dosya yazılamadı: %w", err)
+	}
+
+	fmt.Printf("Güvenilir yazar sertifikası oluşturuldu: %s\n", outPath)
+	fmt.Printf("Yazar : %s…%s\n", authorHex[:8], authorHex[len(authorHex)-8:])
+	fmt.Printf("Süre  : %s\n", sureStr)
+	fmt.Println()
+	fmt.Println("AND'i yeniden başlatın — sertifika ağda otomatik yayınlanır.")
+	fmt.Println("Bu yazarın tüm mevcut konuları da onaylanacak.")
+	return nil
 }

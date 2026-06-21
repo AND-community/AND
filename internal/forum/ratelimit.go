@@ -1,6 +1,7 @@
 package forum
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -16,6 +17,10 @@ const (
 	rlReplyWindow  = time.Hour
 	rlMaxReplies   = 40   // saatte en fazla 40 yanıt
 	rlMaxBodyBytes = 8192 // ağ katmanında zorunlu tutulan max içerik boyutu (8 KB)
+
+	// rlSaveInterval: dirty state ne sıklıkla diske yazılır.
+	// Her izin verilen mesajda ayrı goroutine yerine tek bir arka plan döngüsü kullanılır.
+	rlSaveInterval = 30 * time.Second
 )
 
 type authorBucket struct {
@@ -29,6 +34,7 @@ type authorBucket struct {
 type rateLimiter struct {
 	mu      sync.Mutex
 	authors map[string]*authorBucket
+	dirty   bool   // true → in-memory state is ahead of the on-disk state
 	dataDir string
 }
 
@@ -39,6 +45,41 @@ func newRateLimiter(dataDir string) *rateLimiter {
 	}
 	rl.load()
 	return rl
+}
+
+// Start launches the background save loop. Call it once after New with a
+// context that lives as long as the forum.
+func (rl *rateLimiter) Start(ctx context.Context) {
+	go rl.saveLoop(ctx)
+}
+
+// saveLoop flushes dirty rate-limit state to disk at rlSaveInterval.
+// Replaces the previous pattern of spawning a goroutine on every allowed message.
+func (rl *rateLimiter) saveLoop(ctx context.Context) {
+	ticker := time.NewTicker(rlSaveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			rl.mu.Lock()
+			dirty := rl.dirty
+			rl.dirty = false
+			rl.mu.Unlock()
+			if dirty {
+				rl.save()
+			}
+		case <-ctx.Done():
+			// Final flush on shutdown.
+			rl.mu.Lock()
+			dirty := rl.dirty
+			rl.dirty = false
+			rl.mu.Unlock()
+			if dirty {
+				rl.save()
+			}
+			return
+		}
+	}
 }
 
 // allowPost returns true and records the attempt if the author is under
@@ -55,7 +96,7 @@ func (rl *rateLimiter) allowPost(authorKey string) bool {
 		return false
 	}
 	b.PostTimes = append(b.PostTimes, time.Now())
-	go rl.save()
+	rl.dirty = true
 	return true
 }
 
@@ -73,7 +114,7 @@ func (rl *rateLimiter) allowReply(authorKey string) bool {
 		return false
 	}
 	b.ReplyTimes = append(b.ReplyTimes, time.Now())
-	go rl.save()
+	rl.dirty = true
 	return true
 }
 
@@ -86,11 +127,13 @@ func (rl *rateLimiter) bucket(key string) *authorBucket {
 	return b
 }
 
+// save writes the current rate-limit state to disk. Must NOT be called
+// while holding rl.mu (takes its own snapshot under lock, then writes outside).
 func (rl *rateLimiter) save() {
 	if rl.dataDir == "" {
 		return
 	}
-	cutoff := time.Now().Add(-rlPostWindow) // her iki pencere de 1 saat
+	cutoff := time.Now().Add(-rlPostWindow)
 	rl.mu.Lock()
 	out := make(map[string]*authorBucket, len(rl.authors))
 	for k, b := range rl.authors {

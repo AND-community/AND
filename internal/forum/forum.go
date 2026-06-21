@@ -155,6 +155,7 @@ func New(id *stdcrypto.Identity, topic *network.Topic, dbPath string, checker Tr
 // Call it in a goroutine after New.
 func (f *Forum) Run(ctx context.Context) {
 	go f.runCleanup(ctx)
+	go f.rl.saveLoop(ctx)
 	ch := f.topic.Messages(ctx)
 	for {
 		select {

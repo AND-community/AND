@@ -51,7 +51,7 @@ type adminModel struct {
 	width  int
 	height int
 	notice string
-	notOK  bool
+	isOK  bool
 }
 
 func (m *adminModel) load() {
@@ -73,10 +73,10 @@ func (m adminModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case approveResultMsg:
 		if msg.err != nil {
 			m.notice = "Hata: " + msg.err.Error()
-			m.notOK = false
+			m.isOK = false
 		} else {
 			m.notice = "✓ Onaylandı: " + msg.title
-			m.notOK = true
+			m.isOK = true
 			// Reload pending list — approved post should be gone.
 			m.load()
 		}
@@ -110,7 +110,7 @@ func (m adminModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.env.PublishApproval == nil {
 			m.notice = "Bu kullanıcının onaylama yetkisi yok."
-			m.notOK = false
+			m.isOK = false
 			break
 		}
 		post := m.posts[m.idx]
@@ -122,7 +122,7 @@ func (m adminModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.load()
 		m.notice = "Liste yenilendi."
-		m.notOK = true
+		m.isOK = true
 	}
 	return m, nil
 }
@@ -202,7 +202,7 @@ func (m adminModel) View() string {
 	// ── Bildirim ─────────────────────────────────────────────────────────────
 	if m.notice != "" {
 		b.WriteString("\n")
-		if m.notOK {
+		if m.isOK {
 			b.WriteString(stOK.Render(m.notice))
 		} else {
 			b.WriteString(stErr.Render(m.notice))

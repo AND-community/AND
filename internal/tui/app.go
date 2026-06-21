@@ -228,7 +228,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case plugin.OpenPostMsg:
 		// Plugin requested navigation to a specific forum post.
-		fm := newForumModel(m.forumStore, m.identity, m.dataDir, m.registry.Env())
+		fm := newForumModel(m.ctx, m.forumStore, m.identity, m.dataDir, m.registry.Env())
 		fm = fm.openAtPost(msg.PostID)
 		initCmd := fm.Init()
 		sized, sizeCmd := fm.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
@@ -323,7 +323,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case label == "Forum":
-			fm := newForumModel(m.forumStore, m.identity, m.dataDir, m.registry.Env())
+			fm := newForumModel(m.ctx, m.forumStore, m.identity, m.dataDir, m.registry.Env())
 			initCmd := fm.Init()
 			sized, sizeCmd := fm.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			m.forumModel = sized
