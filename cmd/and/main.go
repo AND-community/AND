@@ -25,6 +25,7 @@ import (
 	"and/internal/tui"
 
 	adminplugin "and/Eklentiler/admin"
+	konuac      "and/Eklentiler/konu_ac"
 	modplugin   "and/Eklentiler/moderator"
 	ozelchat    "and/Eklentiler/ozel_chat"
 
@@ -385,10 +386,19 @@ func run() error {
 	// Zaten açık olan modTopic'i kullan — tekrar Join çağrısı hata verir.
 	env.PublishApproval = buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
 
+	// Konu oluşturma: salt okunur moddaysa nil bırak (eklenti bunu kontrol eder).
+	if forum.PostCreationEnabled {
+		env.CreatePost = func(pctx context.Context, category, title, body string, permanentReq bool) error {
+			_, err := forumStore.CreatePost(pctx, category, title, body, permanentReq)
+			return err
+		}
+	}
+
 	reg := plugin.New(env)
 
 	for _, p := range []plugin.Plugin{
 		adminplugin.New(),
+		konuac.New(),
 		modplugin.New(),
 		ozelchat.New(),
 	} {

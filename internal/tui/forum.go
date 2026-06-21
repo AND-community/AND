@@ -3,10 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,8 +26,6 @@ const (
 	fEkKategoriler forumEkran = iota
 	fEkKonular
 	fEkKonu
-	fEkOlustur
-	fEkTaslaklar
 	fEkYanit
 )
 
@@ -38,44 +33,11 @@ const (
 
 type forumKonuGeldiMsg struct{ konu *forum.Post }
 type forumYanitGeldiMsg struct{ yanit *forum.Reply }
-type forumKonuGonderildiMsg struct{ baslik string }
 type forumYanitGonderildiMsg struct{}
 type forumHataMsg string
 type forumBildirimTemizleMsg struct{}
 type forumOnayMsg struct{ err error }
 type forumSilMsg struct{ err error }
-
-// ─── Taslak saklama ──────────────────────────────────────────────────────────
-
-type forumTaslak struct {
-	Kategori    string `json:"kategori"`
-	Baslik      string `json:"baslik"`
-	Icerik      string `json:"icerik"`
-	KaliciTalep bool   `json:"kalici_talep,omitempty"`
-}
-
-type forumTaslakDosya struct {
-	Taslaklar []forumTaslak `json:"taslaklar"`
-}
-
-func forumTaslakYolu(dataDir, kategori string) string {
-	return filepath.Join(dataDir, "taslaklar_"+kategori+".json")
-}
-
-func forumTaslakOku(dataDir, kategori string) []forumTaslak {
-	veri, err := os.ReadFile(forumTaslakYolu(dataDir, kategori))
-	if err != nil {
-		return nil
-	}
-	var df forumTaslakDosya
-	_ = json.Unmarshal(veri, &df)
-	return df.Taslaklar
-}
-
-func forumTaslakYaz(dataDir, kategori string, taslaklar []forumTaslak) {
-	veri, _ := json.Marshal(forumTaslakDosya{Taslaklar: taslaklar})
-	_ = os.WriteFile(forumTaslakYolu(dataDir, kategori), veri, 0o600)
-}
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 
@@ -96,20 +58,11 @@ type forumModel struct {
 	konular  []*forum.Post
 	konuIdx  int
 
-	taslaklar     []forumTaslak
-	taslakIdx     int
-
 	aktifKonu *forum.Post
 	yanitlar  []*forum.Reply
 	konuVP    viewport.Model
 
-	silOnay        bool // kullanıcı silme onayı bekleniyor mu
-	odakAlan       int
-	kaliciTalep    bool // kullanıcı "kalıcı konu talebi" işaretledi mi
-	baslikGiris    textinput.Model
-	icerikAlan     textarea.Model
-	taslakDuzenle  bool
-	taslakDuzenIdx int
+	silOnay bool // kullanıcı silme onayı bekleniyor mu
 
 	yanitAlan textarea.Model
 
@@ -118,21 +71,9 @@ type forumModel struct {
 	gonderi bool
 }
 
-const fMaxIcerik = 2000
 const fMaxYanit = 1000
-const fMaxBaslik = 100
 
 func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, env plugin.Env) forumModel {
-	bg := textinput.New()
-	bg.Placeholder = "konu başlığını buraya yaz…"
-	bg.CharLimit = fMaxBaslik
-
-	ia := textarea.New()
-	ia.Placeholder = "konu içeriğini buraya yaz…"
-	ia.SetHeight(8)
-	ia.CharLimit = fMaxIcerik
-	ia.ShowLineNumbers = false
-
 	ya := textarea.New()
 	ya.Placeholder = "yanıtını buraya yaz…"
 	ya.SetHeight(6)
@@ -140,16 +81,14 @@ func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Iden
 	ya.ShowLineNumbers = false
 
 	return forumModel{
-		ctx:         ctx,
-		identity:    identity,
-		dataDir:     dataDir,
-		forum:       f,
-		env:         env,
-		ekran:       fEkKategoriler,
-		baslikGiris: bg,
-		icerikAlan:  ia,
-		yanitAlan:   ya,
-		konuVP:      viewport.New(0, 0),
+		ctx:       ctx,
+		identity:  identity,
+		dataDir:   dataDir,
+		forum:     f,
+		env:       env,
+		ekran:     fEkKategoriler,
+		yanitAlan: ya,
+		konuVP:    viewport.New(0, 0),
 	}
 }
 
@@ -236,7 +175,6 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.konuVP.Width = vw
 		m.konuVP.Height = vh
-		m.icerikAlan.SetWidth(vw - 2)
 		m.yanitAlan.SetWidth(vw - 2)
 		m.forumKonuVPGuncelle()
 		return m, nil
@@ -260,14 +198,6 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(forumDinleYanit(m.forum.NewReplies()), forumBildirimTemizle())
 		}
 		return m, forumDinleYanit(m.forum.NewReplies())
-
-	case forumKonuGonderildiMsg:
-		m.gonderi = false
-		m.konular = m.forum.PostsByCategory(m.kategori)
-		m.konuIdx = 0
-		m.okMsg = "\"" + forumKisalt(msg.baslik, 30) + "\" yayınlandı"
-		m.ekran = fEkKonular
-		return m, forumBildirimTemizle()
 
 	case forumYanitGonderildiMsg:
 		m.gonderi = false
@@ -327,10 +257,6 @@ func (m forumModel) forumTusIsle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.forumTusKonular(msg)
 	case fEkKonu:
 		return m.forumTusKonu(msg)
-	case fEkOlustur:
-		return m.forumTusOlustur(msg)
-	case fEkTaslaklar:
-		return m.forumTusTaslaklar(msg)
 	case fEkYanit:
 		return m.forumTusYanit(msg)
 	}
@@ -381,30 +307,6 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.konular) > 0 && m.konuIdx < len(m.konular)-1 {
 			m.konuIdx++
 		}
-	case "n":
-		if !forum.PostCreationEnabled {
-			m.errMsg = "Bu düğüm salt okunur modda çalışıyor — yeni konu oluşturmak devre dışı."
-			return m, forumBildirimTemizle()
-		}
-		m.taslakDuzenle = false
-		m.kaliciTalep = false
-		m.odakAlan = 0
-		m.baslikGiris.SetValue("")
-		m.icerikAlan.SetValue("")
-		m.icerikAlan.Blur()
-		m.okMsg = ""
-		cmd := m.baslikGiris.Focus()
-		m.ekran = fEkOlustur
-		return m, cmd
-	case "d":
-		if !forum.PostCreationEnabled {
-			m.errMsg = "Bu düğüm salt okunur modda çalışıyor — yeni konu oluşturmak devre dışı."
-			return m, forumBildirimTemizle()
-		}
-		m.taslaklar = forumTaslakOku(m.dataDir, m.kategori)
-		m.taslakIdx = 0
-		m.okMsg = ""
-		m.ekran = fEkTaslaklar
 	case "enter":
 		if len(m.konular) > 0 {
 			m.aktifKonu = m.konular[m.konuIdx]
@@ -468,169 +370,6 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return forumOnayMsg{err: fn(postID)}
 			}
 		}
-	}
-	return m, nil
-}
-
-// ── Oluştur / Düzenle ────────────────────────────────────────────────────────
-
-func (m forumModel) forumTusOlustur(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-
-	case "esc":
-		m.baslikGiris.Blur()
-		m.icerikAlan.Blur()
-		m.ekran = fEkKonular
-		return m, nil
-
-	case "tab":
-		switch m.odakAlan {
-		case 0:
-			m.odakAlan = 1
-			m.baslikGiris.Blur()
-			return m, m.icerikAlan.Focus()
-		case 1:
-			m.odakAlan = 2
-			m.icerikAlan.Blur()
-			return m, nil
-		default:
-			m.odakAlan = 0
-			return m, m.baslikGiris.Focus()
-		}
-
-	case " ", "enter":
-		// Sadece kalıcı toggle odaktayken (odakAlan==2) toggle yapar.
-		if m.odakAlan == 2 {
-			m.kaliciTalep = !m.kaliciTalep
-			return m, nil
-		}
-
-	case "ctrl+d":
-		baslik := strings.TrimSpace(m.baslikGiris.Value())
-		icerik := strings.TrimSpace(m.icerikAlan.Value())
-		if baslik == "" && icerik == "" {
-			m.errMsg = "Başlık veya içerik boş olamaz"
-			return m, forumBildirimTemizle()
-		}
-		taslaklar := forumTaslakOku(m.dataDir, m.kategori)
-		t := forumTaslak{Kategori: m.kategori, Baslik: baslik, Icerik: icerik, KaliciTalep: m.kaliciTalep}
-		if m.taslakDuzenle {
-			taslaklar[m.taslakDuzenIdx] = t
-		} else {
-			taslaklar = append(taslaklar, t)
-		}
-		forumTaslakYaz(m.dataDir, m.kategori, taslaklar)
-		m.baslikGiris.Blur()
-		m.icerikAlan.Blur()
-		m.okMsg = "Taslak kaydedildi"
-		m.ekran = fEkKonular
-		return m, forumBildirimTemizle()
-
-	case "ctrl+s":
-		baslik := strings.TrimSpace(m.baslikGiris.Value())
-		icerik := strings.TrimSpace(m.icerikAlan.Value())
-		if baslik == "" {
-			m.errMsg = "Başlık boş olamaz"
-			m.odakAlan = 0
-			m.icerikAlan.Blur()
-			return m, tea.Batch(m.baslikGiris.Focus(), forumBildirimTemizle())
-		}
-		if icerik == "" {
-			m.errMsg = "İçerik boş olamaz"
-			m.odakAlan = 1
-			m.baslikGiris.Blur()
-			return m, tea.Batch(m.icerikAlan.Focus(), forumBildirimTemizle())
-		}
-		m.baslikGiris.Blur()
-		m.icerikAlan.Blur()
-		m.gonderi = true
-		isDuzenle, duzenIdx := m.taslakDuzenle, m.taslakDuzenIdx
-		kat, f, dataDir, kalici := m.kategori, m.forum, m.dataDir, m.kaliciTalep
-		return m, func() tea.Msg {
-			if _, err := f.CreatePost(m.ctx, kat, baslik, icerik, kalici); err != nil {
-				return forumHataMsg(err.Error())
-			}
-			if isDuzenle {
-				ts := forumTaslakOku(dataDir, kat)
-				if duzenIdx < len(ts) {
-					forumTaslakYaz(dataDir, kat, append(ts[:duzenIdx], ts[duzenIdx+1:]...))
-				}
-			}
-			return forumKonuGonderildiMsg{baslik: baslik}
-		}
-	}
-
-	var cmd tea.Cmd
-	if m.odakAlan == 0 {
-		m.baslikGiris, cmd = m.baslikGiris.Update(msg)
-	} else {
-		m.icerikAlan, cmd = m.icerikAlan.Update(msg)
-	}
-	return m, cmd
-}
-
-// ── Taslak listesi ────────────────────────────────────────────────────────────
-
-func (m forumModel) forumTusTaslaklar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "esc":
-		m.ekran = fEkKonular
-	case "up", "k":
-		if m.taslakIdx > 0 {
-			m.taslakIdx--
-		}
-	case "down", "j":
-		if len(m.taslaklar) > 0 && m.taslakIdx < len(m.taslaklar)-1 {
-			m.taslakIdx++
-		}
-	case "enter", "e":
-		if len(m.taslaklar) == 0 {
-			break
-		}
-		t := m.taslaklar[m.taslakIdx]
-		m.taslakDuzenle = true
-		m.taslakDuzenIdx = m.taslakIdx
-		m.odakAlan = 0
-		m.kaliciTalep = t.KaliciTalep
-		m.baslikGiris.SetValue(t.Baslik)
-		m.icerikAlan.SetValue(t.Icerik)
-		m.icerikAlan.Blur()
-		cmd := m.baslikGiris.Focus()
-		m.ekran = fEkOlustur
-		return m, cmd
-	case "p":
-		if len(m.taslaklar) == 0 {
-			break
-		}
-		t := m.taslaklar[m.taslakIdx]
-		idx, kat, f, dataDir := m.taslakIdx, m.kategori, m.forum, m.dataDir
-		m.gonderi = true
-		m.ekran = fEkKonular
-		return m, func() tea.Msg {
-			if _, err := f.CreatePost(m.ctx, kat, t.Baslik, t.Icerik, t.KaliciTalep); err != nil {
-				return forumHataMsg(err.Error())
-			}
-			ts := forumTaslakOku(dataDir, kat)
-			if idx < len(ts) {
-				forumTaslakYaz(dataDir, kat, append(ts[:idx], ts[idx+1:]...))
-			}
-			return forumKonuGonderildiMsg{baslik: t.Baslik}
-		}
-	case "x":
-		if len(m.taslaklar) == 0 {
-			break
-		}
-		m.taslaklar = append(m.taslaklar[:m.taslakIdx], m.taslaklar[m.taslakIdx+1:]...)
-		forumTaslakYaz(m.dataDir, m.kategori, m.taslaklar)
-		if m.taslakIdx >= len(m.taslaklar) && m.taslakIdx > 0 {
-			m.taslakIdx--
-		}
-		m.okMsg = "Taslak silindi"
-		return m, forumBildirimTemizle()
 	}
 	return m, nil
 }
@@ -712,10 +451,6 @@ func (m forumModel) View() string {
 		return m.forumGorunumKonular()
 	case fEkKonu:
 		return m.forumGorunumKonu()
-	case fEkOlustur:
-		return m.forumGorunumOlustur()
-	case fEkTaslaklar:
-		return m.forumGorunumTaslaklar()
 	case fEkYanit:
 		return m.forumGorunumYanit()
 	}
@@ -843,24 +578,12 @@ func (m forumModel) forumGorunumKonular() string {
 	var b strings.Builder
 	sagBilgi := forumKullaniciAdi(m.identity)
 
-	// Taslak rozeti sadece konu oluşturma etkinse göster.
-	if forum.PostCreationEnabled {
-		taslakSayisi := len(forumTaslakOku(m.dataDir, m.kategori))
-		if taslakSayisi > 0 {
-			sagBilgi += "  " + fStRozet.Render(fmt.Sprintf(" %d taslak ", taslakSayisi))
-		}
-	}
-
 	b.WriteString(m.forumHeader(m.kategori, sagBilgi))
 	b.WriteString("\n\n")
 
 	if len(m.konular) == 0 {
 		b.WriteString(fStSoluk.Render("  Henüz konu yok."))
-		b.WriteString("\n")
-		if forum.PostCreationEnabled {
-			b.WriteString(fStSoluk.Render("  n tuşuna bas ve ilk konuyu oluştur."))
-		}
-		b.WriteString("\n")
+		b.WriteString("\n\n")
 	} else {
 		for i, k := range m.konular {
 			secili := i == m.konuIdx
@@ -897,12 +620,7 @@ func (m forumModel) forumGorunumKonular() string {
 		b.WriteString(bd + "\n")
 	}
 
-	// Yardım satırı: eklenti varsa konu oluşturma kısayollarını göster.
-	if forum.PostCreationEnabled {
-		b.WriteString(fStYardim.Render("↑/↓  hareket    enter  aç    n  yeni konu    d  taslaklar    esc  geri"))
-	} else {
-		b.WriteString(fStYardim.Render("↑/↓  hareket    enter  aç    esc  geri"))
-	}
+	b.WriteString(fStYardim.Render("↑/↓  hareket    enter  aç    esc  geri"))
 	return fStKutu.Render(b.String())
 }
 
@@ -968,90 +686,6 @@ func (m forumModel) forumGorunumKonu() string {
 		helpText += "    x  sil"
 	}
 	b.WriteString(fStYardim.Render(helpText))
-	return fStKutu.Render(b.String())
-}
-
-func (m forumModel) forumGorunumOlustur() string {
-	ad := forumKullaniciAdi(m.identity)
-	baslik := "Yeni Konu"
-	if m.taslakDuzenle {
-		baslik = "Taslak Düzenle"
-	}
-
-	var b strings.Builder
-	b.WriteString(m.forumHeader(baslik+" — "+m.kategori, ad))
-	b.WriteString("\n\n")
-
-	blbl := fStAlanEtiket
-	if m.odakAlan == 0 {
-		blbl = fStAlanEtiketAktif
-	}
-	baslikLen := len([]rune(m.baslikGiris.Value()))
-	b.WriteString(blbl.Render(fmt.Sprintf("Başlık  %d/%d", baslikLen, fMaxBaslik)))
-	b.WriteString("\n")
-	b.WriteString(m.baslikGiris.View())
-	b.WriteString("\n\n")
-
-	ilbl := fStAlanEtiket
-	if m.odakAlan == 1 {
-		ilbl = fStAlanEtiketAktif
-	}
-	icerikLen := len([]rune(m.icerikAlan.Value()))
-	b.WriteString(ilbl.Render("İçerik  ") + forumCharBar(icerikLen, fMaxIcerik))
-	b.WriteString("\n")
-	b.WriteString(m.icerikAlan.View())
-	b.WriteString("\n")
-
-	// Kalıcı konu talebi toggle (3. tab durağı)
-	kaliciIkon := "[ ]"
-	if m.kaliciTalep {
-		kaliciIkon = "[✔]"
-	}
-	kaliciLbl := fStAlanEtiket
-	if m.odakAlan == 2 {
-		kaliciLbl = fStAlanEtiketAktif
-	}
-	b.WriteString("\n")
-	b.WriteString(kaliciLbl.Render(kaliciIkon + " Kalıcı konu talebi"))
-	if m.odakAlan == 2 {
-		b.WriteString("  " + fStSoluk.Render("← space veya enter ile değiştir"))
-	}
-	b.WriteString("\n")
-
-	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
-	}
-	b.WriteString(fStYardim.Render("tab  alan değiştir    ctrl+s  yayınla    ctrl+d  taslak kaydet    esc  iptal"))
-	return fStKutu.Render(b.String())
-}
-
-func (m forumModel) forumGorunumTaslaklar() string {
-	var b strings.Builder
-	b.WriteString(m.forumHeader("Taslaklar — "+m.kategori, forumKullaniciAdi(m.identity)))
-	b.WriteString("\n\n")
-
-	if len(m.taslaklar) == 0 {
-		b.WriteString(fStSoluk.Render("  Bu kategoride kayıtlı taslak yok."))
-		b.WriteString("\n")
-	} else {
-		for i, t := range m.taslaklar {
-			secili := i == m.taslakIdx
-			onizleme := forumKisalt(strings.TrimSpace(t.Icerik), 50)
-			if secili {
-				b.WriteString(fStSeciliSatir.Render("  "+forumKisalt(t.Baslik, 52)) + "\n")
-				b.WriteString(fStSeciliMeta.Render("  "+onizleme) + "\n")
-			} else {
-				b.WriteString(fStOgeSatir.Render("  "+forumKisalt(t.Baslik, 52)) + "\n")
-				b.WriteString(fStSoluk.Render("  "+onizleme) + "\n")
-			}
-			b.WriteString("\n")
-		}
-	}
-
-	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
-	}
-	b.WriteString(fStYardim.Render("enter/e  düzenle    p  yayınla    x  sil    esc  geri"))
 	return fStKutu.Render(b.String())
 }
 

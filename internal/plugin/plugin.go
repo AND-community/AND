@@ -49,6 +49,10 @@ type Env struct {
 	LocalApproveAuthor func(authorKey string) // yazarın tüm postlarını onayla
 	// PublishApproval imzalayıp ağda yayınlar; nil → kullanıcı onaylayamaz.
 	PublishApproval func(postID string) error
+
+	// CreatePost yeni bir forum konusu oluşturur ve ağda yayınlar.
+	// Nil ise bu düğüm salt okunur modda çalışıyor.
+	CreatePost func(ctx context.Context, category, title, body string, permanentReq bool) error
 }
 
 // BackMsg is returned by a plugin's tea.Model when the user wants to go back
