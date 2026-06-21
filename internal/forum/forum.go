@@ -44,10 +44,6 @@ var Categories = []string{
 	"Genel",
 }
 
-// PostCreationEnabled controls whether the UI allows users to create new
-// topics. True by default; set to false to make the forum read-only.
-var PostCreationEnabled = true
-
 // postTTL is the default lifetime for posts that haven't been approved.
 const postTTL = 5 * 24 * time.Hour
 

@@ -293,13 +293,6 @@ func run() error {
 		go publishSavedBans(ctx, modTopic, dir)
 	}
 
-	// Salt okunur mod: veri dizininde "readonly" dosyası varsa yeni konu/yanıt devre dışı.
-	forum.PostCreationEnabled = true
-	if _, err := os.Stat(filepath.Join(dir, "readonly")); err == nil {
-		forum.PostCreationEnabled = false
-		fmt.Fprintln(os.Stderr, "[AND] Salt okunur mod — yeni konu oluşturmak devre dışı.")
-	}
-
 	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"), mod)
 	if err != nil {
 		return fmt.Errorf("init forum: %w", err)
@@ -386,12 +379,15 @@ func run() error {
 	// Zaten açık olan modTopic'i kullan — tekrar Join çağrısı hata verir.
 	env.PublishApproval = buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
 
-	// Konu oluşturma: salt okunur moddaysa nil bırak (eklenti bunu kontrol eder).
-	if forum.PostCreationEnabled {
+	// Konu oluşturma: veri dizininde "readonly" dosyası varsa env.CreatePost nil bırakılır.
+	// Konu açma eklentisi (konu_ac) nil kontrolüyle salt okunur modu gösterir.
+	if _, err := os.Stat(filepath.Join(dir, "readonly")); err != nil {
 		env.CreatePost = func(pctx context.Context, category, title, body string, permanentReq bool) error {
 			_, err := forumStore.CreatePost(pctx, category, title, body, permanentReq)
 			return err
 		}
+	} else {
+		fmt.Fprintln(os.Stderr, "[AND] Salt okunur mod — konu açma devre dışı.")
 	}
 
 	reg := plugin.New(env)
