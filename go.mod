@@ -1,4 +1,4 @@
-module and
+module github.com/lucian95511/and
 
 go 1.26.4
 

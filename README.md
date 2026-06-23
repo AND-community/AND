@@ -1,176 +1,361 @@
 # AND
 
-A serverless, terminal-only community app for developers. No central
-server, no rented cloud infrastructure — every user's computer is a peer,
-and the network is the application.
+**AND** — sunucusuz, eşten eşe (P2P) terminal forum topluluğu.  
+Hesap yok, kayıt yok, merkezi sunucu yok. Kimliğin 12 kelimeden ibarettir.
 
-See the project brief for the full vision (decentralized identity, P2P
-discovery, gossiping forum, lazy-loaded local sync, certificate-based
-serverless moderation, keyboard-only TUI). This README tracks what's
-actually implemented so far.
+---
 
-## Status
+## İçindekiler
 
-| Package                    | Status                                                                        |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `internal/crypto`          | Done — mnemonic identity + encrypted local storage                            |
-| `internal/network`         | Done — libp2p host, DHT + mDNS discovery, GossipSub pubsub                   |
-| `internal/storage`         | Done — local SQLite cache (posts, replies, tombstones, TTL/approval columns)  |
-| `internal/forum`           | Done — signed post/reply model, P2P propagation, sync protocol, delete msgs   |
-| `internal/moderation`      | Done — founder cert chain, moderator certs, ban propagation, rate limiting    |
-| `internal/tui`             | Done — login/registration, main menu, forum browser, live chat                |
-| `internal/plugin`          | Done — plugin interface + registry + auto-register                            |
-| `internal/updater`         | Done — GitHub Releases auto-update via ldflags                                |
-| `Eklentiler/admin`         | Done — founder/admin panel: pending posts + approval TUI                      |
-| `Eklentiler/moderator`     | Done — moderator panel: pending posts + approval TUI (cert-gated)             |
-| `Eklentiler/ozel_chat`     | Done — private direct messages over libp2p streams (`/and/dm/1.0.0`)         |
-| `cmd/and`                  | Done — full startup: login → node → forum → plugins → TUI                    |
-| `cmd/andmod`               | Done — CLI: pubkey / grant cert / create ban                                  |
+- [Genel Bakış](#genel-bakış)
+- [Özellikler](#özellikler)
+- [Mimari](#mimari)
+- [Kurulum](#kurulum)
+- [Kullanım](#kullanım)
+- [Moderasyon](#moderasyon)
+- [Eklenti Sistemi](#eklenti-sistemi)
+- [Yapılandırma](#yapılandırma)
+- [Katkı](#katkı)
+- [Güvenlik](#güvenlik)
+- [Lisans](#lisans)
 
-## Layout
+---
+
+## Genel Bakış
+
+AND, merkezi bir sunucuya ihtiyaç duymadan çalışan terminal tabanlı bir forum uygulamasıdır.  
+Her düğüm hem istemci hem sunucu işlevi görür; mesajlar [libp2p](https://libp2p.io/) GossipSub protokolü üzerinden yayılır, veriler yalnızca yerel SQLite veritabanında saklanır.
+
+Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed25519 anahtar çiftiyle temsil edilir. Bu anahtar çifti hem uygulama kimliği hem libp2p düğüm kimliği olarak kullanılır; tek bir kurtarma ifadesi her şeyi geri getirir.
+
+---
+
+## Özellikler
+
+| Özellik | Açıklama |
+|---------|----------|
+| Sunucusuz | Merkezi altyapı yoktur; ağ eşler arası çalışır |
+| BIP-39 kimlik | 12 kelimelik anımsatıcı → Ed25519 anahtar → libp2p kimliği |
+| Ed25519 imzalı içerik | Her konu, yanıt ve moderasyon kararı imzalanır |
+| SQLite yerel depo | WAL modunda yüksek eşzamanlılık, şema versiyonlama |
+| Forum kategorileri | Python, Rust, Go, Siber Güvenlik, Yapay Zeka ve daha fazlası |
+| Özel mesajlaşma | libp2p stream (`/and/dm/1.0.0`) üzerinden P2P doğrudan mesaj |
+| Moderasyon sistemi | Kurucu sertifikası + devredilebilir moderatör sertifikaları |
+| Dinamik eklenti sistemi | Bağımsız binary'ler; AND'ı yeniden derlemeden eklenti ekle |
+| Otomatik güncelleme | GitHub Releases üzerinden arka planda güncelleme |
+| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı TUI |
+
+---
+
+## Mimari
 
 ```
-cmd/and/                entry point — login, node bring-up, plugin wiring, TUI
-cmd/andmod/             moderation CLI — pubkey, grant, ban
-internal/crypto/        decentralized identity: BIP-39 mnemonic → Ed25519 keypair,
-                          encrypted at rest (Argon2id + AES-256-GCM)
-internal/network/       libp2p transport: host, NAT traversal, Kademlia DHT +
-                          mDNS peer discovery, GossipSub pubsub topics
-internal/storage/       local SQLite cache — posts, replies, tombstones;
-                          TTL + permanent-approval columns; WAL mode
-internal/forum/         forum post/reply semantics on top of network+storage:
-                          signing, verification, P2P propagation, sync protocol,
-                          author-delete, TTL cleanup
-internal/moderation/    moderator certificate chain (founder → mod cert → ban msg),
-                          libp2p ConnectionGater, ban/revoke/trusted-author propagation
-internal/tui/           bubbletea TUI: login, main menu, forum browser, live chat
-internal/plugin/        Plugin interface + Registry; Eklentiler/ packages are plugins
-internal/updater/       GitHub Releases version check + binary self-update
-Eklentiler/admin/       admin panel plugin — pending post list + approval
-Eklentiler/moderator/   moderator panel plugin — pending post list + approval
-Eklentiler/ozel_chat/   private chat plugin — direct P2P messages via libp2p streams
+cmd/
+  and/              — ana uygulama giriş noktası
+  andmod/           — moderasyon CLI aracı (andmod grant, ban, trusted)
+
+Eklentiler/
+  admin/            — yönetici paneli eklentisi (bağımsız binary)
+  moderator/        — moderatör paneli eklentisi (bağımsız binary)
+  konu_ac/          — konu açma eklentisi (bağımsız binary)
+  ozel_chat/        — özel mesajlaşma eklentisi (bağımsız binary)
+  ornek/            — yeni eklenti geliştirme rehberi
+
+internal/
+  crypto/           — BIP-39 → Ed25519 kimlik, AES-GCM şifreli depolama
+  network/          — libp2p düğümü, GossipSub, DHT keşfi, sync protokolü
+  forum/            — konu/yanıt yönetimi, imza doğrulama, TTL
+  moderation/       — kurucu/moderatör sertifikası, ban sistemi, ConnectionGater
+  storage/          — SQLite WAL, şema versiyonlama
+  pluginapi/        — eklenti HTTP IPC API sunucusu + istemci kütüphanesi
+  pluginmgr/        — and-plugin-* binary keşfi ve başlatma
+  dmmgr/            — libp2p DM stream handler + ozel_chat'e long-poll proxy
+  tui/              — Bubbletea TUI (menü, forum, sohbet, login)
+  updater/          — GitHub Releases kontrolü ve uygulama güncelleme
 ```
 
-## How identity works
+### Veri akışı — forum konusu
 
-There is no account database. On first run, the TUI's registration screen
-asks for a display name (shown to other peers in chat/forum) and a local
-passphrase, then AND generates a random 12-word BIP-39 mnemonic and
-deterministically derives an Ed25519 keypair from it — that keypair is
-simultaneously the user's AND identity *and* their libp2p node's PeerID,
-so one seed phrase is enough to both prove who you are and address your
-node on the network. The display name is cosmetic only; it carries no
-authentication weight, unlike the keypair.
-
-The mnemonic itself is the only true backup; it is never written to disk
-in plaintext. Instead, a local passphrase (chosen per device) is run
-through Argon2id to derive an AES-256-GCM key that encrypts the name +
-mnemonic together into `identity.dat` under `%APPDATA%\and\`. To move to
-a new device, re-enter the 12 words there.
-
-## How peer discovery works
-
-Every node runs:
-
-- A Kademlia DHT (`go-libp2p-kad-dht`, dual WAN/LAN mode) — nodes advertise
-  themselves under the rendezvous string `and-community/1.0.0` and search
-  for others doing the same.
-- mDNS — for instant discovery of other AND nodes on the same LAN.
-- UPnP port mapping + NAT status reporting + hole punching
-  (`libp2p.NATPortMap`, `EnableNATService`, `EnableHolePunching`) for
-  reaching peers behind home routers without any port forwarding.
-
-Once peers are found, they're connected to automatically, and a GossipSub
-router (`go-libp2p-pubsub`) on top of those connections propagates forum
-posts and chat messages (topics `and/forum` and `and/chat`). A direct
-libp2p sync protocol (`/and/sync/1.0.0`) catches peers up on history
-they missed while offline.
-
-## How moderation works
-
-There is no central ban list. Moderation uses a certificate chain:
-
-1. **Founder key** — the first user to run AND writes their Ed25519 public
-   key to `founder.key` in the app data directory. Every other node that
-   starts up reads this file and trusts bans signed by keys the founder
-   certified.
-2. **Moderator certificates** — the founder runs `andmod grant <pubkey>`
-   to produce a `bans/mod_<short>.json` file. The file is handed to the
-   moderator (e.g. via Özel Chat). The moderator places it in their `bans/`
-   folder.
-3. **Ban messages** — a moderator runs `andmod ban <peer_id> <reason>
-   --cert <cert.json>` to produce a `bans/ban_<short>.json`. When AND
-   starts, it publishes all files in `bans/` on the moderation GossipSub
-   topic; every peer that receives a valid, unexpired ban refuses further
-   connections from the banned peer via libp2p's ConnectionGater interface.
-
-Certificates expire in ≤7 days; bans in ≤30 days. The founder can revoke
-a moderator's certificate at any time; revocation propagates immediately.
-The founder's own peer cannot be banned.
-
-## Forum post lifecycle
-
-Posts start with a 5-day TTL. If the author requests permanent status
-(`permanent_requested=true`), the post appears in the admin/moderator
-panel. Approving it via the TUI panel (or by a trusted author auto-approval)
-clears the TTL. Unapproved posts expire silently. The author can delete
-their own post at any time; a signed `DeleteMsg` is broadcast and stored as
-a tombstone so the post can never be re-added via sync.
-
-## Running it
-
-```sh
-go run ./cmd/and
+```
+Kullanıcı → and-plugin-konu-ac (Bubbletea TUI)
+                ↓  POST /api/v1/forum/post  (localhost HTTP IPC)
+            AND ana süreç → Forum.CreatePost()
+                ↓  Ed25519 imzala
+            GossipSub yayını (libp2p)
+                ↓
+        Tüm peer'lar → imza doğrula → SQLite
 ```
 
-First run: the TUI asks for a display name and a local passphrase,
-generates a new identity, shows its 12-word mnemonic once for you to
-write down, and saves an encrypted `identity.dat`. Subsequent runs: just
-asks for that passphrase to unlock the existing identity. Either way, it
-then brings up a libp2p node, starts DHT/mDNS discovery, joins the
-forum/chat/moderation pubsub topics, and drops you into the main menu.
+### Veri akışı — özel mesaj (DM)
 
-**Custom bootstrap nodes** — place additional multiaddrs (one per line,
-`#` comments allowed) in `%APPDATA%\and\bootstrap.txt` to point AND at
-AND-specific bootstrap servers without rebuilding the binary.
+```
+and-plugin-ozel-chat  →  POST /api/v1/dm/send  →  AND (dmmgr.Broker)
+                                                         ↓  libp2p stream
+                                                     Hedef peer
 
-## Moderation CLI
-
-```sh
-# Show your AND public key (needed by founder to issue a cert):
-andmod pubkey
-
-# Founder: issue a 7-day moderator certificate:
-andmod grant <target_pubkey_hex> --days 7
-
-# Moderator: ban a peer for 30 days:
-andmod ban <peer_id> <reason> --cert bans/mod_<short>.json --days 30
+Hedef peer  →  /and/dm/1.0.0 stream handler  →  dmmgr.Broker.Deliver()
+                                                         ↓  long-poll
+                                              and-plugin-ozel-chat (görünür)
 ```
 
-## Tests
+---
 
-```sh
-go test ./...
+## Kurulum
+
+### Gereksinimler
+
+- Go 1.21 veya üzeri
+- Windows, Linux veya macOS (amd64 / arm64)
+
+### Kaynaktan derleme
+
+```bash
+git clone https://github.com/lucian95511/and.git
+cd and
+
+# Ana binary ve yönetim aracı
+go build -o and     ./cmd/and
+go build -o andmod  ./cmd/andmod
+
+# Eklenti binary'leri (and ile aynı dizine koy)
+go build -o and-plugin-admin      ./Eklentiler/admin
+go build -o and-plugin-moderator  ./Eklentiler/moderator
+go build -o and-plugin-konu-ac    ./Eklentiler/konu_ac
+go build -o and-plugin-ozel-chat  ./Eklentiler/ozel_chat
 ```
 
-`internal/crypto` covers identity generation/restoration and the
-encrypted save/load round trip. `internal/network` covers that the same
-mnemonic always yields the same PeerID, and an end-to-end publish/receive
-over a directly connected pubsub topic. `internal/tui` covers the
-login/registration form's validation and save/unlock round trip, and the
-app shell's menu navigation and chat-send logic — all driven directly
-against the bubbletea models, without spinning up a real terminal.
+Windows'ta her binary adına `.exe` uzantısı ekle.
 
-## Why these libraries
+### ldflags — versiyon ve repo bilgisi
 
-- **libp2p** (`go-libp2p`, `go-libp2p-kad-dht`, `go-libp2p-pubsub`) — the
-  whole point of this project is "no servers", and libp2p is the
-  standard toolkit for exactly that: DHT-based discovery, NAT traversal,
-  and gossip-based pubsub, all out of the box.
-- **Charmbracelet `bubbletea`/`bubbles`/`lipgloss`** — the standard Go
-  toolkit for a keyboard-only TUI.
-- **`tyler-smith/go-bip39`** — standard, well-audited BIP-39 mnemonic
-  implementation.
-- **`golang.org/x/crypto/argon2`** — Argon2id for passphrase-based key
-  derivation; current recommendation for this use case.
-- **`modernc.org/sqlite`** — pure-Go SQLite driver; no CGO required.
+Otomatik güncelleme ve `--version` için:
+
+```bash
+go build \
+  -ldflags "-X github.com/lucian95511/and/internal/updater.Version=v1.0.0 \
+            -X github.com/lucian95511/and/internal/updater.GitHubRepo=lucian95511/and" \
+  -o and ./cmd/and
+```
+
+### Kurucu anahtarını binary'ye gömmek
+
+```bash
+# Kurucu public key'ini öğren
+./andmod pubkey
+
+# Binary'yi kurucu public key'i ile derle
+go build \
+  -ldflags "-X github.com/lucian95511/and/internal/moderation.FounderPubKeyHex=<64-karakter-hex>" \
+  -o and ./cmd/and
+```
+
+Kurucu public key'i binary'ye gömülüdür; `founder.key` dosyası ilk çalıştırmada otomatik oluşur.
+
+---
+
+## Kullanım
+
+### Dizin yapısı (çalıştırma)
+
+Tüm binary'leri aynı dizine koy:
+
+```
+/herhangi/bir/dizin/
+  and[.exe]
+  andmod[.exe]
+  and-plugin-admin[.exe]
+  and-plugin-moderator[.exe]
+  and-plugin-konu-ac[.exe]
+  and-plugin-ozel-chat[.exe]
+```
+
+AND başlangıçta `and-plugin-*` adındaki binary'leri otomatik bulur.
+
+### İlk çalıştırma
+
+```bash
+./and
+```
+
+İlk açılışta yeni kimlik oluşturulur:
+
+1. Bir takma ad seç (görünüm amaçlıdır; imzaları etkilemez)
+2. Kimliğini korumak için güçlü bir parola gir
+3. **12 kelimelik anımsatıcını güvenli bir yere yaz** — tek kurtarma yolun budur
+
+Sonraki açılışlarda yalnızca parolanı girmen yeterlidir.  
+Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux/macOS: `~/.config/and/identity.dat`)
+
+### Ana menü
+
+```
+AND — ana menü
+
+  [1] Forum              forum gözat, konu oku
+  [2] Sohbet             genel P2P sohbet kanalı
+  [3] Yönetici Paneli    onay bekleyen konular (kurucu)
+  [4] Moderatör Paneli   onay bekleyen konular (moderatör)
+  [5] Özel Chat          P2P doğrudan mesaj
+
+  enter  seç    q/esc  çıkış
+```
+
+> Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve listeye eklenir.  
+> `Label: ""` olan eklentiler (örn. `konu_ac`) menüde görünmez; doğrudan forumdan açılır.
+
+### Klavye kısayolları — forum
+
+| Tuş | İşlev |
+|-----|-------|
+| `↑` / `↓` ya da `j` / `k` | konu seç |
+| `enter` | konuyu aç |
+| `n` | yeni konu aç (`and-plugin-konu-ac` başlatılır) |
+| `tab` | kategori değiştir |
+| `esc` | ana menüye dön |
+
+### Peer ID'ni öğrenmek
+
+Ana menüde kimlik bilgisi ekranında kendi Peer ID'in görünür.  
+Başka bir kullanıcıyla özel mesajlaşmak için bu ID'yi paylaşabilirsin.
+
+### Özel bootstrap node'ları
+
+Bilinen AND düğümlerine hızlı bağlanmak için `%APPDATA%\and\bootstrap.txt` dosyasına multiaddr satırları ekle:
+
+```
+/ip4/1.2.3.4/tcp/4001/p2p/12D3KooW...
+# bu satır yorum — yoksayılır
+/dns4/and-node.example.com/tcp/4001/p2p/12D3KooW...
+```
+
+---
+
+## Moderasyon
+
+AND'ın moderasyon sistemi kurucu merkezli ve sertifika tabanlıdır.
+
+### Roller
+
+| Rol | Yetki | Nasıl elde edilir |
+|-----|-------|-------------------|
+| **Normal kullanıcı** | Konu yaz, yanıt ver | Kimlik oluştur |
+| **Moderatör** | Konu onayla/reddet | Kurucudan `.json` sertifika al |
+| **Kurucu** | Moderatör ata, toplu onayla | Binary'ye gömülü public key'e sahip olmak |
+
+### andmod CLI
+
+```bash
+# Kendi public key'ini yazdır
+./andmod pubkey
+
+# Moderatör yetkisi ver (30 gün)
+./andmod grant <hedef_pubkey_hex> --days 30
+
+# Süresiz moderatör yetkisi ver
+./andmod grant <hedef_pubkey_hex> --permanent
+
+# Moderatör olarak peer banla (30 gün)
+./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --days 30
+
+# Yazarı güvenilir olarak işaretle (90 gün; onay beklemiyor)
+./andmod trusted <yazar_pubkey_hex> --days 90
+```
+
+Oluşturulan `.json` dosyaları `%APPDATA%\and\bans\` dizinine yazılır.  
+AND yeniden başlatıldığında bu dosyaları otomatik olarak ağda yayınlar.
+
+### Onay akışı
+
+Varsayılan olarak tüm konular moderasyon kuyruğuna girer ve 5 günlük TTL'e tabidir:
+
+```
+Yeni konu  →  Beklemede (5 gün TTL)
+                    ↓
+       Kurucu veya moderatör  →  Ed25519 imzalı ApprovalMsg
+                                            ↓
+                                 GossipSub'da tüm ağa yayılır
+                                            ↓
+                                    Konusu kalıcı hale gelir
+```
+
+---
+
+## Eklenti Sistemi
+
+AND eklentileri **bağımsız yürütülebilir binary**'lerdir. Her eklenti ayrı bir Go programı olarak derlenir ve AND'dan bağımsız dağıtılabilir.
+
+### Nasıl çalışır
+
+1. AND başlangıçta kendi dizinindeki tüm `and-plugin-*` dosyalarını tarar.
+2. Her binary `--manifest` argümanıyla çalıştırılır → JSON meta veri alınır.
+3. Kullanıcı menüden eklenti açtığında AND, eklenti binary'sini şu ortam değişkenleriyle başlatır:
+
+   | Değişken | Açıklama |
+   |----------|----------|
+   | `AND_API_ADDR` | AND'ın localhost HTTP API adresi (ör. `127.0.0.1:48291`) |
+   | `AND_DATA_DIR` | AND veri dizini (taslak dosyaları için) |
+   | `AND_CATEGORY` | (yalnızca konu_ac) Forumdan seçilen kategori |
+
+4. Eklenti, `AND_API_ADDR` üzerinden AND'a HTTP istekleri göndererek kimlik, forum ve DM işlemlerini gerçekleştirir.
+5. Eklenti TUI'sı kapandığında AND kontrolü geri alır.
+
+### Yerleşik eklentiler
+
+| Binary | Menü Etiketi | Açıklama |
+|--------|-------------|----------|
+| `and-plugin-admin` | Yönetici Paneli | Onay kuyruğu (kurucu: onayla / reddet / toplu onayla) |
+| `and-plugin-moderator` | Moderatör Paneli | Onay kuyruğu (sertifikalı moderatör) |
+| `and-plugin-konu-ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla açılır |
+| `and-plugin-ozel-chat` | Özel Chat | Peer ID ile doğrudan P2P mesajlaşma |
+
+### Yeni eklenti yazmak
+
+Ayrıntılı şablon ve API referansı için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md) dosyasına bak.
+
+Kısa adımlar:
+
+```bash
+# 1. cmd/plugin_<isim>/ dizini oluştur ve main.go yaz
+mkdir cmd/plugin_meklentim
+
+# 2. Derle ve AND dizinine koy
+go build -o and-plugin-meklentim ./cmd/plugin_meklentim
+
+# AND bir sonraki başlatmada eklentiyi otomatik keşfeder
+```
+
+---
+
+## Yapılandırma
+
+Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) altında saklanır:
+
+| Dosya / Dizin | Açıklama |
+|---|---|
+| `identity.dat` | AES-256-GCM şifreli Ed25519 kimlik (parola korumalı) |
+| `founder.key` | Kurucunun Ed25519 public key'i (binary'e gömülüden türetilir) |
+| `forum.db` | SQLite forum veritabanı (WAL modu) |
+| `bans/` | Moderasyon kararları (ban, sertifika, onay JSON'ları) |
+| `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
+| `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
+
+> `identity.dat`, `founder.key` ve `bans/` içeriği asla başkalarıyla paylaşılmamalı, git'e eklenmemeli.
+
+---
+
+## Katkı
+
+Katkıda bulunmak için [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını oku.
+
+---
+
+## Güvenlik
+
+Güvenlik açığı bildirmek için [SECURITY.md](SECURITY.md) dosyasını oku.  
+Açıkları herkese açık issue olarak bildirme; doğrudan e-posta ile iletişime geç.
+
+---
+
+## Lisans
+
+MIT Lisansı — ayrıntılar için [LICENSE](LICENSE) dosyasına bak.

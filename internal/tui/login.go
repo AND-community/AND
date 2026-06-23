@@ -10,14 +10,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	stdcrypto "and/internal/crypto"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
 )
 
-// ErrLoginCancelled is returned by Login when the user backs out (Ctrl+C
-// or Esc) before an identity is unlocked or created.
 var ErrLoginCancelled = errors.New("tui: login cancelled")
 
-// AND harflerinin ASCII büyük harf gösterimi — 6 satır × ~26 karakter
 const andASCIIArt = ` █████╗ ███╗   ██╗██████╗
 ██╔══██╗████╗  ██║██╔══██╗
 ███████║██╔██╗ ██║██║  ██║
@@ -214,6 +211,12 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 		m.err = errors.New("şifre boş olamaz")
 		m.focus = fieldPass
 		return m.refocus(), nil
+	case len([]rune(passphrase)) < 8:
+		m.err = errors.New("şifre en az 8 karakter olmalı")
+		m.inputs[fieldPass].SetValue("")
+		m.inputs[fieldConfirm].SetValue("")
+		m.focus = fieldPass
+		return m.refocus(), nil
 	case passphrase != confirm:
 		m.err = errors.New("şifreler eşleşmiyor")
 		m.inputs[fieldPass].SetValue("")
@@ -280,9 +283,6 @@ func (m loginModel) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// ── Paylaşılan yardımcılar ────────────────────────────────────────────────────
-
-// center: içeriği tam ekrana ortalı olarak yerleştirir.
 func (m loginModel) center(content string) string {
 	if m.width <= 0 || m.height <= 0 {
 		return content
@@ -290,7 +290,6 @@ func (m loginModel) center(content string) string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 }
 
-// logoBlock: logo + sürüm bilgisi, dikey giriş ekranı için.
 func logoBlock() string {
 	logoSt  := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	verSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
@@ -308,14 +307,11 @@ func logoBlock() string {
 	)
 }
 
-// loginFormBoxSt: form içeriğini saran yuvarlak kutu.
 var loginFormBoxSt = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(colorAccent).
 	Padding(1, 3).
 	Width(44)
-
-// ── View fonksiyonları ────────────────────────────────────────────────────────
 
 func (m loginModel) viewForm() string {
 	var b strings.Builder

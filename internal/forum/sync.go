@@ -4,11 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+)
+
+const (
+	// maxSyncPosts zaten tanımlı; bunlar bant genişliği ve bellek için boyut sınırları.
+	maxSyncRequestBytes  = 2 * 1024 * 1024  // istek: postID listesi + tombstone'lar, 2 MB yeterli
+	maxSyncResponseBytes = 48 * 1024 * 1024 // yanıt: max 500 post + reply, 48 MB
 )
 
 // SyncProtocol is the libp2p stream protocol AND nodes use to exchange
@@ -50,7 +57,11 @@ func (f *Forum) handleSyncStream(s libp2pnet.Stream) {
 	s.SetDeadline(time.Now().Add(syncTimeout)) //nolint:errcheck
 
 	var req syncRequest
-	if err := json.NewDecoder(s).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(s, maxSyncRequestBytes)).Decode(&req); err != nil {
+		return
+	}
+	// Anormal büyüklükte postID listesi → bağlantıyı kes.
+	if len(req.PostIDs) > maxSyncPosts*4 {
 		return
 	}
 
@@ -127,21 +138,30 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	s.CloseWrite() //nolint:errcheck
 
 	var resp syncResponse
-	if err := json.NewDecoder(s).Decode(&resp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(s, maxSyncResponseBytes)).Decode(&resp); err != nil {
 		return fmt.Errorf("sync: read response: %w", err)
+	}
+	// Yanıttaki post sayısını sınırla — kötü niyetli peer'a karşı savunma.
+	if len(resp.Posts) > maxSyncPosts {
+		resp.Posts = resp.Posts[:maxSyncPosts]
 	}
 
 	// Postları önce ekle — ardından tombstone'lar gelecek.
 	// Sıralama önemli: author doğrulaması post memory'de olmasını gerektirir.
 	for _, p := range resp.Posts {
-		if verifyPost(p) {
+		if verifyPost(p) && f.rl.allowPost(p.AuthorKey) {
 			f.storePost(p)
 		}
 	}
 	for postID, replies := range resp.Replies {
+		limit := 0
 		for _, r := range replies {
-			if r.PostID == postID && verifyReply(r) {
+			if limit >= 200 {
+				break
+			}
+			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey) {
 				f.storeReply(r)
+				limit++
 			}
 		}
 	}

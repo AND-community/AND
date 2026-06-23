@@ -1,6 +1,3 @@
-// Package forum implements AND's forum on top of the network package:
-// composing/signing/verifying posts and replies, propagating them over
-// ForumTopic, and persisting them locally in a SQLite database.
 package forum
 
 import (
@@ -15,12 +12,11 @@ import (
 	"sync"
 	"time"
 
-	stdcrypto "and/internal/crypto"
-	"and/internal/network"
-	"and/internal/storage"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/storage"
 )
 
-// Categories is the static list of forum sections.
 var Categories = []string{
 	"Python",
 	"C / C++",
@@ -44,25 +40,22 @@ var Categories = []string{
 	"Genel",
 }
 
-// postTTL is the default lifetime for posts that haven't been approved.
 const postTTL = 5 * 24 * time.Hour
 
-// Post is a top-level forum post.
 type Post struct {
 	ID                 string    `json:"id"`
 	Category           string    `json:"category"`
 	AuthorName         string    `json:"author_name"`
-	AuthorKey          string    `json:"author_key"` // hex-encoded Ed25519 public key
+	AuthorKey          string    `json:"author_key"`
 	Title              string    `json:"title"`
 	Body               string    `json:"body"`
 	CreatedAt          time.Time `json:"created_at"`
-	Sig                string    `json:"sig"` // hex-encoded Ed25519 signature
+	Sig                string    `json:"sig"`
 	Approved           bool      `json:"approved,omitempty"`
 	ExpiresAt          time.Time `json:"expires_at,omitempty"`
-	PermanentRequested bool      `json:"permanent_requested,omitempty"` // kullanıcı kalıcılık talep etti
+	PermanentRequested bool      `json:"permanent_requested,omitempty"`
 }
 
-// Reply is a response to a Post.
 type Reply struct {
 	ID         string    `json:"id"`
 	PostID     string    `json:"post_id"`
@@ -73,47 +66,41 @@ type Reply struct {
 	Sig        string    `json:"sig"`
 }
 
-// DeleteMsg is published by the original author to remove a post from all peers.
 type DeleteMsg struct {
 	PostID    string    `json:"post_id"`
 	AuthorKey string    `json:"author_key"`
 	DeletedAt time.Time `json:"deleted_at"`
-	Sig       string    `json:"sig"` // author Ed25519 signature
+	Sig       string    `json:"sig"`
 }
 
 type envelope struct {
-	Type   string     `json:"type"` // "post" | "reply" | "delete"
+	Type   string     `json:"type"`
 	Post   *Post      `json:"post,omitempty"`
 	Reply  *Reply     `json:"reply,omitempty"`
 	Delete *DeleteMsg `json:"delete,omitempty"`
 }
 
-// TrustedChecker is a minimal interface so forum doesn't import moderation.
 type TrustedChecker interface {
 	IsTrustedAuthor(authorKey string) bool
 }
 
-// Forum manages the local store and P2P propagation for posts and replies.
 type Forum struct {
 	mu      sync.Mutex
 	posts   []*Post
 	byID    map[string]*Post
-	replies map[string][]*Reply // post ID → replies in order received
-	deleted map[string]struct{} // tombstones: post ID'ler buraya girince bir daha eklenmez
+	replies map[string][]*Reply
+	deleted map[string]struct{}
 
 	identity  *stdcrypto.Identity
 	topic     *network.Topic
 	db        *storage.DB
 	rl        *rateLimiter
-	checker   TrustedChecker // may be nil
+	checker   TrustedChecker
 
 	newPosts   chan *Post
 	newReplies chan *Reply
 }
 
-// New creates a Forum backed by a SQLite database at dbPath.
-// checker is optional (may be nil); when set, posts by trusted authors are
-// auto-approved so they are never subject to the 5-day TTL.
 func New(id *stdcrypto.Identity, topic *network.Topic, dbPath string, checker TrustedChecker) (*Forum, error) {
 	db, err := storage.Open(dbPath)
 	if err != nil {
@@ -129,8 +116,8 @@ func New(id *stdcrypto.Identity, topic *network.Topic, dbPath string, checker Tr
 		db:         db,
 		rl:         newRateLimiter(filepath.Dir(dbPath)),
 		checker:    checker,
-		newPosts:   make(chan *Post, 64),
-		newReplies: make(chan *Reply, 64),
+		newPosts:   make(chan *Post, 512),
+		newReplies: make(chan *Reply, 512),
 	}
 
 	if err := f.load(); err != nil {
@@ -138,7 +125,6 @@ func New(id *stdcrypto.Identity, topic *network.Topic, dbPath string, checker Tr
 		return nil, fmt.Errorf("forum: load: %w", err)
 	}
 
-	// Eski forum.json varsa SQLite'a taşı.
 	jsonPath := filepath.Join(filepath.Dir(dbPath), "forum.json")
 	if err := f.migrateFromJSON(jsonPath); err != nil {
 		fmt.Fprintf(os.Stderr, "forum: json migration: %v\n", err)
@@ -147,8 +133,6 @@ func New(id *stdcrypto.Identity, topic *network.Topic, dbPath string, checker Tr
 	return f, nil
 }
 
-// Run listens for incoming forum messages until ctx is cancelled.
-// Call it in a goroutine after New.
 func (f *Forum) Run(ctx context.Context) {
 	go f.runCleanup(ctx)
 	go f.rl.saveLoop(ctx)
@@ -166,7 +150,6 @@ func (f *Forum) Run(ctx context.Context) {
 	}
 }
 
-// runCleanup periodically removes expired unapproved posts from DB and memory.
 func (f *Forum) runCleanup(ctx context.Context) {
 	ticker := time.NewTicker(6 * time.Hour)
 	defer ticker.Stop()
@@ -185,7 +168,6 @@ func (f *Forum) cleanup() {
 	if n == 0 {
 		return
 	}
-	// Bellekteki listeden de kaldır
 	now := time.Now()
 	f.mu.Lock()
 	kept := f.posts[:0]
@@ -201,6 +183,19 @@ func (f *Forum) cleanup() {
 	f.mu.Unlock()
 }
 
+var categorySet = func() map[string]struct{} {
+	m := make(map[string]struct{}, len(Categories))
+	for _, c := range Categories {
+		m[c] = struct{}{}
+	}
+	return m
+}()
+
+func validCategory(cat string) bool {
+	_, ok := categorySet[cat]
+	return ok
+}
+
 func (f *Forum) handleMessage(data []byte) {
 	var env envelope
 	if err := json.Unmarshal(data, &env); err != nil {
@@ -209,7 +204,7 @@ func (f *Forum) handleMessage(data []byte) {
 	switch env.Type {
 	case "post":
 		p := env.Post
-		if p == nil || len(p.Body) > rlMaxBodyBytes {
+		if p == nil || len(p.Body) > rlMaxBodyBytes || len(p.Title) > 512 || !validCategory(p.Category) {
 			return
 		}
 		if !verifyPost(p) {
@@ -244,8 +239,6 @@ func (f *Forum) handleMessage(data []byte) {
 	}
 }
 
-// CreatePost composes, signs, persists, and publishes a new post.
-// permanentReq=true signals admin/mod to review whether this post should be kept permanently.
 func (f *Forum) CreatePost(ctx context.Context, category, title, body string, permanentReq bool) (*Post, error) {
 	name := f.identity.Name()
 	if name == "" {
@@ -276,7 +269,6 @@ func (f *Forum) CreatePost(ctx context.Context, category, title, body string, pe
 	return p, nil
 }
 
-// CreateReply composes, signs, persists, and publishes a reply to postID.
 func (f *Forum) CreateReply(ctx context.Context, postID, body string) (*Reply, error) {
 	name := f.identity.Name()
 	if name == "" {
@@ -305,7 +297,6 @@ func (f *Forum) CreateReply(ctx context.Context, postID, body string) (*Reply, e
 	return r, nil
 }
 
-// PostsByCategory returns all posts in category, newest first.
 func (f *Forum) PostsByCategory(category string) []*Post {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -318,7 +309,6 @@ func (f *Forum) PostsByCategory(category string) []*Post {
 	return out
 }
 
-// PostCount returns the number of posts in category.
 func (f *Forum) PostCount(category string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -331,35 +321,29 @@ func (f *Forum) PostCount(category string) int {
 	return n
 }
 
-// Replies returns all replies to postID, oldest first.
 func (f *Forum) Replies(postID string) []*Reply {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]*Reply(nil), f.replies[postID]...)
 }
 
-// ReplyCount returns the number of replies to postID.
 func (f *Forum) ReplyCount(postID string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return len(f.replies[postID])
 }
 
-// PostByID returns the post with the given ID, or nil if not found.
 func (f *Forum) PostByID(id string) *Post {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.byID[id]
 }
 
-// NewPosts returns a channel that receives posts arriving from other peers.
 func (f *Forum) NewPosts() <-chan *Post { return f.newPosts }
 
-// NewReplies returns a channel that receives replies arriving from other peers.
 func (f *Forum) NewReplies() <-chan *Reply { return f.newReplies }
 
 func (f *Forum) storePost(p *Post) {
-	// TTL / onay durumu: güvenilir yazar → kalıcı, değilse 5 günlük TTL
 	if f.checker != nil && f.checker.IsTrustedAuthor(p.AuthorKey) {
 		p.Approved = true
 	} else if p.ExpiresAt.IsZero() {
@@ -372,7 +356,7 @@ func (f *Forum) storePost(p *Post) {
 		return
 	}
 	if _, deleted := f.deleted[p.ID]; deleted {
-		return // tombstoned — silinmiş post tekrar eklenmez
+		return
 	}
 	f.posts = append(f.posts, p)
 	f.byID[p.ID] = p
@@ -391,7 +375,6 @@ func (f *Forum) storePost(p *Post) {
 	}
 }
 
-// ApprovePost marks a post as permanently approved in DB and memory.
 func (f *Forum) ApprovePost(postID string) {
 	_ = f.db.ApprovePost(postID)
 	f.mu.Lock()
@@ -402,7 +385,6 @@ func (f *Forum) ApprovePost(postID string) {
 	f.mu.Unlock()
 }
 
-// ApprovePostsByAuthor marks all posts by authorKey as approved.
 func (f *Forum) ApprovePostsByAuthor(authorKey string) {
 	_ = f.db.ApprovePostsByAuthor(authorKey)
 	f.mu.Lock()
@@ -415,14 +397,34 @@ func (f *Forum) ApprovePostsByAuthor(authorKey string) {
 	f.mu.Unlock()
 }
 
-// PendingPosts returns unapproved posts with an active TTL, soonest-expiring first.
 func (f *Forum) PendingPosts() ([]storage.PendingPost, error) {
 	return f.db.PendingPosts()
+}
+
+func (f *Forum) RejectPost(postID string) error {
+	if err := f.db.DeletePost(postID); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	kept := f.posts[:0]
+	for _, p := range f.posts {
+		if p.ID != postID {
+			kept = append(kept, p)
+		}
+	}
+	f.posts = kept
+	delete(f.byID, postID)
+	delete(f.replies, postID)
+	f.mu.Unlock()
+	return nil
 }
 
 func (f *Forum) storeReply(r *Reply) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if _, ok := f.byID[r.PostID]; !ok {
+		return
+	}
 	for _, ex := range f.replies[r.PostID] {
 		if ex.ID == r.ID {
 			return
@@ -440,9 +442,7 @@ func (f *Forum) storeReply(r *Reply) {
 	}
 }
 
-// load reads all posts, replies, and tombstones from SQLite into the in-memory cache.
 func (f *Forum) load() error {
-	// Tombstone'ları önce yükle; böylece silinmiş postlar memory'e alınmaz.
 	tombJSONs, err := f.db.AllTombstoneJSON()
 	if err != nil {
 		return fmt.Errorf("forum: load tombstones: %w", err)
@@ -460,7 +460,6 @@ func (f *Forum) load() error {
 	}
 	now := time.Now()
 	for _, rp := range rawPosts {
-		// Süresi geçmiş ve onaysız postları belleğe yükleme
 		if !rp.Approved && !rp.ExpiresAt.IsZero() && rp.ExpiresAt.Before(now) {
 			continue
 		}
@@ -492,9 +491,6 @@ func (f *Forum) load() error {
 	return nil
 }
 
-// migrateFromJSON imports posts and replies from a legacy forum.json file.
-// Called once after the SQLite DB is loaded; no-op if the file doesn't exist
-// or if it has already been migrated (data already in DB).
 func (f *Forum) migrateFromJSON(jsonPath string) error {
 	data, err := os.ReadFile(jsonPath)
 	if os.IsNotExist(err) {
@@ -505,8 +501,8 @@ func (f *Forum) migrateFromJSON(jsonPath string) error {
 	}
 
 	type legacyStore struct {
-		Posts   []*Post              `json:"posts"`
-		Replies map[string][]*Reply  `json:"replies"`
+		Posts   []*Post             `json:"posts"`
+		Replies map[string][]*Reply `json:"replies"`
 	}
 	var legacy legacyStore
 	if err := json.Unmarshal(data, &legacy); err != nil {
@@ -554,16 +550,12 @@ func (f *Forum) migrateFromJSON(jsonPath string) error {
 	}
 
 	if imported > 0 {
-		// Eski dosyayı yedekle — bir daha okunmasın.
 		_ = os.Rename(jsonPath, jsonPath+".migrated")
 	}
 	return nil
 }
 
 func postPayload(p *Post) []byte {
-	// permanent_requested yalnızca true olduğunda payload'a eklenir.
-	// Böylece önceki sürümle imzalanan (false) postlar doğrulamaya devam eder.
-	// Relay false→true değişikliği yapamaz çünkü imza eşleşmez.
 	s := p.ID + "|" + p.Category + "|" + p.AuthorKey + "|" + p.Title + "|" + p.Body + "|" + p.CreatedAt.String()
 	if p.PermanentRequested {
 		s += "|perm"
@@ -577,12 +569,12 @@ func replyPayload(r *Reply) []byte {
 
 func derivePostID(p *Post) string {
 	h := sha256.Sum256([]byte(p.Category + "|" + p.AuthorKey + "|" + p.Title + "|" + p.Body + "|" + p.CreatedAt.String()))
-	return hex.EncodeToString(h[:8])
+	return hex.EncodeToString(h[:16])
 }
 
 func deriveReplyID(r *Reply) string {
 	h := sha256.Sum256([]byte(r.PostID + "|" + r.AuthorKey + "|" + r.Body + "|" + r.CreatedAt.String()))
-	return hex.EncodeToString(h[:8])
+	return hex.EncodeToString(h[:16])
 }
 
 func verifyPost(p *Post) bool {
@@ -625,9 +617,6 @@ func verifyDeleteMsg(d *DeleteMsg) bool {
 	return ed25519.Verify(ed25519.PublicKey(pub), deleteMsgPayload(d), sig)
 }
 
-// applyDelete removes a post from memory and DB if the authorKey matches,
-// then records a tombstone so the post cannot be re-added via future syncs.
-// msgJSON is the JSON-encoded DeleteMsg; it is stored as the tombstone payload.
 func (f *Forum) applyDelete(postID, authorKey string, msgJSON []byte) {
 	f.mu.Lock()
 	p, ok := f.byID[postID]
@@ -653,17 +642,14 @@ func (f *Forum) applyDelete(postID, authorKey string, msgJSON []byte) {
 	}
 	f.mu.Unlock()
 
-	// DB işlemleri mutex dışında: tek unlock path sayesinde net.
 	if ok {
-		_ = f.db.DeletePost(postID) // post memory'deyse DB'den de sil
+		_ = f.db.DeletePost(postID)
 	}
 	if newTombstone {
 		_ = f.db.InsertTombstone(postID, string(msgJSON))
 	}
 }
 
-// DeleteOwnPost signs and broadcasts a delete message, then removes the post locally.
-// Returns an error if the post doesn't exist or doesn't belong to this user.
 func (f *Forum) DeleteOwnPost(ctx context.Context, postID string) error {
 	myKey := hex.EncodeToString(f.identity.PublicKey())
 	f.mu.Lock()
@@ -691,7 +677,7 @@ func (f *Forum) DeleteOwnPost(ctx context.Context, postID string) error {
 	if err != nil {
 		return err
 	}
-	_ = f.topic.Publish(ctx, data) // hata olsa da yerel silme yapılır
+	_ = f.topic.Publish(ctx, data)
 	f.applyDelete(postID, myKey, dJSON)
 	return nil
 }

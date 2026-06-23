@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Binary derle (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            suffix: .exe
+          - goos: linux
+            goarch: amd64
+            suffix: ""
+          - goos: linux
+            goarch: arm64
+            suffix: ""
+          - goos: darwin
+            goarch: amd64
+            suffix: ""
+          - goos: darwin
+            goarch: arm64
+            suffix: ""
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Go kur
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Binary derle
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          VERSION="${{ github.ref_name }}"
+          REPO="lucian95511/and"
+          LDFLAGS="-s -w \
+            -X github.com/lucian95511/and/internal/updater.Version=${VERSION} \
+            -X github.com/lucian95511/and/internal/updater.GitHubRepo=${REPO}"
+
+          SUFFIX="${{ matrix.suffix }}"
+          OS="${{ matrix.goos }}"
+          ARCH="${{ matrix.goarch }}"
+
+          # Ana uygulama
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "and_${OS}_${ARCH}${SUFFIX}" \
+            ./cmd/and
+
+          # Moderasyon CLI
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "andmod_${OS}_${ARCH}${SUFFIX}" \
+            ./cmd/andmod
+
+          # Eklenti binary'leri
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "and-plugin-admin_${OS}_${ARCH}${SUFFIX}" \
+            ./Eklentiler/admin
+
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "and-plugin-moderator_${OS}_${ARCH}${SUFFIX}" \
+            ./Eklentiler/moderator
+
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "and-plugin-konu-ac_${OS}_${ARCH}${SUFFIX}" \
+            ./Eklentiler/konu_ac
+
+          go build -trimpath -ldflags "${LDFLAGS}" \
+            -o "and-plugin-ozel-chat_${OS}_${ARCH}${SUFFIX}" \
+            ./Eklentiler/ozel_chat
+
+          # Sidecar manifest JSON dosyaları — AND bu dosyaları okuyarak
+          # binary'i çalıştırmadan eklenti bilgisini alır (XenForo addon.json gibi).
+          cp Eklentiler/admin/plugin.json     and-plugin-admin.json
+          cp Eklentiler/moderator/plugin.json and-plugin-moderator.json
+          cp Eklentiler/konu_ac/plugin.json   and-plugin-konu-ac.json
+          cp Eklentiler/ozel_chat/plugin.json and-plugin-ozel-chat.json
+
+      - name: Artifact yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            and_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            andmod_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            and-plugin-admin_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            and-plugin-moderator_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            and-plugin-konu-ac_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            and-plugin-ozel-chat_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+            and-plugin-admin.json
+            and-plugin-moderator.json
+            and-plugin-konu-ac.json
+            and-plugin-ozel-chat.json
+          if-no-files-found: ignore
+
+  release:
+    name: GitHub Release oluştur
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Artifact'leri indir
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist/
+
+      - name: SHA256 özet dosyası oluştur
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: GitHub Release yayınla
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "AND ${{ github.ref_name }}"
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/and_*
+            dist/andmod_*
+            dist/and-plugin-*
+            dist/*.json
+            dist/SHA256SUMS.txt

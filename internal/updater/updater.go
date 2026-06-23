@@ -1,5 +1,3 @@
-// Package updater GitHub Releases üzerinden otomatik güncelleme sağlar.
-// GitHubRepo build flag ile ayarlanmadıkça güncelleme devre dışıdır.
 package updater
 
 import (
@@ -9,33 +7,27 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
 
-// Version ve GitHubRepo; derleme sırasında ldflags ile ezilir:
-//
-//	go build -ldflags "-X and/internal/updater.Version=v0.2.0 -X and/internal/updater.GitHubRepo=myorg/and"
 var (
 	Version    = "v0.1.0"
-	GitHubRepo = "" // boşsa güncelleme kontrolü yapılmaz
+	GitHubRepo = ""
 )
 
-// ReleaseInfo GitHub Releases API'sinden gelen release verisi.
 type ReleaseInfo struct {
 	TagName string  `json:"tag_name"`
 	Name    string  `json:"name"`
 	Assets  []Asset `json:"assets"`
 }
 
-// Asset tek bir release dosyası.
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// Check GitHub'daki en son release'i kontrol eder.
-// Yeni sürüm varsa ReleaseInfo döner, güncel veya hata durumunda nil döner.
 func Check(ctx context.Context) (*ReleaseInfo, error) {
 	if GitHubRepo == "" {
 		return nil, nil
@@ -62,7 +54,7 @@ func Check(ctx context.Context) (*ReleaseInfo, error) {
 	}
 
 	var info ReleaseInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&info); err != nil {
 		return nil, err
 	}
 	if info.TagName == "" || !isNewer(info.TagName, Version) {
@@ -71,12 +63,6 @@ func Check(ctx context.Context) (*ReleaseInfo, error) {
 	return &info, nil
 }
 
-// AssetName bu platformun beklenen GitHub release asset adını döner.
-// Releases'teki dosyaların bu formatta adlandırılması gerekir:
-//
-//	and_windows_amd64.exe
-//	and_linux_amd64
-//	and_darwin_arm64
 func AssetName() string {
 	ext := ""
 	if runtime.GOOS == "windows" {
@@ -85,8 +71,6 @@ func AssetName() string {
 	return fmt.Sprintf("and_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-// Apply yeni binary'i indirir ve mevcut çalıştırılabiliri değiştirir.
-// Başarı durumunda uygulama yeniden başlatılmalıdır.
 func Apply(ctx context.Context, info *ReleaseInfo) error {
 	name := AssetName()
 	var dlURL string
@@ -115,9 +99,6 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 		return err
 	}
 
-	// Atomik yer değiştirme:
-	//   1. Mevcut exe → exe.old  (çalışan exe rename edilebilir)
-	//   2. exe.new   → exe
 	oldPath := exe + ".old"
 	os.Remove(oldPath)
 	if err := os.Rename(exe, oldPath); err != nil {
@@ -125,11 +106,27 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 		return fmt.Errorf("mevcut exe taşınamadı: %w", err)
 	}
 	if err := os.Rename(tmpPath, exe); err != nil {
-		_ = os.Rename(oldPath, exe) // geri al
+		_ = os.Rename(oldPath, exe)
 		os.Remove(tmpPath)
 		return fmt.Errorf("yeni exe yerleştirilemedi: %w", err)
 	}
 	go os.Remove(oldPath)
+	return nil
+}
+
+func SelfRestart() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("updater: exe path: %w", err)
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("updater: restart: %w", err)
+	}
 	return nil
 }
 
@@ -149,11 +146,11 @@ func downloadFile(ctx context.Context, url, dest string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
+	const maxBinaryBytes = 128 << 20
+	_, err = io.Copy(f, io.LimitReader(resp.Body, maxBinaryBytes))
 	return err
 }
 
-// isNewer "v1.2.3" formatında a'nın b'den yeni olup olmadığını kontrol eder.
 func isNewer(a, b string) bool {
 	return semverKey(a) > semverKey(b)
 }

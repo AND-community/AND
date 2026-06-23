@@ -13,12 +13,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	stdcrypto "and/internal/crypto"
-	"and/internal/forum"
-	"and/internal/plugin"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/forum"
 )
-
-// ─── Ekran sabitleri ─────────────────────────────────────────────────────────
 
 type forumEkran int
 
@@ -29,8 +26,6 @@ const (
 	fEkYanit
 )
 
-// ─── Mesaj tipleri ───────────────────────────────────────────────────────────
-
 type forumKonuGeldiMsg struct{ konu *forum.Post }
 type forumYanitGeldiMsg struct{ yanit *forum.Reply }
 type forumYanitGonderildiMsg struct{}
@@ -39,30 +34,31 @@ type forumBildirimTemizleMsg struct{}
 type forumOnayMsg struct{ err error }
 type forumSilMsg struct{ err error }
 
-// ─── Model ───────────────────────────────────────────────────────────────────
-
 type forumModel struct {
-	ctx       context.Context
-	identity  *stdcrypto.Identity
-	dataDir   string
-	forum     *forum.Forum
-	env       plugin.Env
+	ctx           context.Context
+	identity      *stdcrypto.Identity
+	dataDir       string
+	forum         *forum.Forum
+	approvalFn    func(string) error
+	canCreatePost bool
 
 	ekran     forumEkran
 	genislik  int
 	yukseklik int
 
-	katIdx   int
+	katIdx      int
+	katScrollOff int
 
-	kategori string
-	konular  []*forum.Post
-	konuIdx  int
+	kategori     string
+	konular      []*forum.Post
+	konuIdx      int
+	konuScrollOff int
 
 	aktifKonu *forum.Post
 	yanitlar  []*forum.Reply
 	konuVP    viewport.Model
 
-	silOnay bool // kullanıcı silme onayı bekleniyor mu
+	silOnay bool
 
 	yanitAlan textarea.Model
 
@@ -73,7 +69,7 @@ type forumModel struct {
 
 const fMaxYanit = 1000
 
-func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, env plugin.Env) forumModel {
+func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, approvalFn func(string) error, canCreatePost bool) forumModel {
 	ya := textarea.New()
 	ya.Placeholder = "yanıtını buraya yaz…"
 	ya.SetHeight(6)
@@ -81,18 +77,18 @@ func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Iden
 	ya.ShowLineNumbers = false
 
 	return forumModel{
-		ctx:       ctx,
-		identity:  identity,
-		dataDir:   dataDir,
-		forum:     f,
-		env:       env,
-		ekran:     fEkKategoriler,
-		yanitAlan: ya,
-		konuVP:    viewport.New(0, 0),
+		ctx:           ctx,
+		identity:      identity,
+		dataDir:       dataDir,
+		forum:         f,
+		approvalFn:    approvalFn,
+		canCreatePost: canCreatePost,
+		ekran:         fEkKategoriler,
+		yanitAlan:     ya,
+		konuVP:        viewport.New(0, 0),
 	}
 }
 
-// openAtPost navigates the model directly to the given post's topic view.
 func (m forumModel) openAtPost(postID string) forumModel {
 	if m.forum == nil {
 		return m
@@ -109,9 +105,14 @@ func (m forumModel) openAtPost(postID string) forumModel {
 	}
 	m.kategori = p.Category
 	m.konular = m.forum.PostsByCategory(p.Category)
+	m.konuScrollOff = 0
 	for i, k := range m.konular {
 		if k.ID == postID {
 			m.konuIdx = i
+			gorubilir := m.gorubilirKonuSayisi()
+			if m.konuIdx >= gorubilir {
+				m.konuScrollOff = m.konuIdx - gorubilir/2
+			}
 			break
 		}
 	}
@@ -158,8 +159,6 @@ func forumBildirimTemizle() tea.Cmd {
 		return forumBildirimTemizleMsg{}
 	})
 }
-
-// ─── Update ──────────────────────────────────────────────────────────────────
 
 func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -233,7 +232,6 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errMsg = "Silme hatası: " + msg.err.Error()
 			return m, forumBildirimTemizle()
 		}
-		// Silme başarılı: liste ekranına dön, listeyi yenile
 		m.aktifKonu = nil
 		m.konular = m.forum.PostsByCategory(m.kategori)
 		m.ekran = fEkKonular
@@ -263,27 +261,33 @@ func (m forumModel) forumTusIsle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ── Kategori listesi ──────────────────────────────────────────────────────────
-
 func (m forumModel) forumTusKategoriler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "esc":
-		return m, func() tea.Msg { return plugin.BackMsg{} }
+		return m, func() tea.Msg { return backMsg{} }
 	case "up", "k":
 		if m.katIdx > 0 {
 			m.katIdx--
+			if m.katIdx < m.katScrollOff {
+				m.katScrollOff = m.katIdx
+			}
 		}
 	case "down", "j":
 		if m.katIdx < len(forum.Categories)-1 {
 			m.katIdx++
+			gorubilir := m.gorubilirKatSayisi()
+			if m.katIdx >= m.katScrollOff+gorubilir {
+				m.katScrollOff = m.katIdx - gorubilir + 1
+			}
 		}
 	case "enter":
 		if m.forum != nil {
 			m.kategori = forum.Categories[m.katIdx]
 			m.konular = m.forum.PostsByCategory(m.kategori)
 			m.konuIdx = 0
+			m.konuScrollOff = 0
 			m.okMsg = ""
 			m.ekran = fEkKonular
 		}
@@ -291,7 +295,31 @@ func (m forumModel) forumTusKategoriler(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ── Konu listesi ──────────────────────────────────────────────────────────────
+func (m forumModel) gorubilirKonuSayisi() int {
+	if m.yukseklik < 14 {
+		return 3
+	}
+	n := (m.yukseklik - 10) / 3
+	if n < 2 {
+		return 2
+	}
+	return n
+}
+
+func (m forumModel) gorubilirKatSayisi() int {
+	if m.yukseklik < 14 {
+		return 8
+	}
+	n := m.yukseklik - 11
+	if n < 4 {
+		return 4
+	}
+	return n
+}
+
+func (m forumModel) konuAcEtkin() bool {
+	return m.canCreatePost
+}
 
 func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -302,10 +330,17 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.konuIdx > 0 {
 			m.konuIdx--
+			if m.konuIdx < m.konuScrollOff {
+				m.konuScrollOff = m.konuIdx
+			}
 		}
 	case "down", "j":
 		if len(m.konular) > 0 && m.konuIdx < len(m.konular)-1 {
 			m.konuIdx++
+			gorubilir := m.gorubilirKonuSayisi()
+			if m.konuIdx >= m.konuScrollOff+gorubilir {
+				m.konuScrollOff = m.konuIdx - gorubilir + 1
+			}
 		}
 	case "enter":
 		if len(m.konular) > 0 {
@@ -315,14 +350,25 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.okMsg = ""
 			m.ekran = fEkKonu
 		}
+	case "r":
+		if m.forum != nil {
+			m.konular = m.forum.PostsByCategory(m.kategori)
+			if m.konuIdx >= len(m.konular) && m.konuIdx > 0 {
+				m.konuIdx = len(m.konular) - 1
+			}
+		}
+	case "n":
+		if m.konuAcEtkin() {
+			kat := m.kategori
+			return m, func() tea.Msg {
+				return openExternalPluginMsg{name: "konu_ac", env: []string{"AND_CATEGORY=" + kat}}
+			}
+		}
 	}
 	return m, nil
 }
 
-// ── Konu görünümü ─────────────────────────────────────────────────────────────
-
 func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// Silme onayı bekliyorsa sadece y/esc dinle
 	if m.silOnay {
 		switch msg.String() {
 		case "y", "Y":
@@ -363,9 +409,9 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G":
 		m.konuVP.GotoBottom()
 	case "a":
-		if m.env.PublishApproval != nil && m.aktifKonu != nil && !m.aktifKonu.Approved {
+		if m.approvalFn != nil && m.aktifKonu != nil && !m.aktifKonu.Approved {
 			postID := m.aktifKonu.ID
-			fn := m.env.PublishApproval
+			fn := m.approvalFn
 			return m, func() tea.Msg {
 				return forumOnayMsg{err: fn(postID)}
 			}
@@ -373,8 +419,6 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
-// ── Yanıt ─────────────────────────────────────────────────────────────────────
 
 func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -404,8 +448,6 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.yanitAlan, cmd = m.yanitAlan.Update(msg)
 	return m, cmd
 }
-
-// ─── Viewport güncelle ───────────────────────────────────────────────────────
 
 func (m *forumModel) forumKonuVPGuncelle() {
 	if m.aktifKonu == nil {
@@ -440,8 +482,6 @@ func (m *forumModel) forumKonuVPGuncelle() {
 	}
 	m.konuVP.SetContent(b.String())
 }
-
-// ─── View ─────────────────────────────────────────────────────────────────────
 
 func (m forumModel) View() string {
 	switch m.ekran {
@@ -488,7 +528,6 @@ func (m forumModel) forumBildirimSatiri() string {
 	return ""
 }
 
-// katAciklama her kategorinin kısa açıklamasını tutar.
 var katAciklama = map[string]string{
 	"Python":          "dil, kütüphane ve proje paylaşımı",
 	"C / C++":         "sistem programlama, bellek yönetimi",
@@ -512,7 +551,6 @@ var katAciklama = map[string]string{
 	"Genel":           "serbest konu ve duyurular",
 }
 
-// katPad: Turkish Unicode'a duyarlı sütun hizalaması.
 func katPad(s string, w int) string {
 	vis := len([]rune(s))
 	pad := w - vis
@@ -537,8 +575,30 @@ func (m forumModel) forumGorunumKategoriler() string {
 		}
 	}
 
-	const nameW = 17 // en uzun kategori adı: "Oyun Geliştirme" = 15 rune
-	for i, kat := range forum.Categories {
+	const nameW = 17
+
+	gorubilirKat := m.gorubilirKatSayisi()
+	katBaslangic := m.katScrollOff
+	if m.katIdx < katBaslangic {
+		katBaslangic = m.katIdx
+	}
+	if m.katIdx >= katBaslangic+gorubilirKat {
+		katBaslangic = m.katIdx - gorubilirKat + 1
+	}
+	if katBaslangic < 0 {
+		katBaslangic = 0
+	}
+	katBitis := katBaslangic + gorubilirKat
+	if katBitis > len(forum.Categories) {
+		katBitis = len(forum.Categories)
+	}
+
+	if katBaslangic > 0 {
+		b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↑ %d kategori daha…", katBaslangic)) + "\n")
+	}
+
+	for i := katBaslangic; i < katBitis; i++ {
+		kat := forum.Categories[i]
 		sayi := 0
 		if m.forum != nil {
 			sayi = m.forum.PostCount(kat)
@@ -552,7 +612,6 @@ func (m forumModel) forumGorunumKategoriler() string {
 				sayi,
 			))
 			b.WriteString(satir + "\n")
-			// Seçili kategori altında açıklama
 			if acik, ok := katAciklama[kat]; ok {
 				b.WriteString(fStSoluk.Render("       "+acik) + "\n")
 			}
@@ -566,6 +625,10 @@ func (m forumModel) forumGorunumKategoriler() string {
 		}
 	}
 
+	if katBitis < len(forum.Categories) {
+		b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↓ %d kategori daha…", len(forum.Categories)-katBitis)) + "\n")
+	}
+
 	b.WriteString("\n")
 	if bd := m.forumBildirimSatiri(); bd != "" {
 		b.WriteString(bd + "\n")
@@ -576,31 +639,63 @@ func (m forumModel) forumGorunumKategoriler() string {
 
 func (m forumModel) forumGorunumKonular() string {
 	var b strings.Builder
-	sagBilgi := forumKullaniciAdi(m.identity)
 
-	b.WriteString(m.forumHeader(m.kategori, sagBilgi))
+	baslikSol := m.kategori
+	baslikSag := forumKullaniciAdi(m.identity)
+	if len(m.konular) > 0 {
+		baslikSag = fmt.Sprintf("%d konu  ·  %s", len(m.konular), forumKullaniciAdi(m.identity))
+	}
+	b.WriteString(m.forumHeader(baslikSol, baslikSag))
 	b.WriteString("\n\n")
 
 	if len(m.konular) == 0 {
-		b.WriteString(fStSoluk.Render("  Henüz konu yok."))
+		b.WriteString(fStSoluk.Render("  Bu kategoride henüz konu yok."))
+		if m.konuAcEtkin() {
+			b.WriteString("  " + fStSoluk.Render("[n  ile yeni konu aç]"))
+		}
 		b.WriteString("\n\n")
 	} else {
-		for i, k := range m.konular {
+		gorubilirKonu := m.gorubilirKonuSayisi()
+		konuBaslangic := m.konuScrollOff
+		if m.konuIdx < konuBaslangic {
+			konuBaslangic = m.konuIdx
+		}
+		if m.konuIdx >= konuBaslangic+gorubilirKonu {
+			konuBaslangic = m.konuIdx - gorubilirKonu + 1
+		}
+		if konuBaslangic < 0 {
+			konuBaslangic = 0
+		}
+		konuBitis := konuBaslangic + gorubilirKonu
+		if konuBitis > len(m.konular) {
+			konuBitis = len(m.konular)
+		}
+
+		if konuBaslangic > 0 {
+			b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↑ %d konu daha…", konuBaslangic)) + "\n\n")
+		}
+
+		for i := konuBaslangic; i < konuBitis; i++ {
+			k := m.konular[i]
 			secili := i == m.konuIdx
 			yanit := 0
 			if m.forum != nil {
 				yanit = m.forum.ReplyCount(k.ID)
 			}
-			yanitStr := fmt.Sprintf("%d yanıt", yanit)
-			if yanit == 0 {
-				yanitStr = "yanıt yok"
+			var yanitStr string
+			switch yanit {
+			case 0:
+				yanitStr = "—"
+			case 1:
+				yanitStr = "1 yanıt"
+			default:
+				yanitStr = fmt.Sprintf("%d yanıt", yanit)
 			}
 			baslik := forumKisalt(k.Title, 46)
-			// Kalıcılık durumu: ✔ herkese, ★ sadece admin/mod
 			var durum string
 			if k.Approved {
 				durum = " ✔"
-			} else if k.PermanentRequested && m.env.PublishApproval != nil {
+			} else if k.PermanentRequested && m.approvalFn != nil {
 				durum = " ★"
 			}
 			meta := fmt.Sprintf("  %s · %s · %s", k.AuthorName, forumNeZaman(k.CreatedAt), yanitStr)
@@ -614,13 +709,21 @@ func (m forumModel) forumGorunumKonular() string {
 			}
 			b.WriteString("\n")
 		}
+
+		if konuBitis < len(m.konular) {
+			b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↓ %d konu daha…", len(m.konular)-konuBitis)) + "\n")
+		}
 	}
 
 	if bd := m.forumBildirimSatiri(); bd != "" {
 		b.WriteString(bd + "\n")
 	}
 
-	b.WriteString(fStYardim.Render("↑/↓  hareket    enter  aç    esc  geri"))
+	helpText := "↑/↓  hareket    enter  aç    r  yenile    esc  geri"
+	if m.konuAcEtkin() {
+		helpText += "    n  yeni konu"
+	}
+	b.WriteString(fStYardim.Render(helpText))
 	return fStKutu.Render(b.String())
 }
 
@@ -636,7 +739,6 @@ func (m forumModel) forumGorunumKonu() string {
 	b.WriteString(fStYanitBaslik.Render(k.AuthorName) +
 		"  " + fStSoluk.Render(k.Category+" · "+forumNeZaman(k.CreatedAt)))
 
-	// TTL / onay durumu rozeti — herkese gösterilir
 	if k.Approved {
 		b.WriteString("  " + lipgloss.NewStyle().Background(colorOK).Foreground(lipgloss.Color("0")).Bold(true).Render(" ✔ Kalıcı "))
 	} else if !k.ExpiresAt.IsZero() {
@@ -654,8 +756,7 @@ func (m forumModel) forumGorunumKonu() string {
 			}
 			b.WriteString("  " + lipgloss.NewStyle().Background(colorWarning).Foreground(lipgloss.Color("0")).Bold(true).Render(kalanStr))
 		}
-		// "Kalıcılık talebi var" sadece admin/mod görür
-		if k.PermanentRequested && m.env.PublishApproval != nil {
+		if k.PermanentRequested && m.approvalFn != nil {
 			b.WriteString("  " + fStRozet.Render(" Kalıcılık talebi var "))
 		}
 	}
@@ -669,7 +770,6 @@ func (m forumModel) forumGorunumKonu() string {
 		b.WriteString("\n")
 	}
 
-	// Silme onayı mesajı
 	if m.silOnay {
 		b.WriteString(fStBildirimHata.Render(" Konuyu silmek istediğinizden emin misiniz? [y] Evet  [esc] İptal "))
 		b.WriteString("\n")
@@ -677,9 +777,8 @@ func (m forumModel) forumGorunumKonu() string {
 		b.WriteString(bd + "\n")
 	}
 
-	// Yardım satırı
 	helpText := "↑/↓  kaydır    g/G  başa/sona    r  yanıtla    esc  geri"
-	if m.env.PublishApproval != nil && !k.Approved {
+	if m.approvalFn != nil && !k.Approved {
 		helpText += "    a  onayla"
 	}
 	if m.identity != nil && k.AuthorKey == hex.EncodeToString(m.identity.PublicKey()) {
@@ -712,10 +811,6 @@ func (m forumModel) forumGorunumYanit() string {
 	b.WriteString(fStYardim.Render("ctrl+s  gönder    esc  iptal"))
 	return fStKutu.Render(b.String())
 }
-
-// Stiller styles.go dosyasında tanımlanmıştır.
-
-// ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
 
 func forumKullaniciAdi(id *stdcrypto.Identity) string {
 	if id == nil {

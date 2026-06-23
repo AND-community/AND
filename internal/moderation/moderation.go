@@ -1,19 +1,3 @@
-// Package moderation implements AND's serverless moderation model.
-//
-// Trust chain (short → long lived):
-//
-//	Founder key (founder.key dosyası)
-//	  └─ signs ModeratorCert  (≤7 gün)
-//	        └─ moderator signs BanMsg (≤30 gün)
-//
-// Güvenlik özellikleri:
-//   - Kurucu key sıfırsa moderasyon tamamen devre dışı (dev bypass yok)
-//   - Ban listesi diske yazılır, restart'ta yüklenir
-//   - Replay koruması: aynı ban imzası bir kez işlenir
-//   - Moderatör rate limit: saatte max 20 ban
-//   - Süre sınırları: cert ≤7 gün, ban ≤30 gün
-//   - Kurucu banlanamaz
-//   - Cert iptal: kurucu moderatör yetkisini geri alabilir (RevokeMsg)
 package moderation
 
 import (
@@ -29,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"and/internal/network"
+	"github.com/lucian95511/and/internal/network"
 
 	"github.com/libp2p/go-libp2p/core/control"
 	lp2pnet "github.com/libp2p/go-libp2p/core/network"
@@ -37,127 +21,129 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// ModerationTopic is the GossipSub topic used to propagate moderation messages.
-const ModerationTopic = "and/moderation/1.0.0"
+const ModerationTopic = "github.com/lucian95511/and/moderation/1.0.0"
 
-// FounderKeyFile is the file that holds the founder's public key hex.
 const FounderKeyFile = "founder.key"
 
 const (
-	maxCertDays    = 7  // moderatör sertifikası en fazla 7 gün
-	maxBanDays     = 30 // ban en fazla 30 gün
-	banRateWindow  = time.Hour
-	banRateLimit   = 20  // moderatör başına saatte max ban
-	seenCacheSize  = 512 // tekrar oynatmaya karşı son N imzayı hatırla
+	maxCertDays       = 7
+	maxBanDays        = 30
+	banRateWindow     = time.Hour
+	banRateLimit      = 20
+	seenCacheSize     = 512
+	ratesSaveInterval = 30 * time.Second
 )
 
-// FounderPubKeyHex is loaded at startup via LoadFounderKey.
-// All-zeros → moderation disabled (no bypass, no certs accepted).
 var FounderPubKeyHex = "0000000000000000000000000000000000000000000000000000000000000000"
 
-// ── Mesaj Tipleri ─────────────────────────────────────────────────────────────
-
-// ModeratorCert grants moderation rights.
-// Payload (non-permanent): "<moderator_key>|<expires_unix>"
-// Payload (permanent):     "<moderator_key>|permanent"
 type ModeratorCert struct {
-	ModeratorKey string    `json:"moderator_key"` // hex Ed25519 pubkey
+	ModeratorKey string    `json:"moderator_key"`
 	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	Permanent    bool      `json:"permanent,omitempty"` // true → süresiz
-	Sig          string    `json:"sig"`                 // founder signature (hex)
+	Permanent    bool      `json:"permanent,omitempty"`
+	Sig          string    `json:"sig"`
 }
 
-// BanMsg instructs every node to refuse connections from BannedPeer.
-// Moderator payload: "<banned_peer>|<reason>|<expires_unix>"
 type BanMsg struct {
 	BannedPeer string        `json:"banned_peer"`
 	Reason     string        `json:"reason"`
 	ExpiresAt  time.Time     `json:"expires_at"`
 	Cert       ModeratorCert `json:"cert"`
-	Sig        string        `json:"sig"` // moderator signature (hex)
+	Sig        string        `json:"sig"`
 }
 
-// RevokeMsg lets the founder immediately revoke a moderator certificate.
-// Founder payload: "revoke|<moderator_key>|<issued_at_unix>"
 type RevokeMsg struct {
 	ModeratorKey string    `json:"moderator_key"`
-	IssuedAt     time.Time `json:"issued_at"` // cert'in ExpiresAt'i — spesifik cert'i hedefler
-	Sig          string    `json:"sig"`       // founder signature (hex)
+	IssuedAt     time.Time `json:"issued_at"`
+	Sig          string    `json:"sig"`
 }
 
-// TrustedAuthorCert grants a user permanent forum post approval.
-// Only the founder can issue these.
-// Payload (permanent): "trusted|<author_key>|permanent"
-// Payload (timed):     "trusted|<author_key>|<expires_unix>"
 type TrustedAuthorCert struct {
 	AuthorKey string    `json:"author_key"`
 	IssuedAt  time.Time `json:"issued_at"`
 	Permanent bool      `json:"permanent,omitempty"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
-	Sig       string    `json:"sig"` // founder Ed25519 signature
+	Sig       string    `json:"sig"`
 }
 
-// ApprovalMsg marks a specific forum post as permanently approved.
-// Can be signed by the founder (Cert == nil) or a moderator (Cert != nil).
-// Payload: "approve|<post_id>|<issued_at_unix>"
 type ApprovalMsg struct {
 	PostID   string         `json:"post_id"`
 	IssuedAt time.Time      `json:"issued_at"`
-	Cert     *ModeratorCert `json:"cert,omitempty"` // nil → kurucu imzaladı
+	Cert     *ModeratorCert `json:"cert,omitempty"`
 	Sig      string         `json:"sig"`
 }
 
-// Envelope wraps all moderation message types on the topic.
 type Envelope struct {
-	Type    string             `json:"type"` // "ban" | "revoke" | "trusted" | "approve"
+	Type    string             `json:"type"`
 	Ban     *BanMsg            `json:"ban,omitempty"`
 	Revoke  *RevokeMsg         `json:"revoke,omitempty"`
 	Trusted *TrustedAuthorCert `json:"trusted,omitempty"`
 	Approve *ApprovalMsg       `json:"approve,omitempty"`
 }
 
-// PersistedBan is the on-disk format of an active ban (active_bans.json).
 type PersistedBan struct {
 	PeerID       string    `json:"peer_id"`
 	ExpiresAt    time.Time `json:"expires_at"`
-	ModeratorKey string    `json:"moderator_key,omitempty"` // iptal kontrolü için
+	ModeratorKey string    `json:"moderator_key,omitempty"`
 }
 
-// ── Moderator ─────────────────────────────────────────────────────────────────
+type seenSet struct {
+	mu   sync.Mutex
+	m    map[string]struct{}
+	ring []string
+	pos  int
+}
 
-// Moderator enforces bans and implements libp2p's ConnectionGater.
+func newSeenSet(size int) *seenSet {
+	return &seenSet{
+		m:    make(map[string]struct{}, size),
+		ring: make([]string, size),
+	}
+}
+
+func (s *seenSet) seen(sig string) bool {
+	h := sha256.Sum256([]byte(sig))
+	fp := hex.EncodeToString(h[:16])
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.m[fp]; ok {
+		return true
+	}
+	if old := s.ring[s.pos]; old != "" {
+		delete(s.m, old)
+	}
+	s.m[fp] = struct{}{}
+	s.ring[s.pos] = fp
+	s.pos = (s.pos + 1) % len(s.ring)
+	return false
+}
+
 type Moderator struct {
-	mu          sync.RWMutex
-	bans        map[peer.ID]time.Time  // peer → ban expiry
-	banMods     map[peer.ID]string     // peer → moderatör key (revoke filtresi)
-	revoked     map[string]time.Time   // moderator_key → revoke zamanı
-	trustedAuthors map[string]TrustedAuthorCert // author_key → cert
-	founder     ed25519.PublicKey
-	founderID   peer.ID // kurucu banlanamaz
-	dataDir     string
+	mu             sync.RWMutex
+	bans           map[peer.ID]time.Time
+	banMods        map[peer.ID]string
+	revoked        map[string]time.Time
+	trustedAuthors map[string]TrustedAuthorCert
+	founder        ed25519.PublicKey
+	founderID      peer.ID
+	dataDir        string
 
-	// Replay koruması: ban ve revoke için ayrı ring buffer.
-	seenMu     sync.Mutex
-	seen       []string // ban imzaları
-	seenRevoke []string // revoke imzaları
+	seenBans    *seenSet
+	seenRevokes *seenSet
 
-	// Rate limiting: moderatör başına sliding window.
-	rateMu sync.Mutex
-	rates  map[string][]time.Time // moderator_key → ban zamanları
+	rateMu     sync.Mutex
+	rates      map[string][]time.Time
+	ratesDirty bool
 
-	// Callbacks: forum katmanına bildir.
 	onApprove       func(postID string)
 	onTrustedAuthor func(authorKey string)
 }
 
-// LoadFounderKey reads <dataDir>/founder.key, sets FounderPubKeyHex, and
-// returns whether the current user (myPubKeyHex) is the founder.
-// If the file does not exist, myPubKeyHex is written there (first-run).
 func LoadFounderKey(dataDir, myPubKeyHex string) (isFounder bool, err error) {
 	path := filepath.Join(dataDir, FounderKeyFile)
 	data, readErr := os.ReadFile(path)
 	if os.IsNotExist(readErr) {
-		// İlk çalışma: bu kullanıcı kurucu oluyor.
 		if werr := os.WriteFile(path, []byte(myPubKeyHex), 0o600); werr != nil {
 			return false, fmt.Errorf("moderation: founder.key yazılamadı: %w", werr)
 		}
@@ -180,8 +166,6 @@ func LoadFounderKey(dataDir, myPubKeyHex string) (isFounder bool, err error) {
 	return strings.EqualFold(key, myPubKeyHex), nil
 }
 
-// New creates a Moderator. LoadFounderKey must be called before New so
-// FounderPubKeyHex is set correctly.
 func New(dataDir string, founderPeerID peer.ID) (*Moderator, error) {
 	pub, err := hex.DecodeString(FounderPubKeyHex)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
@@ -197,6 +181,8 @@ func New(dataDir string, founderPeerID peer.ID) (*Moderator, error) {
 		founderID:      founderPeerID,
 		dataDir:        dataDir,
 		rates:          make(map[string][]time.Time),
+		seenBans:       newSeenSet(seenCacheSize),
+		seenRevokes:    newSeenSet(seenCacheSize),
 	}
 
 	m.loadBans()
@@ -206,7 +192,6 @@ func New(dataDir string, founderPeerID peer.ID) (*Moderator, error) {
 	return m, nil
 }
 
-// isDisabled returns true when the founder key is all-zeros (moderation off).
 func (m *Moderator) isDisabled() bool {
 	for _, b := range m.founder {
 		if b != 0 {
@@ -216,7 +201,6 @@ func (m *Moderator) isDisabled() bool {
 	return true
 }
 
-// Start subscribes to ModerationTopic and enforces incoming messages.
 func (m *Moderator) Start(ctx context.Context, topic *network.Topic) {
 	ch := topic.Messages(ctx)
 	go func() {
@@ -232,9 +216,66 @@ func (m *Moderator) Start(ctx context.Context, topic *network.Topic) {
 			}
 		}
 	}()
+	go m.cleanupLoop(ctx)
+	go m.ratesSaveLoop(ctx)
 }
 
-// PublishBan publishes a pre-built BanMsg to the moderation topic.
+func (m *Moderator) cleanupLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			m.cleanupExpiredBans()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (m *Moderator) cleanupExpiredBans() {
+	now := time.Now()
+	m.mu.Lock()
+	changed := false
+	for pid, exp := range m.bans {
+		if now.After(exp) {
+			delete(m.bans, pid)
+			delete(m.banMods, pid)
+			changed = true
+		}
+	}
+	m.mu.Unlock()
+	if changed {
+		m.saveBans()
+	}
+}
+
+func (m *Moderator) ratesSaveLoop(ctx context.Context) {
+	ticker := time.NewTicker(ratesSaveInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			m.rateMu.Lock()
+			dirty := m.ratesDirty
+			m.ratesDirty = false
+			m.rateMu.Unlock()
+			if dirty {
+				m.saveRates()
+			}
+		case <-ctx.Done():
+			m.rateMu.Lock()
+			dirty := m.ratesDirty
+			m.ratesDirty = false
+			m.rateMu.Unlock()
+			if dirty {
+				m.saveRates()
+			}
+			return
+		}
+	}
+}
+
 func (m *Moderator) PublishBan(ctx context.Context, topic *network.Topic, ban BanMsg) error {
 	env := Envelope{Type: "ban", Ban: &ban}
 	data, err := json.Marshal(env)
@@ -244,7 +285,6 @@ func (m *Moderator) PublishBan(ctx context.Context, topic *network.Topic, ban Ba
 	return topic.Publish(ctx, data)
 }
 
-// PublishRevoke publishes a RevokeMsg signed by the founder.
 func (m *Moderator) PublishRevoke(ctx context.Context, topic *network.Topic, rev RevokeMsg) error {
 	env := Envelope{Type: "revoke", Revoke: &rev}
 	data, err := json.Marshal(env)
@@ -253,8 +293,6 @@ func (m *Moderator) PublishRevoke(ctx context.Context, topic *network.Topic, rev
 	}
 	return topic.Publish(ctx, data)
 }
-
-// ── Mesaj İşleme ─────────────────────────────────────────────────────────────
 
 func (m *Moderator) handleEnvelope(data []byte) {
 	if m.isDisabled() {
@@ -312,15 +350,10 @@ func (m *Moderator) handleApproveMsg(msg *ApprovalMsg) {
 	}
 }
 
-// ── Güvenilir Yazar API ───────────────────────────────────────────────────────
-
-// SetOnApprove registers a callback invoked when a valid ApprovalMsg is received.
 func (m *Moderator) SetOnApprove(cb func(postID string)) { m.onApprove = cb }
 
-// SetOnTrustedAuthor registers a callback invoked when a TrustedAuthorCert is received.
 func (m *Moderator) SetOnTrustedAuthor(cb func(authorKey string)) { m.onTrustedAuthor = cb }
 
-// IsTrustedAuthor returns true if authorKey has a valid, unexpired TrustedAuthorCert.
 func (m *Moderator) IsTrustedAuthor(authorKey string) bool {
 	m.mu.RLock()
 	cert, ok := m.trustedAuthors[authorKey]
@@ -333,8 +366,6 @@ func (m *Moderator) IsTrustedAuthor(authorKey string) bool {
 	}
 	return time.Now().Before(cert.ExpiresAt)
 }
-
-// ── Doğrulama (Trusted + Approve) ────────────────────────────────────────────
 
 func (m *Moderator) verifyTrustedCert(cert *TrustedAuthorCert) bool {
 	sig, err := hex.DecodeString(cert.Sig)
@@ -361,10 +392,8 @@ func (m *Moderator) verifyApproval(msg *ApprovalMsg) bool {
 	payload := fmt.Sprintf("approve|%s|%d", msg.PostID, msg.IssuedAt.Unix())
 
 	if msg.Cert == nil {
-		// Kurucu imzası
 		return ed25519.Verify(m.founder, []byte(payload), sig)
 	}
-	// Moderatör imzası: önce cert'i doğrula, sonra imzayı
 	if !m.verifyCert(*msg.Cert) {
 		return false
 	}
@@ -374,8 +403,6 @@ func (m *Moderator) verifyApproval(msg *ApprovalMsg) bool {
 	}
 	return ed25519.Verify(ed25519.PublicKey(modKey), []byte(payload), sig)
 }
-
-// ── TrustedAuthor Kalıcılığı ──────────────────────────────────────────────────
 
 func (m *Moderator) saveTrustedAuthors() {
 	if m.dataDir == "" {
@@ -416,7 +443,6 @@ func (m *Moderator) loadTrustedAuthors() {
 }
 
 func (m *Moderator) handleBanMsg(ban *BanMsg) {
-	// 1. Alan doğrulama
 	if ban.BannedPeer == "" || ban.Reason == "" || ban.Sig == "" {
 		return
 	}
@@ -424,47 +450,39 @@ func (m *Moderator) handleBanMsg(ban *BanMsg) {
 		return
 	}
 
-	// 2. Süre sınırı: min 1 dakika, max 30 gün, geçmişte olamaz
 	now := time.Now()
 	if !ban.ExpiresAt.After(now.Add(time.Minute)) {
-		return // çok kısa veya geçmişte — spam önleme
+		return
 	}
 	if ban.ExpiresAt.After(now.Add(maxBanDays * 24 * time.Hour)) {
 		return
 	}
 
-	// 3. Geçerli peer ID
 	pid, err := peer.Decode(ban.BannedPeer)
 	if err != nil {
 		return
 	}
 
-	// 4. Kurucu banlanamaz
 	if pid == m.founderID {
 		return
 	}
 
-	// 5. Replay koruması
 	if m.alreadySeen(ban.Sig) {
 		return
 	}
 
-	// 6. Moderatör sertifikası doğrula
 	if !m.verifyCert(ban.Cert) {
 		return
 	}
 
-	// 7. Ban imzasını doğrula
 	if !m.verifyBan(ban) {
 		return
 	}
 
-	// 8. Rate limiting
 	if !m.allowBan(ban.Cert.ModeratorKey) {
 		return
 	}
 
-	// 9. Ban uygula ve kaydet (moderatör key'i de sakla, iptal kontrolü için)
 	m.mu.Lock()
 	m.bans[pid] = ban.ExpiresAt
 	m.banMods[pid] = ban.Cert.ModeratorKey
@@ -476,7 +494,6 @@ func (m *Moderator) handleRevokeMsg(rev *RevokeMsg) {
 	if rev.ModeratorKey == "" || rev.Sig == "" {
 		return
 	}
-	// Replay koruması (revoke idempotent olsa da gereksiz yük önlenir)
 	if m.alreadySeenRevoke(rev.Sig) {
 		return
 	}
@@ -494,20 +511,16 @@ func (m *Moderator) handleRevokeMsg(rev *RevokeMsg) {
 	m.saveRevocations()
 }
 
-// ── Doğrulama ─────────────────────────────────────────────────────────────────
-
 func (m *Moderator) verifyCert(cert ModeratorCert) bool {
 	modKey, err := hex.DecodeString(cert.ModeratorKey)
 	if err != nil || len(modKey) != ed25519.PublicKeySize {
 		return false
 	}
 
-	// Kurucu kendisine cert veremez
-	if strings.EqualFold(cert.ModeratorKey, FounderPubKeyHex) {
+	if strings.EqualFold(cert.ModeratorKey, hex.EncodeToString(m.founder)) {
 		return false
 	}
 
-	// Süre kontrolü: sadece süreli certlerde yapılır
 	if !cert.Permanent {
 		now := time.Now()
 		if now.After(cert.ExpiresAt) {
@@ -523,7 +536,6 @@ func (m *Moderator) verifyCert(cert ModeratorCert) bool {
 		return false
 	}
 
-	// Payload: permanent ve süreli için farklı format
 	var payload string
 	if cert.Permanent {
 		payload = fmt.Sprintf("%s|permanent", cert.ModeratorKey)
@@ -534,13 +546,12 @@ func (m *Moderator) verifyCert(cert ModeratorCert) bool {
 		return false
 	}
 
-	// İptal listesinde mi?
 	m.mu.RLock()
 	revokedAt, isRevoked := m.revoked[cert.ModeratorKey]
 	m.mu.RUnlock()
 	if isRevoked {
 		if cert.Permanent {
-			return false // süresiz cert de iptal edilebilir
+			return false
 		}
 		if !cert.ExpiresAt.After(revokedAt) {
 			return false
@@ -563,37 +574,13 @@ func (m *Moderator) verifyBan(ban *BanMsg) bool {
 	return ed25519.Verify(ed25519.PublicKey(modKey), []byte(payload), sig)
 }
 
-// ── Replay Koruması ───────────────────────────────────────────────────────────
-
-// seenAdd arar ve yoksa ekler; true dönerse zaten görülmüş.
-func seenAdd(buf *[]string, sig string) bool {
-	h := sha256.Sum256([]byte(sig))
-	fp := hex.EncodeToString(h[:]) // 256 bit — 64 hex karakter
-	for _, s := range *buf {
-		if s == fp {
-			return true
-		}
-	}
-	*buf = append(*buf, fp)
-	if len(*buf) > seenCacheSize {
-		*buf = (*buf)[1:]
-	}
-	return false
-}
-
 func (m *Moderator) alreadySeen(sig string) bool {
-	m.seenMu.Lock()
-	defer m.seenMu.Unlock()
-	return seenAdd(&m.seen, sig)
+	return m.seenBans.seen(sig)
 }
 
 func (m *Moderator) alreadySeenRevoke(sig string) bool {
-	m.seenMu.Lock()
-	defer m.seenMu.Unlock()
-	return seenAdd(&m.seenRevoke, sig)
+	return m.seenRevokes.seen(sig)
 }
-
-// ── Rate Limiting ─────────────────────────────────────────────────────────────
 
 func (m *Moderator) allowBan(modKey string) bool {
 	m.rateMu.Lock()
@@ -613,7 +600,7 @@ func (m *Moderator) allowBan(modKey string) bool {
 		return false
 	}
 	m.rates[modKey] = append(fresh, time.Now())
-	go m.saveRates() // async — kritik yolda bloklamaz
+	m.ratesDirty = true
 	return true
 }
 
@@ -676,9 +663,6 @@ func (m *Moderator) loadRates() {
 	m.rateMu.Unlock()
 }
 
-// ── Ban Sorgu ─────────────────────────────────────────────────────────────────
-
-// IsBanned returns true if pid is under an active ban.
 func (m *Moderator) IsBanned(pid peer.ID) bool {
 	if m.isDisabled() {
 		return false
@@ -686,21 +670,8 @@ func (m *Moderator) IsBanned(pid peer.ID) bool {
 	m.mu.RLock()
 	expiry, ok := m.bans[pid]
 	m.mu.RUnlock()
-	if !ok {
-		return false
-	}
-	if time.Now().After(expiry) {
-		m.mu.Lock()
-		delete(m.bans, pid)
-		delete(m.banMods, pid)
-		m.mu.Unlock()
-		m.saveBans()
-		return false
-	}
-	return true
+	return ok && time.Now().Before(expiry)
 }
-
-// ── Kalıcılık ─────────────────────────────────────────────────────────────────
 
 func (m *Moderator) saveBans() {
 	if m.dataDir == "" {
@@ -745,7 +716,6 @@ func (m *Moderator) loadBans() {
 		if !b.ExpiresAt.After(now) {
 			continue
 		}
-		// İptal edilmiş moderatörün banını yükleme
 		if b.ModeratorKey != "" {
 			if _, revoked := m.revoked[b.ModeratorKey]; revoked {
 				continue
@@ -759,8 +729,6 @@ func (m *Moderator) loadBans() {
 	}
 	m.mu.Unlock()
 }
-
-// ── Revokasyon Kalıcılığı ─────────────────────────────────────────────────────
 
 type persistedRevocation struct {
 	ModeratorKey string    `json:"moderator_key"`
@@ -804,8 +772,6 @@ func (m *Moderator) loadRevocations() {
 	m.mu.Unlock()
 }
 
-// ── libp2p ConnectionGater ────────────────────────────────────────────────────
-
 func (m *Moderator) InterceptPeerDial(pid peer.ID) bool {
 	return !m.IsBanned(pid)
 }
@@ -826,8 +792,6 @@ func (m *Moderator) InterceptUpgraded(_ lp2pnet.Conn) (bool, control.DisconnectR
 	return true, 0
 }
 
-// FindModCert searches dataDir/bans/mod_*.json for a valid ModeratorCert
-// whose ModeratorKey matches myPubHex. Returns nil if none found.
 func FindModCert(dataDir, myPubHex string) *ModeratorCert {
 	dir := filepath.Join(dataDir, "bans")
 	entries, err := os.ReadDir(dir)

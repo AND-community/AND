@@ -1,7 +1,3 @@
-// Command and is the entry point for the AND client: unlock or create a
-// local encrypted identity through the TUI login screen, bring up a
-// libp2p node addressed by that identity and join the network, then hand
-// off to the TUI's main app (menu/plugins/chat).
 package main
 
 import (
@@ -18,16 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"and/internal/forum"
-	"and/internal/moderation"
-	"and/internal/network"
-	"and/internal/plugin"
-	"and/internal/tui"
-
-	adminplugin "and/Eklentiler/admin"
-	konuac      "and/Eklentiler/konu_ac"
-	modplugin   "and/Eklentiler/moderator"
-	ozelchat    "and/Eklentiler/ozel_chat"
+	"github.com/lucian95511/and/internal/dmmgr"
+	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/moderation"
+	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/internal/tui"
+	"github.com/lucian95511/and/internal/updater"
 
 	lp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -42,7 +36,6 @@ func main() {
 }
 
 func appDir() (string, error) {
-	// Standart konum: %APPDATA%\and — her yerden çalıştırıldığında aynı yer.
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("find config dir: %w", err)
@@ -52,8 +45,6 @@ func appDir() (string, error) {
 		return "", fmt.Errorf("create app dir: %w", err)
 	}
 
-	// Geçiş: identity.dat %APPDATA%\and'de yoksa exe'nin yanına veya proje
-	// klasörüne bak; bulursa %APPDATA%\and'e kopyala (bir kez çalışır).
 	appDataID := filepath.Join(dir, "identity.dat")
 	if _, err := os.Stat(appDataID); os.IsNotExist(err) {
 		candidates := []string{}
@@ -74,9 +65,6 @@ func appDir() (string, error) {
 	return dir, nil
 }
 
-
-// deriveFounderPeerID converts a hex Ed25519 public key to its libp2p peer.ID.
-// Returns empty peer.ID on failure (moderation still works, just no founder protection).
 func deriveFounderPeerID(pubHex string) peer.ID {
 	raw, err := hex.DecodeString(pubHex)
 	if err != nil || len(raw) != 32 {
@@ -93,9 +81,6 @@ func deriveFounderPeerID(pubHex string) peer.ID {
 	return pid
 }
 
-// publishSavedBans reads every .json file in <dataDir>/bans/ and publishes
-// them on the moderation topic so peers that missed the original broadcast
-// can still enforce them. Runs once after a short delay to let GossipSub mesh form.
 func publishSavedBans(ctx context.Context, topic *network.Topic, dataDir string) {
 	select {
 	case <-ctx.Done():
@@ -120,10 +105,6 @@ func publishSavedBans(ctx context.Context, topic *network.Topic, dataDir string)
 	}
 }
 
-// loadExtraBootstrap reads additional bootstrap multiaddrs from
-// <dataDir>/bootstrap.txt — one multiaddr per line, # comments allowed.
-// This lets operators point AND nodes at AND-specific bootstrap servers
-// without rebuilding the binary.
 func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 	path := filepath.Join(dataDir, "bootstrap.txt")
 	f, err := os.Open(path)
@@ -158,8 +139,6 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 	return peers
 }
 
-// buildApprovalFn kurucu veya moderatör sertifikasına göre onay fonksiyonu oluşturur.
-// Kullanıcı onaylayamıyorsa nil döner (forum TUI bunu nil kontrolüyle kullanır).
 func buildApprovalFn(
 	ctx context.Context,
 	dir string,
@@ -169,7 +148,7 @@ func buildApprovalFn(
 	},
 	isFounder bool,
 	localApprove func(postID string),
-	modTopic *network.Topic, // zaten açık olan moderation topic
+	modTopic *network.Topic,
 ) func(postID string) error {
 	if modTopic == nil {
 		return nil
@@ -205,7 +184,7 @@ func buildApprovalFn(
 	}
 
 	if isFounder {
-		return makePublish(nil) // kurucu: Cert alanı nil
+		return makePublish(nil)
 	}
 	if cert := moderation.FindModCert(dir, myPubHex); cert != nil {
 		return makePublish(cert)
@@ -220,7 +199,6 @@ func run() error {
 	}
 	identityFile := filepath.Join(dir, "identity.dat")
 
-	// Login blocks until the user unlocks (or creates) their identity.
 	id, err := tui.Login(identityFile)
 	if err != nil {
 		return err
@@ -229,7 +207,6 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Kurucu anahtarını yükle. Dosya yoksa bu kullanıcı otomatik kurucu olur.
 	myPubHex := hex.EncodeToString(id.PublicKey())
 	isFounder, err := moderation.LoadFounderKey(dir, myPubHex)
 	if err != nil {
@@ -239,10 +216,8 @@ func run() error {
 		fmt.Fprintln(os.Stderr, "[AND] Bu düğüm kurucu kimliğiyle çalışıyor.")
 	}
 
-	// Kurucunun libp2p peer ID'sini public key'den türet (banlanamaz peer).
 	founderPeerID := deriveFounderPeerID(moderation.FounderPubKeyHex)
 
-	// Moderasyon sistemi: ConnectionGater olarak libp2p'ye verilir.
 	mod, err := moderation.New(dir, founderPeerID)
 	if err != nil {
 		return fmt.Errorf("init moderation: %w", err)
@@ -254,11 +229,8 @@ func run() error {
 	}
 	defer node.Close()
 
-	// Özel bootstrap node'ları yükle ve discovery'e geçir.
 	extraBootstrap := loadExtraBootstrap(dir)
 
-	// StartDiscovery artık *Node alıyor: DHT'yi kurar, relay peer source'u
-	// bağlar ve yeni peer bağlantılarını PeerConnectedCh() üzerinden bildirir.
 	discovery, err := network.StartDiscovery(ctx, node, extraBootstrap)
 	if err != nil {
 		return fmt.Errorf("start discovery: %w", err)
@@ -282,14 +254,12 @@ func run() error {
 	}
 	defer chatTopic.Close()
 
-	// Moderasyon topic'ini başlat.
 	modTopic, err := network.JoinTopic(ps, node.Host, moderation.ModerationTopic)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "moderation topic:", err)
 	} else {
 		mod.Start(ctx, modTopic)
 		defer modTopic.Close()
-		// bans/ klasöründeki önceden oluşturulmuş ban mesajlarını yayınla.
 		go publishSavedBans(ctx, modTopic, dir)
 	}
 
@@ -298,16 +268,13 @@ func run() error {
 		return fmt.Errorf("init forum: %w", err)
 	}
 
-	// Moderasyon → forum callback'leri: onay ve güvenilir yazar bildirimleri
 	mod.SetOnApprove(forumStore.ApprovePost)
 	mod.SetOnTrustedAuthor(forumStore.ApprovePostsByAuthor)
 
 	go forumStore.Run(ctx)
 
-	// Forum sync protokolünü kaydet: gelen peer'lar forum geçmişimizi isteyebilir.
 	forumStore.RegisterSync(node.Host)
 
-	// Yeni peer bağlandığında forum geçmişini senkronize et.
 	go func() {
 		synced := make(map[peer.ID]bool)
 		for {
@@ -318,7 +285,6 @@ func run() error {
 				}
 				synced[peerID] = true
 				go func(pid peer.ID) {
-					// Birkaç saniye bekle: peer'ın sync handler'ını kaydetmesi için zaman tanı.
 					select {
 					case <-ctx.Done():
 						return
@@ -332,76 +298,144 @@ func run() error {
 		}
 	}()
 
-	// ── Plugin registry ────────────────────────────────────────────────────
-	// Önbellekli JoinTopic: aynı topic birden fazla kez açılmaya çalışılırsa
-	// mevcut handle döner; GossipSub "already exists" hatası görünmez.
-	topicCache := map[string]*network.Topic{
-		network.ForumTopic:        forumTopic,
-		network.ChatTopic:         chatTopic,
-		moderation.ModerationTopic: modTopic,
+	dmBroker := dmmgr.New(node)
+
+	approvalFn := buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
+
+	idBackend := &identityAdapter{
+		id:        id,
+		node:      node,
+		isFounder: isFounder,
+		dir:       dir,
 	}
-	cachedJoinTopic := func(name string) (*network.Topic, error) {
-		if t, ok := topicCache[name]; ok {
-			return t, nil
+	fBackend := &forumAdapter{
+		store:      forumStore,
+		approvalFn: approvalFn,
+	}
+
+	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker)
+	apiAddr, err := apiSrv.Start(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
+		apiAddr = ""
+	}
+
+	plugins := pluginmgr.DiscoverWithState(dir)
+
+	updateCh := make(chan tui.UpdateReadyMsg, 1)
+	restartCh := make(chan struct{}, 1)
+	go autoUpdate(ctx, updateCh, restartCh)
+
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, approvalFn, forumStore, dir, chatTopic, updateCh); err != nil {
+		return err
+	}
+
+	select {
+	case <-restartCh:
+		fmt.Fprintln(os.Stderr, "Yeni sürüm yeniden başlatılıyor...")
+		_ = updater.SelfRestart()
+	default:
+	}
+	return nil
+}
+
+func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restartCh chan<- struct{}) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
+	checkCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	info, err := updater.Check(checkCtx)
+	if err != nil || info == nil {
+		return
+	}
+	applyCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel2()
+	if err := updater.Apply(applyCtx, info); err != nil {
+		fmt.Fprintln(os.Stderr, "updater:", err)
+		return
+	}
+	select {
+	case updateCh <- tui.UpdateReadyMsg{Version: info.TagName}:
+	default:
+	}
+	select {
+	case restartCh <- struct{}{}:
+	default:
+	}
+}
+
+type identityAdapter struct {
+	id        interface {
+		Name() string
+		PublicKey() ed25519.PublicKey
+	}
+	node      *network.Node
+	isFounder bool
+	dir       string
+}
+
+func (a *identityAdapter) Name() string      { return a.id.Name() }
+func (a *identityAdapter) PubKeyHex() string { return hex.EncodeToString(a.id.PublicKey()) }
+func (a *identityAdapter) PeerIDStr() string {
+	if a.node == nil {
+		return ""
+	}
+	return a.node.Host.ID().String()
+}
+func (a *identityAdapter) IsFounder() bool { return a.isFounder }
+func (a *identityAdapter) IsModerator() bool {
+	if a.isFounder {
+		return true
+	}
+	myPubHex := hex.EncodeToString(a.id.PublicKey())
+	return moderation.FindModCert(a.dir, myPubHex) != nil
+}
+
+type forumAdapter struct {
+	store      *forum.Forum
+	approvalFn func(string) error
+}
+
+func (a *forumAdapter) PendingPosts() ([]pluginapi.PendingPost, error) {
+	posts, err := a.store.PendingPosts()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pluginapi.PendingPost, len(posts))
+	for i, p := range posts {
+		out[i] = pluginapi.PendingPost{
+			ID:         p.ID,
+			Title:      p.Title,
+			AuthorName: p.AuthorName,
+			AuthorKey:  p.AuthorKey,
+			Category:   p.Category,
+			Body:       p.Body,
+			ExpiresAt:  p.ExpiresAt,
 		}
-		t, err := network.JoinTopic(ps, node.Host, name)
-		if err != nil {
-			return nil, err
-		}
-		topicCache[name] = t
-		return t, nil
 	}
+	return out, nil
+}
 
-	env := plugin.Env{
-		Ctx:       ctx,
-		Identity:  id,
-		Node:      node,
-		DataDir:   dir,
-		Routing:   discovery.Routing(),
-		JoinTopic: cachedJoinTopic,
-		PendingForumPosts: func() []plugin.PendingPost {
-			posts, _ := forumStore.PendingPosts()
-			out := make([]plugin.PendingPost, len(posts))
-			for i, p := range posts {
-				out[i] = plugin.PendingPost{
-					ID: p.ID, Title: p.Title,
-					AuthorName: p.AuthorName, Category: p.Category,
-					ExpiresAt: p.ExpiresAt,
-				}
-			}
-			return out
-		},
-		LocalApprovePost:   forumStore.ApprovePost,
-		LocalApproveAuthor: forumStore.ApprovePostsByAuthor,
+func (a *forumAdapter) ApprovePost(postID string) error {
+	if a.approvalFn == nil {
+		return fmt.Errorf("onay yetkisi yok")
 	}
+	return a.approvalFn(postID)
+}
 
-	// Konu onay fonksiyonu: kurucu veya geçerli moderatör sertifikasıyla.
-	// Zaten açık olan modTopic'i kullan — tekrar Join çağrısı hata verir.
-	env.PublishApproval = buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
+func (a *forumAdapter) RejectPost(postID string) error {
+	return a.store.RejectPost(postID)
+}
 
-	// Konu oluşturma: veri dizininde "readonly" dosyası varsa env.CreatePost nil bırakılır.
-	// Konu açma eklentisi (konu_ac) nil kontrolüyle salt okunur modu gösterir.
-	if _, err := os.Stat(filepath.Join(dir, "readonly")); err != nil {
-		env.CreatePost = func(pctx context.Context, category, title, body string, permanentReq bool) error {
-			_, err := forumStore.CreatePost(pctx, category, title, body, permanentReq)
-			return err
-		}
-	} else {
-		fmt.Fprintln(os.Stderr, "[AND] Salt okunur mod — konu açma devre dışı.")
-	}
+func (a *forumAdapter) ApproveAuthor(authorKey string) error {
+	a.store.ApprovePostsByAuthor(authorKey)
+	return nil
+}
 
-	reg := plugin.New(env)
-
-	for _, p := range []plugin.Plugin{
-		adminplugin.New(),
-		konuac.New(),
-		modplugin.New(),
-		ozelchat.New(),
-	} {
-		if err := reg.Register(p); err != nil {
-			fmt.Fprintln(os.Stderr, p.Name(), "eklentisi başlatılamadı:", err)
-		}
-	}
-
-	return tui.Run(ctx, id, node, reg, forumStore, dir, chatTopic)
+func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error {
+	_, err := a.store.CreatePost(ctx, category, title, body, permanentReq)
+	return err
 }

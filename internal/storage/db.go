@@ -1,6 +1,3 @@
-// Package storage provides AND's local persistence layer: a SQLite database
-// that caches forum posts/replies received over the network. Uses a pure-Go
-// driver (modernc.org/sqlite) so no C toolchain is required.
 package storage
 
 import (
@@ -11,16 +8,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// postTTL is the default lifetime for posts that have not been approved.
 const postTTL = 5 * 24 * time.Hour
 
-// DB wraps the SQLite database for forum persistence.
 type DB struct {
 	db *sql.DB
 }
 
-// Open opens (or creates) the SQLite database at path. WAL journal mode is
-// enabled for better concurrent read performance.
 func Open(path string) (*DB, error) {
 	db, err := sql.Open("sqlite", "file:"+path+"?_busy_timeout=5000")
 	if err != nil {
@@ -39,23 +32,53 @@ func Open(path string) (*DB, error) {
 	return s, nil
 }
 
-// Close closes the underlying database connection.
 func (s *DB) Close() error { return s.db.Close() }
 
 func (s *DB) migrate() error {
-	_, err := s.db.Exec(`
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_versions (
+			version    INTEGER PRIMARY KEY,
+			applied_at INTEGER NOT NULL
+		)`); err != nil {
+		return fmt.Errorf("storage: create schema_versions: %w", err)
+	}
+
+	for _, step := range migrations {
+		var count int
+		_ = s.db.QueryRow("SELECT COUNT(*) FROM schema_versions WHERE version=?", step.version).Scan(&count)
+		if count > 0 {
+			continue
+		}
+		_, execErr := s.db.Exec(step.sql)
+		if execErr != nil && !step.ignoreErr {
+			return fmt.Errorf("storage: migration v%d: %w", step.version, execErr)
+		}
+		s.db.Exec("INSERT INTO schema_versions(version,applied_at) VALUES(?,?)",
+			step.version, time.Now().UnixNano())
+	}
+	return nil
+}
+
+type migration struct {
+	version   int
+	sql       string
+	ignoreErr bool
+}
+
+var migrations = []migration{
+	{version: 1, sql: `
 		CREATE TABLE IF NOT EXISTS posts (
-			id              TEXT PRIMARY KEY,
-			category        TEXT NOT NULL,
-			author_name     TEXT NOT NULL,
-			author_key      TEXT NOT NULL,
-			title           TEXT NOT NULL,
-			body            TEXT NOT NULL,
-			created_at      INTEGER NOT NULL,
-			sig             TEXT NOT NULL,
-			approved        INTEGER NOT NULL DEFAULT 0,
-			expires_at      INTEGER NOT NULL DEFAULT 0,
-			permanent_req   INTEGER NOT NULL DEFAULT 0
+			id            TEXT PRIMARY KEY,
+			category      TEXT NOT NULL,
+			author_name   TEXT NOT NULL,
+			author_key    TEXT NOT NULL,
+			title         TEXT NOT NULL,
+			body          TEXT NOT NULL,
+			created_at    INTEGER NOT NULL,
+			sig           TEXT NOT NULL,
+			approved      INTEGER NOT NULL DEFAULT 0,
+			expires_at    INTEGER NOT NULL DEFAULT 0,
+			permanent_req INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE INDEX IF NOT EXISTS idx_posts_cat ON posts(category, created_at DESC);
 		CREATE TABLE IF NOT EXISTS replies (
@@ -68,56 +91,41 @@ func (s *DB) migrate() error {
 			sig         TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_replies_post ON replies(post_id, created_at);
-	`)
-	if err != nil {
-		return err
-	}
-
-	// Tombstone tablosu: silinmiş post'ların imzalı DeleteMsg'lerini saklar.
-	// Peer sync sırasında bu postların tekrar eklenmesini önler.
-	// Kayıtlar kalıcıdır; topluluk ölçeğinde (<1000 silme) boyut önemsizdir (~24KB).
-	s.db.Exec(`CREATE TABLE IF NOT EXISTS tombstones (
-		post_id  TEXT PRIMARY KEY,
-		msg_json TEXT NOT NULL
-	)`)
-
-	// Var olan DB'ye yeni sütunlar ekle (zaten varsa hata yoksayılır).
-	s.db.Exec("ALTER TABLE posts ADD COLUMN approved INTEGER NOT NULL DEFAULT 0")
-	s.db.Exec("ALTER TABLE posts ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0")
-	s.db.Exec("ALTER TABLE posts ADD COLUMN permanent_req INTEGER NOT NULL DEFAULT 0")
-
-	// Bu özellikten önceki tüm postları otomatik onayla — sadece bir kez çalışır.
-	s.db.Exec("UPDATE posts SET approved=1 WHERE approved=0 AND expires_at=0")
-	return nil
+		CREATE TABLE IF NOT EXISTS tombstones (
+			post_id  TEXT PRIMARY KEY,
+			msg_json TEXT NOT NULL
+		);
+	`},
+	{version: 2, ignoreErr: true, sql: `ALTER TABLE posts ADD COLUMN approved      INTEGER NOT NULL DEFAULT 0`},
+	{version: 3, ignoreErr: true, sql: `ALTER TABLE posts ADD COLUMN expires_at    INTEGER NOT NULL DEFAULT 0`},
+	{version: 4, ignoreErr: true, sql: `ALTER TABLE posts ADD COLUMN permanent_req INTEGER NOT NULL DEFAULT 0`},
+	{version: 5, sql: `UPDATE posts SET approved=1 WHERE approved=0 AND expires_at=0`},
 }
 
-// RawPost is the flat persistence representation of a forum post.
 type RawPost struct {
 	ID, Category, AuthorName, AuthorKey, Title, Body, Sig string
 	CreatedAt    time.Time
 	Approved     bool
-	ExpiresAt    time.Time // zero = onaysız + süresi belirlenmemiş
-	PermanentReq bool      // kullanıcı kalıcılık talep etti mi
+	ExpiresAt    time.Time
+	PermanentReq bool
 }
 
-// PendingPost is a post that requested permanent status, awaiting admin/mod approval.
 type PendingPost struct {
 	ID         string
 	Title      string
 	AuthorName string
 	AuthorKey  string
 	Category   string
+	Body       string
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 }
 
-// RawReply is the flat persistence representation of a forum reply.
 type RawReply struct {
 	ID, PostID, AuthorName, AuthorKey, Body, Sig string
 	CreatedAt                                    time.Time
 }
 
-// InsertPost persists a post; silently ignores duplicates.
 func (s *DB) InsertPost(p RawPost) error {
 	var expiresNano int64
 	if !p.ExpiresAt.IsZero() {
@@ -140,7 +148,6 @@ func (s *DB) InsertPost(p RawPost) error {
 	return err
 }
 
-// InsertReply persists a reply; silently ignores duplicates.
 func (s *DB) InsertReply(r RawReply) error {
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO replies(id,post_id,author_name,author_key,body,created_at,sig)
@@ -151,8 +158,6 @@ func (s *DB) InsertReply(r RawReply) error {
 	return err
 }
 
-// InsertTombstone stores a signed DeleteMsg JSON for a post that was permanently deleted.
-// Idempotent — re-inserting the same post_id is silently ignored.
 func (s *DB) InsertTombstone(postID, msgJSON string) error {
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO tombstones(post_id, msg_json) VALUES(?, ?)`,
@@ -161,7 +166,6 @@ func (s *DB) InsertTombstone(postID, msgJSON string) error {
 	return err
 }
 
-// AllTombstoneJSON returns the JSON-encoded DeleteMsg for every tombstoned post.
 func (s *DB) AllTombstoneJSON() ([]string, error) {
 	rows, err := s.db.Query(`SELECT msg_json FROM tombstones`)
 	if err != nil {
@@ -179,41 +183,42 @@ func (s *DB) AllTombstoneJSON() ([]string, error) {
 	return out, rows.Err()
 }
 
-// DeletePost removes a post and all its replies from the database.
 func (s *DB) DeletePost(postID string) error {
-	_, err := s.db.Exec("DELETE FROM replies WHERE post_id=?", postID)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec("DELETE FROM posts WHERE id=?", postID)
-	return err
+	if _, err = tx.Exec("DELETE FROM replies WHERE post_id=?", postID); err != nil {
+		tx.Rollback() //nolint:errcheck
+		return err
+	}
+	if _, err = tx.Exec("DELETE FROM posts WHERE id=?", postID); err != nil {
+		tx.Rollback() //nolint:errcheck
+		return err
+	}
+	return tx.Commit()
 }
 
-// ApprovePost marks a post as permanently approved.
 func (s *DB) ApprovePost(postID string) error {
 	_, err := s.db.Exec("UPDATE posts SET approved=1 WHERE id=?", postID)
 	return err
 }
 
-// ApprovePostsByAuthor marks all posts by the given author key as approved.
 func (s *DB) ApprovePostsByAuthor(authorKey string) error {
 	_, err := s.db.Exec("UPDATE posts SET approved=1 WHERE author_key=?", authorKey)
 	return err
 }
 
-// SetPostExpiry sets the TTL deadline for an unapproved post.
 func (s *DB) SetPostExpiry(postID string, expiresAt time.Time) error {
 	_, err := s.db.Exec("UPDATE posts SET expires_at=? WHERE id=?",
 		expiresAt.UnixNano(), postID)
 	return err
 }
 
-// PendingPosts returns unapproved posts where the user requested permanent status,
-// soonest-expiring first. These are posts the admin/mod should review.
 func (s *DB) PendingPosts() ([]PendingPost, error) {
 	now := time.Now().UnixNano()
 	rows, err := s.db.Query(`
-		SELECT id, title, author_name, author_key, category, created_at, expires_at
+		SELECT id, title, author_name, author_key, category, body, created_at, expires_at
 		FROM posts
 		WHERE approved=0 AND permanent_req=1 AND expires_at > ?
 		ORDER BY expires_at ASC`, now)
@@ -226,7 +231,7 @@ func (s *DB) PendingPosts() ([]PendingPost, error) {
 		var p PendingPost
 		var createdTs, expiresTs int64
 		if err := rows.Scan(&p.ID, &p.Title, &p.AuthorName, &p.AuthorKey,
-			&p.Category, &createdTs, &expiresTs); err != nil {
+			&p.Category, &p.Body, &createdTs, &expiresTs); err != nil {
 			return nil, err
 		}
 		p.CreatedAt = time.Unix(0, createdTs).UTC()
@@ -236,7 +241,6 @@ func (s *DB) PendingPosts() ([]PendingPost, error) {
 	return out, rows.Err()
 }
 
-// DeleteExpiredPosts removes unapproved posts past their TTL. Returns count deleted.
 func (s *DB) DeleteExpiredPosts() (int, error) {
 	now := time.Now().UnixNano()
 	res, err := s.db.Exec(`
@@ -248,7 +252,6 @@ func (s *DB) DeleteExpiredPosts() (int, error) {
 	return int(n), nil
 }
 
-// AllPosts returns every post ordered by creation time (oldest first).
 func (s *DB) AllPosts() ([]RawPost, error) {
 	rows, err := s.db.Query(
 		`SELECT id,category,author_name,author_key,title,body,created_at,sig,approved,expires_at,permanent_req
@@ -277,7 +280,6 @@ func (s *DB) AllPosts() ([]RawPost, error) {
 	return out, rows.Err()
 }
 
-// AllReplies returns every reply ordered by post_id then creation time.
 func (s *DB) AllReplies() ([]RawReply, error) {
 	rows, err := s.db.Query(
 		`SELECT id,post_id,author_name,author_key,body,created_at,sig

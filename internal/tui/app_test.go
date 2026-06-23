@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	stdcrypto "and/internal/crypto"
-	"and/internal/plugin"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/pluginmgr"
 )
 
 // keyMsg builds the tea.KeyMsg for a named special key, for tests that
@@ -30,7 +30,7 @@ func newTestModel(t *testing.T) appModel {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
 	id.SetName("alice")
-	return newAppModel(context.Background(), id, nil, plugin.New(plugin.Env{}), nil, "", nil)
+	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", nil, nil, "", nil)
 }
 
 func TestAppModel_SendChat_NoTopicIsNoop(t *testing.T) {

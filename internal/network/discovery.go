@@ -16,33 +16,18 @@ import (
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 )
 
-// Rendezvous is the shared namespace every AND node advertises itself
-// under and searches against, so any two installations can find each
-// other through the DHT without any prior introduction or directory.
 const Rendezvous = "and-community/1.0.0"
 
 const mdnsServiceTag = "and-community-mdns"
 
 const (
-	// dhtRefreshInterval: DHT'de yeniden reklam ve peer arama aralığı.
-	dhtRefreshInterval = 30 * time.Second
-
-	// dhtMaxBackoff: DHT reklamı başarısız olunca bekleme süresinin üst sınırı.
-	dhtMaxBackoff = 5 * time.Minute
-
-	// bootstrapConnectTimeout: tek bir bootstrap peer'a bağlanma zaman aşımı.
+	dhtRefreshInterval      = 30 * time.Second
+	dhtMaxBackoff           = 5 * time.Minute
 	bootstrapConnectTimeout = 15 * time.Second
-
-	// rebootstrapInterval: az peer bağlıyken bootstrap peer'larına yeniden bağlanma aralığı.
-	rebootstrapInterval = 5 * time.Minute
-
-	// minPeersBeforeRebootstrap: bu sayının altına düşünce yeniden bootstrap yapılır.
+	rebootstrapInterval     = 5 * time.Minute
 	minPeersBeforeRebootstrap = 4
 )
 
-// Discovery bundles the peer-finding mechanisms AND relies on: a Kademlia
-// DHT for the wide internet, mDNS for instant same-LAN discovery, and
-// the libp2p event bus for peer-connected notifications.
 type Discovery struct {
 	host           host.Host
 	dht            *dual.DHT
@@ -53,30 +38,14 @@ type Discovery struct {
 	extraBootstrap []peer.AddrInfo
 }
 
-// PeerConnectedCh returns a channel that receives the ID of each newly
-// connected peer. Callers can use this to trigger on-connect work such
-// as forum history sync.
 func (d *Discovery) PeerConnectedCh() <-chan peer.ID {
 	return d.peerConnected
 }
 
-// Routing returns the RoutingDiscovery built on top of the DHT so that
-// plugins can advertise and find named keys without creating a second DHT.
 func (d *Discovery) Routing() *drouting.RoutingDiscovery {
 	return d.routing
 }
 
-// StartDiscovery brings up DHT- and mDNS-based discovery for node and
-// starts background goroutines that:
-//
-//   - advertise this node under Rendezvous and connect to new peers
-//   - re-advertise with exponential backoff when the DHT is empty
-//   - reconnect to bootstrap peers when fewer than minPeersBeforeRebootstrap peers are connected
-//   - wire up the DHT relay peer source for auto-relay
-//   - publish newly connected peer IDs on PeerConnectedCh()
-//
-// extraBootstrap is an optional list of additional bootstrap peers (e.g. AND-specific
-// servers loaded from bootstrap.txt) that are dialled alongside the default IPFS peers.
 func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrInfo) (*Discovery, error) {
 	h := node.Host
 
@@ -85,7 +54,6 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 		return nil, fmt.Errorf("network: start DHT: %w", err)
 	}
 
-	// Bootstrap'e bağlan: DHT routing tablosunu tohumla.
 	connectToBootstrapPeers(ctx, h, extraBootstrap)
 
 	if err := kdht.Bootstrap(ctx); err != nil {
@@ -103,8 +71,6 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 		extraBootstrap: extraBootstrap,
 	}
 
-	// Relay peer kaynağını DHT routing hazır olduktan hemen sonra bağla.
-	// auto-relay relay adaylarına ihtiyaç duyunca bu fonksiyonu çağırır.
 	node.SetRelaySource(func(rCtx context.Context, num int) <-chan peer.AddrInfo {
 		ch := make(chan peer.AddrInfo, num)
 		go func() {
@@ -135,8 +101,6 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 		return nil, fmt.Errorf("network: start mDNS: %w", err)
 	}
 
-	// Event bus üzerinden bağlantı olaylarını dinle: yeni peer bağlandığında
-	// kanal üzerinden bildir (forum sync için kullanılır).
 	sub, err := h.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
 	if err == nil {
 		d.eventSub = sub
@@ -149,7 +113,6 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 	return d, nil
 }
 
-// peerEventLoop forwards Connected events to the peerConnected channel.
 func (d *Discovery) peerEventLoop(ctx context.Context, sub event.Subscription) {
 	defer sub.Close()
 	for {
@@ -171,11 +134,6 @@ func (d *Discovery) peerEventLoop(ctx context.Context, sub event.Subscription) {
 	}
 }
 
-// discoverLoop sürekli Rendezvous altında reklam yapar ve yeni peer arar.
-//
-// DHT henüz boşsa (başlangıç durumu veya yalıtılmış ağ) reklam başarısız olur.
-// Bu durumda üstel beklemeyle yeniden dener — başarılı reklamda sıfırlanır.
-// Bulunan peer'lara paralel bağlantı kurulur (sıralı bekleme yerine).
 func (d *Discovery) discoverLoop(ctx context.Context) {
 	delay := dhtRefreshInterval
 	for {
@@ -189,7 +147,6 @@ func (d *Discovery) discoverLoop(ctx context.Context) {
 			}
 		}
 
-		// Başarılı reklamda beklemeyi sıfırla; başarısızda iki katına çıkar.
 		if advertised {
 			delay = dhtRefreshInterval
 		} else {
@@ -207,9 +164,6 @@ func (d *Discovery) discoverLoop(ctx context.Context) {
 	}
 }
 
-// rebootstrapLoop, bağlı peer sayısı eşiğin altına düştüğünde bootstrap
-// peer'larına yeniden bağlanır. Ağ başlangıcı veya yoğun bağlantı kaybında
-// düğümün izole kalmasını önler.
 func (d *Discovery) rebootstrapLoop(ctx context.Context) {
 	ticker := time.NewTicker(rebootstrapInterval)
 	defer ticker.Stop()
@@ -225,9 +179,6 @@ func (d *Discovery) rebootstrapLoop(ctx context.Context) {
 	}
 }
 
-// connectToBootstrapPeers dials the well-known public libp2p/IPFS bootstrap
-// nodes plus any extra AND-specific peers in parallel to seed the DHT routing
-// table. Failures are expected (no internet, first node on network) and silently ignored.
 func connectToBootstrapPeers(ctx context.Context, h host.Host, extra []peer.AddrInfo) {
 	peers := append(dht.GetDefaultBootstrapPeerAddrInfos(), extra...)
 	var wg sync.WaitGroup
@@ -243,7 +194,6 @@ func connectToBootstrapPeers(ctx context.Context, h host.Host, extra []peer.Addr
 	wg.Wait()
 }
 
-// Close tears down the event subscription, mDNS, and DHT discovery services.
 func (d *Discovery) Close() error {
 	if d.eventSub != nil {
 		d.eventSub.Close()

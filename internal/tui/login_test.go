@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	stdcrypto "and/internal/crypto"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
 )
 
 func TestLoginModel_RegisterValidation(t *testing.T) {

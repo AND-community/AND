@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	stdcrypto "and/internal/crypto"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )

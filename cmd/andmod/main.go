@@ -1,13 +1,3 @@
-// Command andmod is the AND moderation CLI.
-//
-// Kullanım:
-//
-//	andmod pubkey                              -- AND kimliğinin public key'ini gösterir
-//	andmod grant <hedef_pubkey_hex> [--days N] -- Moderatör sertifikası oluşturur (kurucu olarak)
-//	andmod ban <peer_id> <sebep> --cert <dosya> [--days N] -- Ban mesajı oluşturur (moderatör olarak)
-//
-// grant ve ban çıktı dosyaları bans/ klasörüne kaydedilir.
-// AND başlarken bu klasördeki tüm .json dosyalarını ağda yayınlar.
 package main
 
 import (
@@ -21,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"and/internal/crypto"
-	"and/internal/moderation"
+	"github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/moderation"
 
 	"golang.org/x/term"
 )
@@ -61,7 +51,7 @@ Komutlar:
   andmod pubkey
       AND kimliğinin public key'ini gösterir.
       Bu değeri binary'ye gömmek için kullanın:
-        go build -ldflags "-X and/internal/moderation.FounderPubKeyHex=<hex>" ./cmd/and
+        go build -ldflags "-X github.com/lucian95511/and/internal/moderation.FounderPubKeyHex=<hex>" ./cmd/and
 
   andmod grant <hedef_pubkey_hex> [--days 7] [--permanent]
       Belirtilen public key'e moderatörlük sertifikası verir.
@@ -81,8 +71,6 @@ Komutlar:
       AND başlarken bans/ klasöründeki tüm .json dosyalarını otomatik yayınlar.`)
 }
 
-// ── pubkey ────────────────────────────────────────────────────────────────────
-
 func cmdPubkey() error {
 	id, err := unlockIdentity()
 	if err != nil {
@@ -93,11 +81,9 @@ func cmdPubkey() error {
 	fmt.Println(pubHex)
 	fmt.Println()
 	fmt.Println("Binary'ye gömmek için:")
-	fmt.Printf("  go build -ldflags \"-X and/internal/moderation.FounderPubKeyHex=%s\" ./cmd/and\n", pubHex)
+	fmt.Printf("  go build -ldflags \"-X github.com/lucian95511/and/internal/moderation.FounderPubKeyHex=%s\" ./cmd/and\n", pubHex)
 	return nil
 }
-
-// ── grant ─────────────────────────────────────────────────────────────────────
 
 func cmdGrant(args []string) error {
 	if len(args) == 0 {
@@ -115,8 +101,8 @@ func cmdGrant(args []string) error {
 				return fmt.Errorf("--days değeri eksik")
 			}
 			n, err := strconv.Atoi(args[i+1])
-			if err != nil || n < 1 || n > 7 {
-				return fmt.Errorf("--days 1-7 arasında olmalı")
+			if err != nil || n < 1 || n > 365 {
+				return fmt.Errorf("--days 1-365 arasında olmalı")
 			}
 			days = n
 			i++
@@ -182,8 +168,6 @@ func cmdGrant(args []string) error {
 	return nil
 }
 
-// ── ban ───────────────────────────────────────────────────────────────────────
-
 func cmdBan(args []string) error {
 	var peerID, reason, certPath string
 	days := 30
@@ -213,7 +197,6 @@ func cmdBan(args []string) error {
 		return fmt.Errorf("peer_id ve sebep boş olamaz")
 	}
 
-	// Cert yükle ve doğrula.
 	certData, err := os.ReadFile(certPath)
 	if err != nil {
 		return fmt.Errorf("cert dosyası okunamadı: %w", err)
@@ -226,13 +209,11 @@ func cmdBan(args []string) error {
 		return fmt.Errorf("moderatör sertifikası süresi dolmuş: %s", cert.ExpiresAt.Format("2006-01-02 15:04"))
 	}
 
-	// Kimlik: moderatör kendi AND kimliğini kullanır.
 	id, err := unlockIdentity()
 	if err != nil {
 		return err
 	}
 
-	// Cert'teki public key ile AND kimliği eşleşmeli.
 	myPubHex := hex.EncodeToString(id.PublicKey())
 	if !strings.EqualFold(cert.ModeratorKey, myPubHex) {
 		return fmt.Errorf("kimlik uyuşmazlığı: bu cert size ait değil\n  cert için: %s\n  sizin key: %s",
@@ -276,8 +257,6 @@ func cmdBan(args []string) error {
 	return nil
 }
 
-// ── Yardımcılar ───────────────────────────────────────────────────────────────
-
 func unlockIdentity() (*crypto.Identity, error) {
 	identityFile := defaultIdentityFile()
 	if _, err := os.Stat(identityFile); os.IsNotExist(err) {
@@ -308,8 +287,6 @@ func bansDir() string {
 	}
 	return filepath.Join(base, "and", "bans")
 }
-
-// ── trusted ───────────────────────────────────────────────────────────────────
 
 func cmdTrusted(args []string) error {
 	if len(args) == 0 {
@@ -372,12 +349,7 @@ func cmdTrusted(args []string) error {
 		sureStr = fmt.Sprintf("%d gün (%s'e kadar)", days, expires.Format("2006-01-02 15:04"))
 	}
 
-	// Sertifikayı bir Envelope içine sar — AND başlarken bans/ klasöründen okuyup yayınlar.
-	type envelope struct {
-		Type    string                       `json:"type"`
-		Trusted *moderation.TrustedAuthorCert `json:"trusted,omitempty"`
-	}
-	env := envelope{Type: "trusted", Trusted: &cert}
+	env := moderation.Envelope{Type: "trusted", Trusted: &cert}
 
 	outDir := bansDir()
 	if err := os.MkdirAll(outDir, 0o700); err != nil {

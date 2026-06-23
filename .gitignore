@@ -7,6 +7,12 @@ trusted_authors.json
 mod_rates.json
 bootstrap.txt
 
+# Moderasyon çıktı dosyaları — andmod tarafından oluşturulur, local.
+bans/
+
+# Konu taslakları — konu_ac eklentisi tarafından oluşturulur.
+taslaklar_*.json
+
 # Runtime data files (local forum cache / migration artifacts).
 forum.json
 forum.json.migrated

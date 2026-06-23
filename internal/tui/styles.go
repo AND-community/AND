@@ -2,21 +2,17 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// Temel renk paleti — AND'nin tüm ekranlarında (giriş, menü, forum, sohbet) aynı
-// renkler kullanılır; her dosyanın kendi paletini tanımlaması önlenir.
 var (
-	colorAccent  = lipgloss.Color("63")  // soluk mor    – başlık / odak / seçim
-	colorSelBG   = lipgloss.Color("57")  // koyu mor     – seçim arka planı
-	colorSelFG   = lipgloss.Color("255") // beyaz        – seçim ön planı
-	colorMuted   = lipgloss.Color("241") // gri          – yardım metni / ikincil
-	colorError   = lipgloss.Color("203") // kırmızı      – hatalar
-	colorOK      = lipgloss.Color("42")  // yeşil        – başarı / onay
-	colorWarning = lipgloss.Color("220") // sarı         – uyarı / süre
-	colorName    = lipgloss.Color("86")  // camgöbeği    – kullanıcı adları
-	colorBadge   = lipgloss.Color("33")  // mavi         – rozetler / etiketler
+	colorAccent  = lipgloss.Color("63")
+	colorSelBG   = lipgloss.Color("57")
+	colorSelFG   = lipgloss.Color("255")
+	colorMuted   = lipgloss.Color("241")
+	colorError   = lipgloss.Color("203")
+	colorOK      = lipgloss.Color("42")
+	colorWarning = lipgloss.Color("220")
+	colorName    = lipgloss.Color("86")
+	colorBadge   = lipgloss.Color("33")
 )
-
-// ── Giriş / menü / sohbet ekranlarında kullanılan ortak stiller ──────────────
 
 var (
 	titleStyle = lipgloss.NewStyle().
@@ -63,7 +59,6 @@ var (
 
 	dividerStyle = lipgloss.NewStyle().Foreground(colorMuted)
 
-	// Kurtarma kodu kutusu (giriş ekranı)
 	mnemonicStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(colorWarning).
@@ -71,8 +66,6 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorWarning)
 )
-
-// ── Forum ekranı stilleri ─────────────────────────────────────────────────────
 
 var (
 	fStKutu = lipgloss.NewStyle().
