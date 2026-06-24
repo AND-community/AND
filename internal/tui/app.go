@@ -22,9 +22,11 @@ import (
 type appScreen int
 
 const (
-	screenMenu  appScreen = iota
+	screenMenu     appScreen = iota
 	screenForum
 	screenChat
+	screenSettings
+	screenKonuAc
 )
 
 type chatMsg struct {
@@ -50,9 +52,10 @@ type appModel struct {
 	apiAddr    string
 	approvalFn func(string) error
 
-	forumStore *forum.Forum
-	dataDir    string
-	forumModel tea.Model
+	forumStore  *forum.Forum
+	dataDir     string
+	forumModel  tea.Model
+	konuAcModel konuAcModel
 
 	chatTopic    *network.Topic
 	chatMessages <-chan []byte
@@ -122,8 +125,8 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		pl := &plugins[i]
 		byIdx = append(byIdx, pl)
 	}
-	items = append(items, "Chat", "Quit")
-	byIdx = append(byIdx, nil, nil)
+	items = append(items, "Chat", "Ayarlar", "Quit")
+	byIdx = append(byIdx, nil, nil, nil)
 
 	var chatMessages <-chan []byte
 	if chatTopic != nil {
@@ -138,23 +141,26 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		}
 	}
 
+	fm := newForumModel(ctx, forumStore, id, dataDir, approvalFn, canCreatePost)
+
 	return appModel{
-		ctx:          ctx,
-		identity:     id,
-		node:         node,
-		plugins:      plugins,
-		apiAddr:      apiAddr,
-		approvalFn:   approvalFn,
-		forumStore:   forumStore,
-		dataDir:      dataDir,
-		chatTopic:    chatTopic,
-		chatMessages: chatMessages,
-		screen:       screenMenu,
-		menuItems:    items,
-		pluginByIdx:  byIdx,
-		chatInput:    chatIn,
-		chatViewport: viewport.New(0, 0),
+		ctx:            ctx,
+		identity:       id,
+		node:           node,
+		plugins:        plugins,
+		apiAddr:        apiAddr,
+		approvalFn:     approvalFn,
+		forumStore:     forumStore,
+		dataDir:        dataDir,
+		chatTopic:      chatTopic,
+		chatMessages:   chatMessages,
+		screen:         screenMenu,
+		menuItems:      items,
+		pluginByIdx:    byIdx,
+		chatInput:      chatIn,
+		chatViewport:   viewport.New(0, 0),
 		_canCreatePost: canCreatePost,
+		forumModel:     fm,
 	}
 }
 
@@ -162,6 +168,7 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 func (m appModel) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
+		m.forumModel.Init(),
 		func() tea.Msg {
 			if m.chatMessages != nil {
 				return listenForChat(m.chatMessages)()
@@ -207,6 +214,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatViewport.Height = vh
 		m.chatInput.Width = vw
 		m.syncChatViewport()
+		if m.screen == screenKonuAc {
+			updated, cmd := m.konuAcModel.Update(msg)
+			m.konuAcModel = updated.(konuAcModel)
+			return m, cmd
+		}
 		if m.screen == screenForum && m.forumModel != nil {
 			var cmd tea.Cmd
 			m.forumModel, cmd = m.forumModel.Update(msg)
@@ -214,12 +226,33 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case konuAcDoneMsg:
+		m.screen = screenForum
+		// Forum listesini güncelle
+		if fm, ok := m.forumModel.(forumModel); ok {
+			fm.konular = fm.forum.PostsByCategory(fm.kategori)
+			m.forumModel = fm
+		}
+		return m, nil
+
 	case backMsg:
 		m.screen = screenMenu
-		m.forumModel = nil
 		return m, nil
 
 	case openExternalPluginMsg:
+		if msg.name == "konu_ac" {
+			preCategory := ""
+			for _, e := range msg.env {
+				if strings.HasPrefix(e, "AND_CATEGORY=") {
+					preCategory = strings.TrimPrefix(e, "AND_CATEGORY=")
+				}
+			}
+			m.konuAcModel = newKonuAcModel(m.ctx, m.forumStore, m.dataDir, preCategory)
+			sized, sizeCmd := m.konuAcModel.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			m.konuAcModel = sized.(konuAcModel)
+			m.screen = screenKonuAc
+			return m, tea.Batch(m.konuAcModel.Init(), sizeCmd)
+		}
 		return m.launchPlugin(msg.name, msg.env)
 
 	case pluginExitMsg:
@@ -241,6 +274,12 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.screen == screenKonuAc {
+			var cmd tea.Cmd
+			updated, cmd := m.konuAcModel.Update(msg)
+			m.konuAcModel = updated.(konuAcModel)
+			return m, cmd
+		}
 		if m.screen == screenForum && m.forumModel != nil {
 			var cmd tea.Cmd
 			m.forumModel, cmd = m.forumModel.Update(msg)
@@ -249,6 +288,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 
+	if m.screen == screenKonuAc {
+		updated, cmd := m.konuAcModel.Update(msg)
+		m.konuAcModel = updated.(konuAcModel)
+		return m, cmd
+	}
 	if m.screen == screenForum && m.forumModel != nil {
 		var cmd tea.Cmd
 		m.forumModel, cmd = m.forumModel.Update(msg)
@@ -276,6 +320,11 @@ func (m appModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleMenuKey(msg)
 	case screenChat:
 		return m.handleChatKey(msg)
+	case screenSettings:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			m.screen = screenMenu
+		}
 	}
 	return m, nil
 }
@@ -306,15 +355,15 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case label == "Forum":
-			fm := newForumModel(m.ctx, m.forumStore, m.identity, m.dataDir, m.approvalFn, m._canCreatePost)
-			initCmd := fm.Init()
-			sized, sizeCmd := fm.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+			sized, sizeCmd := m.forumModel.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			m.forumModel = sized
 			m.screen = screenForum
-			return m, tea.Batch(initCmd, sizeCmd)
+			return m, sizeCmd
 		case label == "Chat":
 			m.screen = screenChat
 			m.chatInput.Focus()
+		case label == "Ayarlar":
+			m.screen = screenSettings
 		case pl != nil:
 			if !pl.Enabled {
 				return m, nil
@@ -407,6 +456,10 @@ func (m appModel) View() string {
 		return m.viewMenu()
 	case screenChat:
 		return m.viewChat()
+	case screenSettings:
+		return m.viewSettings()
+	case screenKonuAc:
+		return m.konuAcModel.View()
 	default:
 		return m.viewMenu()
 	}
@@ -468,30 +521,13 @@ func (m appModel) viewMenu() string {
 	}
 	rightLines = append(rightLines, divSt.Render(strings.Repeat("─", 30)))
 
-	if pl := m.pluginByIdx[m.menuIndex]; pl != nil {
-		mf := pl.Manifest
-		if mf.Description != "" {
-			rightLines = append(rightLines, labelStyle.Render("  "+mf.Description))
-		}
-		info := ""
-		if mf.Version != "" {
-			info += "v" + mf.Version
-		}
-		if mf.Author != "" {
-			if info != "" {
-				info += "  ·  "
-			}
-			info += mf.Author
-		}
-		if info != "" {
-			rightLines = append(rightLines, divSt.Render("  "+info))
-		}
-	}
-
+	// Update notice: always one reserved line (empty when no update).
+	updateSt := lipgloss.NewStyle().Foreground(lipgloss.Color("35")).Bold(true)
+	noticeLine := ""
 	if m.updateNotice != "" {
-		updateSt := lipgloss.NewStyle().Foreground(lipgloss.Color("35")).Bold(true)
-		rightLines = append(rightLines, updateSt.Render("  "+m.updateNotice))
+		noticeLine = updateSt.Render("  " + m.updateNotice)
 	}
+	rightLines = append(rightLines, noticeLine)
 
 	rightLines = append(rightLines, "")
 	rightLines = append(rightLines, helpSt.Render("↑/↓  j/k    enter  aç    space  aç/kapat    q  çıkış"))
@@ -582,4 +618,74 @@ func (m appModel) viewChat() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 	}
 	return box
+}
+
+func (m appModel) viewSettings() string {
+	headerSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	divSt    := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	labelSt  := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	mutedSt  := lipgloss.NewStyle().Foreground(colorMuted)
+	verSt    := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	okSt     := lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	offSt    := lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
+	helpSt   := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+
+	var b strings.Builder
+	b.WriteString(headerSt.Render("AND — Ayarlar") + "\n\n")
+
+	b.WriteString(divSt.Render(strings.Repeat("─", 44)) + "\n")
+	b.WriteString(mutedSt.Render("  Sistem") + "\n")
+	b.WriteString(divSt.Render(strings.Repeat("─", 44)) + "\n")
+	b.WriteString(fmt.Sprintf("  %-28s %s\n",
+		labelSt.Render("AND"),
+		verSt.Render("v"+updater.Version+"  ·  alpha"),
+	))
+	b.WriteString("\n")
+
+	b.WriteString(divSt.Render(strings.Repeat("─", 44)) + "\n")
+	b.WriteString(mutedSt.Render("  Yüklü Eklentiler") + "\n")
+	b.WriteString(divSt.Render(strings.Repeat("─", 44)) + "\n")
+
+	if len(m.plugins) == 0 {
+		b.WriteString(mutedSt.Render("  Eklenti bulunamadı.\n"))
+	} else {
+		for _, pl := range m.plugins {
+			mf := pl.Manifest
+			durumStr := okSt.Render("● etkin")
+			if !pl.Enabled {
+				durumStr = offSt.Render("○ kapalı")
+			}
+			isim := mf.Name
+			if mf.Label != "" {
+				isim = mf.Label
+			}
+			ver := ""
+			if mf.Version != "" {
+				ver = "v" + mf.Version
+			}
+			b.WriteString(fmt.Sprintf("  %-24s %-10s %s\n",
+				labelSt.Render(isim),
+				verSt.Render(ver),
+				durumStr,
+			))
+			if mf.Description != "" {
+				b.WriteString(mutedSt.Render("    "+mf.Description) + "\n")
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	b.WriteString(divSt.Render(strings.Repeat("─", 44)) + "\n\n")
+	b.WriteString(helpSt.Render("esc / q  ana menü"))
+
+	settingsBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccent).
+		Padding(1, 3).
+		Render(b.String())
+
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, settingsBox)
+	}
+	return settingsBox
 }

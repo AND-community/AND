@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/lucian95511/and/internal/dmmgr"
+	"github.com/lucian95511/and/internal/filemgr"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
@@ -288,7 +289,7 @@ func run() error {
 					select {
 					case <-ctx.Done():
 						return
-					case <-time.After(2 * time.Second):
+					case <-time.After(1 * time.Second):
 					}
 					_ = forumStore.SyncWithPeer(ctx, node.Host, pid)
 				}(peerID)
@@ -299,6 +300,9 @@ func run() error {
 	}()
 
 	dmBroker := dmmgr.New(node)
+	dosyalarDir := filepath.Join(dir, "dosyalar")
+	_ = os.MkdirAll(dosyalarDir, 0o700)
+	fileBroker := filemgr.New(node, dosyalarDir)
 
 	approvalFn := buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
 
@@ -313,7 +317,7 @@ func run() error {
 		approvalFn: approvalFn,
 	}
 
-	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker)
+	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker, fileBroker)
 	apiAddr, err := apiSrv.Start(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
@@ -428,6 +432,26 @@ func (a *forumAdapter) ApprovePost(postID string) error {
 
 func (a *forumAdapter) RejectPost(postID string) error {
 	return a.store.RejectPost(postID)
+}
+
+func (a *forumAdapter) DeletePost(postID string) error {
+	return a.store.RejectPost(postID)
+}
+
+func (a *forumAdapter) AllPosts() ([]pluginapi.PostSummary, error) {
+	posts := a.store.AllInMemoryPosts()
+	out := make([]pluginapi.PostSummary, 0, len(posts))
+	for _, p := range posts {
+		out = append(out, pluginapi.PostSummary{
+			ID:         p.ID,
+			Category:   p.Category,
+			Title:      p.Title,
+			AuthorName: p.AuthorName,
+			AuthorKey:  p.AuthorKey,
+			Approved:   p.Approved,
+		})
+	}
+	return out, nil
 }
 
 func (a *forumAdapter) ApproveAuthor(authorKey string) error {

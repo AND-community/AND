@@ -297,6 +297,14 @@ func (f *Forum) CreateReply(ctx context.Context, postID, body string) (*Reply, e
 	return r, nil
 }
 
+func (f *Forum) AllInMemoryPosts() []*Post {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*Post, len(f.posts))
+	copy(out, f.posts)
+	return out
+}
+
 func (f *Forum) PostsByCategory(category string) []*Post {
 	f.mu.Lock()
 	defer f.mu.Unlock()

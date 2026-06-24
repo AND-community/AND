@@ -2,6 +2,15 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
+// runesTruncate kırpar: max rune'dan uzun metni "…" ile bitirir.
+func runesTruncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
 var (
 	colorAccent  = lipgloss.Color("63")
 	colorSelBG   = lipgloss.Color("57")

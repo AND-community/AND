@@ -1,0 +1,8 @@
+{
+  "name":        "ornek",
+  "label":       "Örnek Eklenti",
+  "version":     "1.0.0",
+  "description": "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici örneği",
+  "author":      "AND",
+  "requires":    []
+}

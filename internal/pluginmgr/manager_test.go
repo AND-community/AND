@@ -174,8 +174,8 @@ func main() {
 	}
 
 	// Run a child process that scans the temp dir (not the test's exe dir).
-	// We test Discover indirectly by calling discoverDir.
-	plugins := discoverDir(dir)
+	// We test Discover indirectly by calling discoverAndDir.
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 1 {
 		t.Fatalf("expected 1 plugin, got %d", len(plugins))
 	}
@@ -189,7 +189,7 @@ func main() {
 
 func TestDiscover_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	plugins := discoverDir(dir)
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 0 {
 		t.Errorf("expected 0 plugins, got %d", len(plugins))
 	}
@@ -201,7 +201,7 @@ func TestDiscover_SkipsNonPluginFiles(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "and-core"), []byte{}, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "README.txt"), []byte{}, 0o644)
 
-	plugins := discoverDir(dir)
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 0 {
 		t.Errorf("expected 0 plugins, got %d", len(plugins))
 	}
@@ -346,7 +346,7 @@ func main() {
 	_ = SaveState(plugins, dir)
 
 	// Discover + apply state.
-	discovered := discoverDir(dir)
+	discovered := discoverAndDir(dir)
 	applyState(discovered, loadState(dir))
 
 	if len(discovered) != 1 {

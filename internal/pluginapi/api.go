@@ -14,6 +14,10 @@ import (
 )
 
 const DMProtocol = "/and/dm/1.0.0"
+const FileProtocol = "/and/file/2.0.0"
+
+// MaxFileBytes is the maximum raw file size accepted for transfer (2 GB).
+const MaxFileBytes = 20 * 1024 * 1024 * 1024
 
 type Manifest struct {
 	Name        string `json:"name"`
@@ -47,7 +51,17 @@ type PendingPost struct {
 
 type ApproveReq struct{ PostID string `json:"post_id"` }
 type RejectReq struct{ PostID string `json:"post_id"` }
+type DeletePostReq struct{ PostID string `json:"post_id"` }
 type ApproveAuthorReq struct{ AuthorKey string `json:"author_key"` }
+
+type PostSummary struct {
+	ID         string `json:"id"`
+	Category   string `json:"category"`
+	Title      string `json:"title"`
+	AuthorName string `json:"author_name"`
+	AuthorKey  string `json:"author_key"`
+	Approved   bool   `json:"approved"`
+}
 type CreatePostReq struct {
 	Category     string `json:"category"`
 	Title        string `json:"title"`
@@ -65,12 +79,45 @@ type DMMsg struct {
 	ReceivedAt time.Time `json:"received_at"`
 }
 
+// SendFileReq is the request body for POST /api/v1/file/send.
+// The plugin supplies a local file path; AND reads and streams the file — no data in the request.
+type SendFileReq struct {
+	PeerID    string `json:"peer_id"`
+	LocalPath string `json:"local_path"`
+}
+
+// FileMsg is delivered to plugins when a file arrives from a remote peer.
+// AND saves the file to disk and reports the path; no file bytes are carried here.
+type FileMsg struct {
+	From       string    `json:"from"`
+	Filename   string    `json:"filename"`
+	Size       int64     `json:"size"`
+	SavePath   string    `json:"save_path"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// FileConsentReq is sent to plugins when a remote peer wants to send a file.
+// The plugin must call /api/v1/file/consent to accept or reject.
+type FileConsentReq struct {
+	TransferID string `json:"transfer_id"`
+	SenderID   string `json:"sender_id"` // peer ID
+	Filename   string `json:"filename"`
+	Size       int64  `json:"size"`
+}
+
+type ConsentResp struct {
+	TransferID string `json:"transfer_id"`
+	Accept     bool   `json:"accept"`
+}
+
 type errResp struct{ Error string `json:"error"` }
 
 type ForumBackend interface {
 	PendingPosts() ([]PendingPost, error)
+	AllPosts() ([]PostSummary, error)
 	ApprovePost(postID string) error
 	RejectPost(postID string) error
+	DeletePost(postID string) error
 	ApproveAuthor(authorKey string) error
 	CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error
 }
@@ -89,6 +136,15 @@ type DMBackend interface {
 	Unsubscribe(ch chan DMMsg)
 }
 
+type FileBackend interface {
+	SendFile(ctx context.Context, peerID, senderName, localPath string) error
+	Subscribe() chan FileMsg
+	Unsubscribe(ch chan FileMsg)
+	SubscribeConsent() chan FileConsentReq
+	UnsubscribeConsent(ch chan FileConsentReq)
+	RespondConsent(transferID string, accept bool)
+}
+
 var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 
 func validPostID(id string) bool    { return reHex.MatchString(id) }
@@ -100,10 +156,11 @@ type Server struct {
 	id   IdentityBackend
 	f    ForumBackend
 	dm   DMBackend
+	file FileBackend
 }
 
-func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend) *Server {
-	return &Server{id: id, f: f, dm: dm}
+func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend) *Server {
+	return &Server{id: id, f: f, dm: dm, file: file}
 }
 
 func (s *Server) Start(ctx context.Context) (string, error) {
@@ -117,12 +174,18 @@ func (s *Server) Start(ctx context.Context) (string, error) {
 	mux.HandleFunc("/api/v1/identity",            onlyMethod(http.MethodGet, s.getIdentity))
 	mux.HandleFunc("/api/v1/role",                onlyMethod(http.MethodGet, s.getRole))
 	mux.HandleFunc("/api/v1/forum/pending",       onlyMethod(http.MethodGet, s.getPending))
+	mux.HandleFunc("/api/v1/forum/all-posts",     onlyMethod(http.MethodGet, s.getAllPosts))
 	mux.HandleFunc("/api/v1/forum/approve",       onlyMethod(http.MethodPost, s.postApprove))
 	mux.HandleFunc("/api/v1/forum/approve-author", onlyMethod(http.MethodPost, s.postApproveAuthor))
 	mux.HandleFunc("/api/v1/forum/reject",        onlyMethod(http.MethodPost, s.postReject))
+	mux.HandleFunc("/api/v1/forum/delete",        onlyMethod(http.MethodPost, s.postDeletePost))
 	mux.HandleFunc("/api/v1/forum/post",          onlyMethod(http.MethodPost, s.postCreate))
 	mux.HandleFunc("/api/v1/dm/send",             onlyMethod(http.MethodPost, s.postSendDM))
 	mux.HandleFunc("/api/v1/dm/poll",             onlyMethod(http.MethodGet, s.getDMPoll))
+	mux.HandleFunc("/api/v1/file/send",           onlyMethod(http.MethodPost, s.postSendFile))
+	mux.HandleFunc("/api/v1/file/poll",           onlyMethod(http.MethodGet, s.getFilePoll))
+	mux.HandleFunc("/api/v1/file/consent-poll",   onlyMethod(http.MethodGet, s.getConsentPoll))
+	mux.HandleFunc("/api/v1/file/consent",        onlyMethod(http.MethodPost, s.postConsent))
 
 	s.srv = &http.Server{Handler: mux}
 	go s.srv.Serve(ln) //nolint:errcheck
@@ -238,6 +301,37 @@ func (s *Server) postReject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) getAllPosts(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceModeratorRole(w) {
+		return
+	}
+	posts, err := s.f.AllPosts()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, posts)
+}
+
+func (s *Server) postDeletePost(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceModeratorRole(w) {
+		return
+	}
+	var req DeletePostReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validPostID(req.PostID) {
+		writeBadRequest(w, "geçersiz post_id biçimi")
+		return
+	}
+	if err := s.f.DeletePost(req.PostID); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 	var req CreatePostReq
 	if !decodeBody(w, r, &req) {
@@ -283,6 +377,81 @@ func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeErr(w, fmt.Errorf("dosya aktarımı kullanılamıyor"))
+		return
+	}
+	var req SendFileReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.PeerID == "" {
+		writeBadRequest(w, "peer_id boş olamaz")
+		return
+	}
+	if req.LocalPath == "" {
+		writeBadRequest(w, "local_path boş olamaz")
+		return
+	}
+	if err := s.file.SendFile(r.Context(), req.PeerID, s.id.Name(), req.LocalPath); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getFilePoll(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeJSON(w, []FileMsg{})
+		return
+	}
+	ch := s.file.Subscribe()
+	defer s.file.Unsubscribe(ch)
+	select {
+	case msg := <-ch:
+		writeJSON(w, []FileMsg{msg})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []FileMsg{})
+	case <-r.Context().Done():
+		writeJSON(w, []FileMsg{})
+	}
+}
+
+func (s *Server) getConsentPoll(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeJSON(w, []FileConsentReq{})
+		return
+	}
+	ch := s.file.SubscribeConsent()
+	defer s.file.UnsubscribeConsent(ch)
+	select {
+	case req := <-ch:
+		writeJSON(w, []FileConsentReq{req})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []FileConsentReq{})
+	case <-r.Context().Done():
+		writeJSON(w, []FileConsentReq{})
+	}
+}
+
+func (s *Server) postConsent(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeBadRequest(w, "dosya backend yok")
+		return
+	}
+	var req ConsentResp
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.TransferID == "" {
+		writeBadRequest(w, "transfer_id boş olamaz")
+		return
+	}
+	s.file.RespondConsent(req.TransferID, req.Accept)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
@@ -301,7 +470,11 @@ func writeBadRequest(w http.ResponseWriter, msg string) {
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(v); err != nil {
+	return decodeBodyN(w, r, v, 1<<16)
+}
+
+func decodeBodyN(w http.ResponseWriter, r *http.Request, v any, maxBytes int64) bool {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBytes)).Decode(v); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(errResp{Error: err.Error()}) //nolint:errcheck
@@ -311,8 +484,9 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 type Client struct {
-	base string
-	hc   *http.Client
+	base   string
+	hc     *http.Client
+	hcFile *http.Client // dosya transferleri için timeout yok — transfer süresi öngörülemiyor
 }
 
 func NewClientFromEnv() (*Client, error) {
@@ -321,8 +495,9 @@ func NewClientFromEnv() (*Client, error) {
 		return nil, fmt.Errorf("AND_API_ADDR tanımlı değil — bu binary AND tarafından başlatılmalıdır")
 	}
 	return &Client{
-		base: "http://" + addr,
-		hc:   &http.Client{Timeout: 35 * time.Second},
+		base:   "http://" + addr,
+		hc:     &http.Client{Timeout: 35 * time.Second},
+		hcFile: &http.Client{},
 	}, nil
 }
 
@@ -353,6 +528,15 @@ func (c *Client) Reject(postID string) error {
 	return c.post("/api/v1/forum/reject", RejectReq{PostID: postID})
 }
 
+func (c *Client) AllPosts() ([]PostSummary, error) {
+	var v []PostSummary
+	return v, c.get("/api/v1/forum/all-posts", &v)
+}
+
+func (c *Client) DeletePost(postID string) error {
+	return c.post("/api/v1/forum/delete", DeletePostReq{PostID: postID})
+}
+
 func (c *Client) CreatePost(category, title, body string, permanentReq bool) error {
 	return c.post("/api/v1/forum/post", CreatePostReq{
 		Category: category, Title: title, Body: body, PermanentReq: permanentReq,
@@ -366,6 +550,24 @@ func (c *Client) SendDM(peerID, message string) error {
 func (c *Client) PollDM() ([]DMMsg, error) {
 	var v []DMMsg
 	return v, c.get("/api/v1/dm/poll", &v)
+}
+
+func (c *Client) SendFile(peerID, localPath string) error {
+	return c.postWith(c.hcFile, "/api/v1/file/send", SendFileReq{PeerID: peerID, LocalPath: localPath})
+}
+
+func (c *Client) PollFile() ([]FileMsg, error) {
+	var v []FileMsg
+	return v, c.get("/api/v1/file/poll", &v)
+}
+
+func (c *Client) PollConsent() ([]FileConsentReq, error) {
+	var v []FileConsentReq
+	return v, c.get("/api/v1/file/consent-poll", &v)
+}
+
+func (c *Client) RespondConsent(transferID string, accept bool) error {
+	return c.post("/api/v1/file/consent", ConsentResp{TransferID: transferID, Accept: accept})
 }
 
 func DataDir() string { return os.Getenv("AND_DATA_DIR") }
@@ -387,11 +589,15 @@ func (c *Client) get(path string, out any) error {
 }
 
 func (c *Client) post(path string, body any) error {
+	return c.postWith(c.hc, path, body)
+}
+
+func (c *Client) postWith(hc *http.Client, path string, body any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	resp, err := c.hc.Post(c.base+path, "application/json", bytes.NewReader(data))
+	resp, err := hc.Post(c.base+path, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
@@ -403,3 +609,4 @@ func (c *Client) post(path string, body any) error {
 	json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
 	return fmt.Errorf("api: %s", e.Error)
 }
+

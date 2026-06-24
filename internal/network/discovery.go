@@ -3,7 +3,6 @@ package network
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -21,10 +20,10 @@ const Rendezvous = "and-community/1.0.0"
 const mdnsServiceTag = "and-community-mdns"
 
 const (
-	dhtRefreshInterval      = 30 * time.Second
-	dhtMaxBackoff           = 5 * time.Minute
-	bootstrapConnectTimeout = 15 * time.Second
-	rebootstrapInterval     = 5 * time.Minute
+	dhtRefreshInterval        = 30 * time.Second
+	dhtMaxBackoff             = 5 * time.Minute
+	bootstrapConnectTimeout   = 5 * time.Second
+	rebootstrapInterval       = 5 * time.Minute
 	minPeersBeforeRebootstrap = 4
 )
 
@@ -179,19 +178,18 @@ func (d *Discovery) rebootstrapLoop(ctx context.Context) {
 	}
 }
 
+// connectToBootstrapPeers dials all bootstrap peers concurrently and returns
+// immediately — it does not block startup waiting for slow/offline peers.
+// The DHT bootstrap process handles reconnects automatically.
 func connectToBootstrapPeers(ctx context.Context, h host.Host, extra []peer.AddrInfo) {
 	peers := append(dht.GetDefaultBootstrapPeerAddrInfos(), extra...)
-	var wg sync.WaitGroup
 	for _, pi := range peers {
-		wg.Add(1)
 		go func(pi peer.AddrInfo) {
-			defer wg.Done()
 			cctx, cancel := context.WithTimeout(ctx, bootstrapConnectTimeout)
 			defer cancel()
 			_ = h.Connect(cctx, pi)
 		}(pi)
 	}
-	wg.Wait()
 }
 
 func (d *Discovery) Close() error {

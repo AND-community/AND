@@ -67,6 +67,8 @@ func (m *mockForum) CreatePost(_ context.Context, cat, title, body string, perm 
 	m.created = append(m.created, CreatePostReq{Category: cat, Title: title, Body: body, PermanentReq: perm})
 	return nil
 }
+func (m *mockForum) AllPosts() ([]PostSummary, error)  { return nil, nil }
+func (m *mockForum) DeletePost(_ string) error          { return nil }
 
 type mockDM struct {
 	subs    []chan DMMsg
@@ -95,7 +97,7 @@ func startTestServer(t *testing.T, id IdentityBackend, f ForumBackend, dm DMBack
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	srv := NewServer(id, f, dm)
+	srv := NewServer(id, f, dm, nil)
 	addr, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
@@ -393,6 +395,145 @@ func TestSendDM_Error(t *testing.T) {
 	err := c.SendDM("12D3KooWXxx", "deneme")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// ─── File endpoints ───────────────────────────────────────────────────────────
+
+type mockFile struct {
+	subs    []chan FileMsg
+	sendErr error
+	sent    []struct{ peerID, localPath string }
+}
+
+func (m *mockFile) Subscribe() chan FileMsg {
+	ch := make(chan FileMsg, 8)
+	m.subs = append(m.subs, ch)
+	return ch
+}
+func (m *mockFile) Unsubscribe(ch chan FileMsg) {
+	for i, c := range m.subs {
+		if c == ch {
+			m.subs = append(m.subs[:i], m.subs[i+1:]...)
+			return
+		}
+	}
+}
+func (m *mockFile) SendFile(_ context.Context, peerID, _, localPath string) error {
+	if m.sendErr != nil {
+		return m.sendErr
+	}
+	m.sent = append(m.sent, struct{ peerID, localPath string }{peerID, localPath})
+	return nil
+}
+func (m *mockFile) SubscribeConsent() chan FileConsentReq      { return make(chan FileConsentReq, 4) }
+func (m *mockFile) UnsubscribeConsent(_ chan FileConsentReq)   {}
+func (m *mockFile) RespondConsent(_ string, _ bool)            {}
+
+func startTestServerWithFile(t *testing.T, id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend) *Client {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	srv := NewServer(id, f, dm, file)
+	addr, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
+func TestFilePoll_NilBackend(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	msgs, err := c.PollFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected empty slice with nil file backend, got %v", msgs)
+	}
+}
+
+func TestSendFile_NilBackend(t *testing.T) {
+	c := startTestServer(t, &mockID{name: "bob"}, &mockForum{}, nil)
+	err := c.SendFile("12D3KooWXxx", "test.txt")
+	if err == nil {
+		t.Fatal("expected error with nil file backend")
+	}
+}
+
+func TestSendFile_EmptyPeerID(t *testing.T) {
+	mf := &mockFile{}
+	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
+	err := c.SendFile("", "test.txt")
+	if err == nil {
+		t.Fatal("expected 400 for empty peer_id")
+	}
+}
+
+func TestSendFile_EmptyLocalPath(t *testing.T) {
+	mf := &mockFile{}
+	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
+	err := c.SendFile("12D3KooWXxx", "")
+	if err == nil {
+		t.Fatal("expected 400 for empty local_path")
+	}
+}
+
+func TestSendFile_Success(t *testing.T) {
+	mf := &mockFile{}
+	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
+	err := c.SendFile("12D3KooWXxx", "/tmp/rapor.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mf.sent) != 1 {
+		t.Fatalf("expected 1 sent file, got %d", len(mf.sent))
+	}
+	if mf.sent[0].localPath != "/tmp/rapor.pdf" {
+		t.Errorf("unexpected localPath: %q", mf.sent[0].localPath)
+	}
+	if mf.sent[0].peerID != "12D3KooWXxx" {
+		t.Errorf("unexpected peerID: %q", mf.sent[0].peerID)
+	}
+}
+
+func TestFilePoll_ReceivesMessage(t *testing.T) {
+	mf := &mockFile{}
+	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		for _, ch := range mf.subs {
+			ch <- FileMsg{From: "alice", Filename: "foto.jpg", Size: 3, SavePath: "/tmp/foto.jpg", ReceivedAt: time.Now()}
+		}
+	}()
+
+	msgs, err := c.PollFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 file message, got %d", len(msgs))
+	}
+	if msgs[0].From != "alice" || msgs[0].Filename != "foto.jpg" {
+		t.Errorf("unexpected message: %+v", msgs[0])
+	}
+	if msgs[0].SavePath != "/tmp/foto.jpg" {
+		t.Errorf("unexpected SavePath: %q", msgs[0].SavePath)
+	}
+}
+
+func TestSendFile_BackendError(t *testing.T) {
+	mf := &mockFile{sendErr: errors.New("peer erişilemiyor")}
+	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
+	err := c.SendFile("12D3KooWXxx", "test.txt")
+	if err == nil {
+		t.Fatal("expected error from backend")
 	}
 }
 
