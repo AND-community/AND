@@ -38,7 +38,7 @@ func TestPlugin_Launch_EnvVars(t *testing.T) {
 		Manifest: pluginapi.Manifest{Name: "test"},
 		ExePath:  "/bin/echo",
 	}
-	cmd := p.Launch("127.0.0.1:12345", "/tmp/data", "AND_CATEGORY=genel")
+	cmd := p.Launch("127.0.0.1:12345", "test-token-abc", "/tmp/data", "AND_CATEGORY=genel")
 
 	envMap := make(map[string]string)
 	for _, e := range cmd.Env {
@@ -50,6 +50,9 @@ func TestPlugin_Launch_EnvVars(t *testing.T) {
 
 	if got := envMap["AND_API_ADDR"]; got != "127.0.0.1:12345" {
 		t.Errorf("AND_API_ADDR: %q", got)
+	}
+	if got := envMap["AND_API_TOKEN"]; got != "test-token-abc" {
+		t.Errorf("AND_API_TOKEN: %q", got)
 	}
 	if got := envMap["AND_DATA_DIR"]; got != "/tmp/data" {
 		t.Errorf("AND_DATA_DIR: %q", got)

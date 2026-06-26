@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -304,6 +305,15 @@ func run() error {
 	_ = os.MkdirAll(dosyalarDir, 0o700)
 	fileBroker := filemgr.New(node, dosyalarDir)
 
+	// Ayrı bir chat topic aboneliği oluştur: plugin API ile TUI aynı subscription'ı paylaşmaz.
+	pluginChatTopic, err := network.JoinTopic(ps, node.Host, network.ChatTopic)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "plugin chat topic:", err)
+		pluginChatTopic = nil
+	} else {
+		defer pluginChatTopic.Close()
+	}
+
 	approvalFn := buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
 
 	idBackend := &identityAdapter{
@@ -317,11 +327,17 @@ func run() error {
 		approvalFn: approvalFn,
 	}
 
-	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker, fileBroker)
-	apiAddr, err := apiSrv.Start(ctx)
+	var chatBackend pluginapi.ChatBackend
+	if pluginChatTopic != nil {
+		chatBackend = newChatAdapter(ctx, pluginChatTopic, id.Name())
+	}
+
+	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker, fileBroker, chatBackend, dir)
+	apiAddr, apiToken, err := apiSrv.Start(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
 		apiAddr = ""
+		apiToken = ""
 	}
 
 	plugins := pluginmgr.DiscoverWithState(dir)
@@ -330,7 +346,7 @@ func run() error {
 	restartCh := make(chan struct{}, 1)
 	go autoUpdate(ctx, updateCh, restartCh)
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, approvalFn, forumStore, dir, chatTopic, updateCh); err != nil {
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dir, chatTopic, updateCh); err != nil {
 		return err
 	}
 
@@ -397,6 +413,22 @@ func (a *identityAdapter) IsModerator() bool {
 	myPubHex := hex.EncodeToString(a.id.PublicKey())
 	return moderation.FindModCert(a.dir, myPubHex) != nil
 }
+func (a *identityAdapter) ConnectedPeers() []pluginapi.PeerInfo {
+	if a.node == nil {
+		return nil
+	}
+	peers := a.node.Host.Network().Peers()
+	out := make([]pluginapi.PeerInfo, 0, len(peers))
+	for _, pid := range peers {
+		info := a.node.Host.Peerstore().PeerInfo(pid)
+		addrs := make([]string, len(info.Addrs))
+		for i, ma := range info.Addrs {
+			addrs[i] = ma.String()
+		}
+		out = append(out, pluginapi.PeerInfo{PeerID: pid.String(), Addrs: addrs})
+	}
+	return out
+}
 
 type forumAdapter struct {
 	store      *forum.Forum
@@ -435,7 +467,7 @@ func (a *forumAdapter) RejectPost(postID string) error {
 }
 
 func (a *forumAdapter) DeletePost(postID string) error {
-	return a.store.RejectPost(postID)
+	return a.store.DeletePost(postID)
 }
 
 func (a *forumAdapter) AllPosts() ([]pluginapi.PostSummary, error) {
@@ -462,4 +494,115 @@ func (a *forumAdapter) ApproveAuthor(authorKey string) error {
 func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error {
 	_, err := a.store.CreatePost(ctx, category, title, body, permanentReq)
 	return err
+}
+
+func (a *forumAdapter) GetPost(id string) (*pluginapi.PostDetail, error) {
+	p := a.store.PostByID(id)
+	if p == nil {
+		return nil, nil
+	}
+	replies := a.store.Replies(id)
+	replyInfos := make([]pluginapi.ReplyInfo, len(replies))
+	for i, r := range replies {
+		replyInfos[i] = pluginapi.ReplyInfo{
+			ID:         r.ID,
+			AuthorName: r.AuthorName,
+			AuthorKey:  r.AuthorKey,
+			Body:       r.Body,
+			CreatedAt:  r.CreatedAt,
+		}
+	}
+	return &pluginapi.PostDetail{
+		ID:         p.ID,
+		Category:   p.Category,
+		AuthorName: p.AuthorName,
+		AuthorKey:  p.AuthorKey,
+		Title:      p.Title,
+		Body:       p.Body,
+		CreatedAt:  p.CreatedAt,
+		Approved:   p.Approved,
+		Replies:    replyInfos,
+	}, nil
+}
+
+func (a *forumAdapter) CreateReply(ctx context.Context, postID, body string) error {
+	_, err := a.store.CreateReply(ctx, postID, body)
+	return err
+}
+
+// chatAdapter fans out chat topic messages to plugin subscribers.
+type chatAdapter struct {
+	ctx   context.Context
+	topic interface {
+		Publish(ctx context.Context, data []byte) error
+		Messages(ctx context.Context) <-chan []byte
+	}
+	name string
+	mu   sync.Mutex
+	subs []chan pluginapi.ChatMsg
+}
+
+func newChatAdapter(ctx context.Context, topic interface {
+	Publish(ctx context.Context, data []byte) error
+	Messages(ctx context.Context) <-chan []byte
+}, senderName string) *chatAdapter {
+	a := &chatAdapter{ctx: ctx, topic: topic, name: senderName}
+	go a.fanOut()
+	return a
+}
+
+func (a *chatAdapter) fanOut() {
+	ch := a.topic.Messages(a.ctx)
+	for data := range ch {
+		var pkt struct {
+			N string    `json:"n"`
+			T string    `json:"t"`
+			A time.Time `json:"a"`
+		}
+		if json.Unmarshal(data, &pkt) != nil || pkt.T == "" {
+			continue
+		}
+		msg := pluginapi.ChatMsg{From: pkt.N, Text: pkt.T, SentAt: pkt.A}
+		a.mu.Lock()
+		for _, ch := range a.subs {
+			select {
+			case ch <- msg:
+			default:
+			}
+		}
+		a.mu.Unlock()
+	}
+}
+
+func (a *chatAdapter) Subscribe() chan pluginapi.ChatMsg {
+	ch := make(chan pluginapi.ChatMsg, 32)
+	a.mu.Lock()
+	a.subs = append(a.subs, ch)
+	a.mu.Unlock()
+	return ch
+}
+
+func (a *chatAdapter) Unsubscribe(ch chan pluginapi.ChatMsg) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, c := range a.subs {
+		if c == ch {
+			a.subs = append(a.subs[:i], a.subs[i+1:]...)
+			close(ch)
+			return
+		}
+	}
+}
+
+func (a *chatAdapter) SendChat(ctx context.Context, senderName, message string) error {
+	pkt := struct {
+		N string    `json:"n"`
+		T string    `json:"t"`
+		A time.Time `json:"a"`
+	}{N: senderName, T: message, A: time.Now().UTC()}
+	data, err := json.Marshal(pkt)
+	if err != nil {
+		return err
+	}
+	return a.topic.Publish(ctx, data)
 }

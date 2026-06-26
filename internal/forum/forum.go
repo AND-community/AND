@@ -427,6 +427,12 @@ func (f *Forum) RejectPost(postID string) error {
 	return nil
 }
 
+// DeletePost moderatör/yönetici tarafından onaylanmış dahil her konuyu kaldırır.
+// Ağa broadcast yapılmaz; yalnızca yerel depodan silinir.
+func (f *Forum) DeletePost(postID string) error {
+	return f.RejectPost(postID)
+}
+
 func (f *Forum) storeReply(r *Reply) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

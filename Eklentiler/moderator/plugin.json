@@ -1,0 +1,8 @@
+{
+  "name":        "moderator",
+  "label":       "Moderatör Paneli",
+  "version":     "2.0.0",
+  "description": "Onay bekleyen konuları yönet (moderatör sertifikası gerekir)",
+  "author":      "AND",
+  "requires":    []
+}

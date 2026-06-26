@@ -50,6 +50,7 @@ type appModel struct {
 
 	plugins    []pluginmgr.Plugin
 	apiAddr    string
+	apiToken   string
 	approvalFn func(string) error
 
 	forumStore  *forum.Forum
@@ -77,11 +78,11 @@ type appModel struct {
 }
 
 func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr string, approvalFn func(string) error,
+	plugins []pluginmgr.Plugin, apiAddr, apiToken string, approvalFn func(string) error,
 	forumStore *forum.Forum, dataDir string,
 	chatTopic *network.Topic, updateCh <-chan UpdateReadyMsg) error {
 
-	m := newAppModel(ctx, id, node, plugins, apiAddr, approvalFn, forumStore, dataDir, chatTopic)
+	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dataDir, chatTopic)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
 
 	if updateCh != nil {
@@ -108,7 +109,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 }
 
 func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr string, approvalFn func(string) error,
+	plugins []pluginmgr.Plugin, apiAddr, apiToken string, approvalFn func(string) error,
 	forumStore *forum.Forum, dataDir string, chatTopic *network.Topic) appModel {
 
 	chatIn := textinput.New()
@@ -149,6 +150,7 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		node:           node,
 		plugins:        plugins,
 		apiAddr:        apiAddr,
+		apiToken:       apiToken,
 		approvalFn:     approvalFn,
 		forumStore:     forumStore,
 		dataDir:        dataDir,
@@ -166,16 +168,11 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 
 
 func (m appModel) Init() tea.Cmd {
-	return tea.Batch(
-		textinput.Blink,
-		m.forumModel.Init(),
-		func() tea.Msg {
-			if m.chatMessages != nil {
-				return listenForChat(m.chatMessages)()
-			}
-			return nil
-		},
-	)
+	cmds := []tea.Cmd{textinput.Blink, m.forumModel.Init()}
+	if m.chatMessages != nil {
+		cmds = append(cmds, listenForChat(m.chatMessages))
+	}
+	return tea.Batch(cmds...)
 }
 
 func listenForChat(ch <-chan []byte) tea.Cmd {
@@ -268,6 +265,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatLines = append(m.chatLines, msg.line)
 		m.chatOwn = append(m.chatOwn, msg.own)
 		m.syncChatViewport()
+		if m.chatMessages == nil {
+			return m, nil
+		}
 		return m, listenForChat(m.chatMessages)
 
 	case chatClosedMsg:
@@ -306,7 +306,7 @@ func (m appModel) launchPlugin(name string, extraEnv []string) (tea.Model, tea.C
 		if m.plugins[i].Name() != name {
 			continue
 		}
-		cmd := m.plugins[i].Launch(m.apiAddr, m.dataDir, extraEnv...)
+		cmd := m.plugins[i].Launch(m.apiAddr, m.apiToken, m.dataDir, extraEnv...)
 		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
 			return pluginExitMsg{name: name, err: err}
 		})
@@ -368,7 +368,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if !pl.Enabled {
 				return m, nil
 			}
-			cmd := pl.Launch(m.apiAddr, m.dataDir)
+			cmd := pl.Launch(m.apiAddr, m.apiToken, m.dataDir)
 			return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
 				return pluginExitMsg{name: pl.Name(), err: err}
 			})

@@ -30,7 +30,7 @@ func newTestModel(t *testing.T) appModel {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
 	id.SetName("alice")
-	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", nil, nil, "", nil)
+	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", "", nil, nil, "", nil)
 }
 
 func TestAppModel_SendChat_NoTopicIsNoop(t *testing.T) {

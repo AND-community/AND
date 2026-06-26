@@ -3,6 +3,7 @@ package pluginmgr
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,11 +22,12 @@ type Plugin struct {
 func (p *Plugin) Name() string  { return p.Manifest.Name }
 func (p *Plugin) Label() string { return p.Manifest.Label }
 
-func (p *Plugin) Launch(apiAddr, dataDir string, extraEnv ...string) *exec.Cmd {
+func (p *Plugin) Launch(apiAddr, apiToken, dataDir string, extraEnv ...string) *exec.Cmd {
 	cmd := exec.Command(p.ExePath)
 	cmd.Dir = filepath.Dir(p.ExePath) // her eklenti kendi dizininde çalışır
 	cmd.Env = append(os.Environ(),
 		"AND_API_ADDR="+apiAddr,
+		"AND_API_TOKEN="+apiToken,
 		"AND_DATA_DIR="+dataDir,
 	)
 	cmd.Env = append(cmd.Env, extraEnv...)
@@ -211,7 +213,7 @@ func getManifest(exePath string) (pluginapi.Manifest, error) {
 		return pluginapi.Manifest{}, err
 	}
 	if m.Name == "" {
-		return pluginapi.Manifest{}, nil
+		return pluginapi.Manifest{}, fmt.Errorf("pluginmgr: manifest name alanı boş")
 	}
 	return m, nil
 }

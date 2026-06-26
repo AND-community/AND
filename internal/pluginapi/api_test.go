@@ -18,11 +18,12 @@ type mockID struct {
 	moderator bool
 }
 
-func (m *mockID) Name() string       { return m.name }
-func (m *mockID) PubKeyHex() string  { return m.pubKeyHex }
-func (m *mockID) PeerIDStr() string  { return m.peerID }
-func (m *mockID) IsFounder() bool    { return m.founder }
-func (m *mockID) IsModerator() bool  { return m.moderator }
+func (m *mockID) Name() string            { return m.name }
+func (m *mockID) PubKeyHex() string       { return m.pubKeyHex }
+func (m *mockID) PeerIDStr() string       { return m.peerID }
+func (m *mockID) IsFounder() bool         { return m.founder }
+func (m *mockID) IsModerator() bool       { return m.moderator }
+func (m *mockID) ConnectedPeers() []PeerInfo { return nil }
 
 type mockForum struct {
 	posts        []PendingPost
@@ -69,6 +70,10 @@ func (m *mockForum) CreatePost(_ context.Context, cat, title, body string, perm 
 }
 func (m *mockForum) AllPosts() ([]PostSummary, error)  { return nil, nil }
 func (m *mockForum) DeletePost(_ string) error          { return nil }
+func (m *mockForum) GetPost(id string) (*PostDetail, error) {
+	return &PostDetail{ID: id, Replies: []ReplyInfo{}}, nil
+}
+func (m *mockForum) CreateReply(_ context.Context, _, _ string) error { return nil }
 
 type mockDM struct {
 	subs    []chan DMMsg
@@ -97,12 +102,13 @@ func startTestServer(t *testing.T, id IdentityBackend, f ForumBackend, dm DMBack
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	srv := NewServer(id, f, dm, nil)
-	addr, err := srv.Start(ctx)
+	srv := NewServer(id, f, dm, nil, nil, "")
+	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
 	}
 	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
 	c, err := NewClientFromEnv()
 	if err != nil {
 		t.Fatalf("client: %v", err)
@@ -434,12 +440,13 @@ func startTestServerWithFile(t *testing.T, id IdentityBackend, f ForumBackend, d
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	srv := NewServer(id, f, dm, file)
-	addr, err := srv.Start(ctx)
+	srv := NewServer(id, f, dm, file, nil, "")
+	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
 	}
 	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
 	c, err := NewClientFromEnv()
 	if err != nil {
 		t.Fatalf("client: %v", err)
@@ -537,10 +544,220 @@ func TestSendFile_BackendError(t *testing.T) {
 	}
 }
 
+// ─── Peers ────────────────────────────────────────────────────────────────────
+
+type mockIDWithPeers struct {
+	mockID
+	peers []PeerInfo
+}
+
+func (m *mockIDWithPeers) ConnectedPeers() []PeerInfo { return m.peers }
+
+func TestGetPeers_Empty(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	peers, err := c.Peers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(peers) != 0 {
+		t.Errorf("expected 0 peers, got %d", len(peers))
+	}
+}
+
+func TestGetPeers_WithPeers(t *testing.T) {
+	id := &mockIDWithPeers{
+		peers: []PeerInfo{
+			{PeerID: "12D3KooWAbc", Addrs: []string{"/ip4/127.0.0.1/tcp/4001"}},
+			{PeerID: "12D3KooWDef", Addrs: []string{"/ip4/192.168.1.5/tcp/4001"}},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	srv := NewServer(id, &mockForum{}, nil, nil, nil, "")
+	addr, token, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+
+	peers, err := c.Peers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(peers) != 2 {
+		t.Fatalf("expected 2 peers, got %d", len(peers))
+	}
+	if peers[0].PeerID != "12D3KooWAbc" {
+		t.Errorf("unexpected peer[0]: %+v", peers[0])
+	}
+	if len(peers[1].Addrs) != 1 {
+		t.Errorf("expected 1 addr for peer[1], got %d", len(peers[1].Addrs))
+	}
+}
+
+// ─── Forum post detail + reply ─────────────────────────────────────────────────
+
+func TestGetForumPost(t *testing.T) {
+	c := startTestServer(t, founderID(), &mockForum{}, nil)
+	detail, err := c.GetPost(testPostID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.ID != testPostID {
+		t.Errorf("got ID=%q, want %q", detail.ID, testPostID)
+	}
+}
+
+func TestGetForumPost_InvalidID(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	_, err := c.GetPost("not-hex!")
+	if err == nil {
+		t.Fatal("expected 400 for invalid id")
+	}
+}
+
+func TestCreateReply(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	if err := c.CreateReply(testPostID, "harika konu!"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateReply_EmptyBody(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	if err := c.CreateReply(testPostID, ""); err == nil {
+		t.Fatal("expected 400 for empty body")
+	}
+}
+
+func TestCreateReply_InvalidPostID(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	if err := c.CreateReply("not-hex!", "içerik"); err == nil {
+		t.Fatal("expected 400 for invalid post_id")
+	}
+}
+
+// ─── Chat endpoints ───────────────────────────────────────────────────────────
+
+type mockChat struct {
+	subs    []chan ChatMsg
+	sendErr error
+	sent    []ChatMsg
+}
+
+func (m *mockChat) Subscribe() chan ChatMsg {
+	ch := make(chan ChatMsg, 8)
+	m.subs = append(m.subs, ch)
+	return ch
+}
+func (m *mockChat) Unsubscribe(ch chan ChatMsg) {
+	for i, c := range m.subs {
+		if c == ch {
+			m.subs = append(m.subs[:i], m.subs[i+1:]...)
+			return
+		}
+	}
+}
+func (m *mockChat) SendChat(_ context.Context, from, msg string) error {
+	if m.sendErr != nil {
+		return m.sendErr
+	}
+	m.sent = append(m.sent, ChatMsg{From: from, Text: msg})
+	return nil
+}
+
+func startTestServerWithChat(t *testing.T, chat ChatBackend) *Client {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	srv := NewServer(&mockID{name: "ali"}, &mockForum{}, nil, nil, chat, "")
+	addr, token, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	return c
+}
+
+func TestChatPoll_NilBackend(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	msgs, err := c.PollChat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected empty slice with nil chat backend, got %v", msgs)
+	}
+}
+
+func TestChatPoll_ReceivesMessage(t *testing.T) {
+	chat := &mockChat{}
+	c := startTestServerWithChat(t, chat)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		for _, ch := range chat.subs {
+			ch <- ChatMsg{From: "veli", Text: "selam"}
+		}
+	}()
+
+	msgs, err := c.PollChat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 chat msg, got %d", len(msgs))
+	}
+	if msgs[0].From != "veli" || msgs[0].Text != "selam" {
+		t.Errorf("unexpected msg: %+v", msgs[0])
+	}
+}
+
+func TestSendChat_Success(t *testing.T) {
+	chat := &mockChat{}
+	c := startTestServerWithChat(t, chat)
+
+	if err := c.SendChat("herkese merhaba"); err != nil {
+		t.Fatal(err)
+	}
+	if len(chat.sent) != 1 {
+		t.Fatalf("expected 1 sent msg, got %d", len(chat.sent))
+	}
+	if chat.sent[0].Text != "herkese merhaba" {
+		t.Errorf("unexpected text: %q", chat.sent[0].Text)
+	}
+}
+
+func TestSendChat_EmptyMessage(t *testing.T) {
+	chat := &mockChat{}
+	c := startTestServerWithChat(t, chat)
+	if err := c.SendChat(""); err == nil {
+		t.Fatal("expected 400 for empty message")
+	}
+}
+
+func TestSendChat_NilBackend(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	if err := c.SendChat("test"); err == nil {
+		t.Fatal("expected error with nil chat backend")
+	}
+}
+
 // ─── Client from env ──────────────────────────────────────────────────────────
 
 func TestNewClientFromEnv_MissingVar(t *testing.T) {
 	os.Unsetenv("AND_API_ADDR")
+	os.Unsetenv("AND_API_TOKEN")
 	_, err := NewClientFromEnv()
 	if err == nil {
 		t.Fatal("expected error when AND_API_ADDR is not set")

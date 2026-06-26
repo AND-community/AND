@@ -3,13 +3,17 @@ package pluginapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -112,6 +116,52 @@ type ConsentResp struct {
 
 type errResp struct{ Error string `json:"error"` }
 
+// PeerInfo represents a connected libp2p peer.
+type PeerInfo struct {
+	PeerID string   `json:"peer_id"`
+	Addrs  []string `json:"addrs"`
+}
+
+// ChatMsg is a general chat message received from the shared channel.
+type ChatMsg struct {
+	From   string    `json:"from"`
+	Text   string    `json:"text"`
+	SentAt time.Time `json:"sent_at"`
+}
+
+// SendChatReq is the request body for POST /api/v1/chat/send.
+type SendChatReq struct {
+	Message string `json:"message"`
+}
+
+// ReplyInfo is a single reply to a forum post.
+type ReplyInfo struct {
+	ID         string    `json:"id"`
+	AuthorName string    `json:"author_name"`
+	AuthorKey  string    `json:"author_key"`
+	Body       string    `json:"body"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PostDetail is a forum post with its full body and replies.
+type PostDetail struct {
+	ID         string      `json:"id"`
+	Category   string      `json:"category"`
+	AuthorName string      `json:"author_name"`
+	AuthorKey  string      `json:"author_key"`
+	Title      string      `json:"title"`
+	Body       string      `json:"body"`
+	CreatedAt  time.Time   `json:"created_at"`
+	Approved   bool        `json:"approved"`
+	Replies    []ReplyInfo `json:"replies"`
+}
+
+// CreateReplyReq is the request body for POST /api/v1/forum/reply.
+type CreateReplyReq struct {
+	PostID string `json:"post_id"`
+	Body   string `json:"body"`
+}
+
 type ForumBackend interface {
 	PendingPosts() ([]PendingPost, error)
 	AllPosts() ([]PostSummary, error)
@@ -120,6 +170,8 @@ type ForumBackend interface {
 	DeletePost(postID string) error
 	ApproveAuthor(authorKey string) error
 	CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error
+	GetPost(id string) (*PostDetail, error)
+	CreateReply(ctx context.Context, postID, body string) error
 }
 
 type IdentityBackend interface {
@@ -128,6 +180,7 @@ type IdentityBackend interface {
 	PeerIDStr() string
 	IsFounder() bool
 	IsModerator() bool
+	ConnectedPeers() []PeerInfo
 }
 
 type DMBackend interface {
@@ -145,55 +198,87 @@ type FileBackend interface {
 	RespondConsent(transferID string, accept bool)
 }
 
+type ChatBackend interface {
+	SendChat(ctx context.Context, senderName, message string) error
+	Subscribe() chan ChatMsg
+	Unsubscribe(ch chan ChatMsg)
+}
+
 var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 
 func validPostID(id string) bool    { return reHex.MatchString(id) }
 func validAuthorKey(key string) bool { return len(key) == 64 && reHex.MatchString(key) }
 
 type Server struct {
-	addr string
-	srv  *http.Server
-	id   IdentityBackend
-	f    ForumBackend
-	dm   DMBackend
-	file FileBackend
+	addr    string
+	token   string
+	dataDir string
+	srv     *http.Server
+	id      IdentityBackend
+	f       ForumBackend
+	dm      DMBackend
+	file    FileBackend
+	chat    ChatBackend
 }
 
-func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend) *Server {
-	return &Server{id: id, f: f, dm: dm, file: file}
+func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend, chat ChatBackend, dataDir string) *Server {
+	return &Server{id: id, f: f, dm: dm, file: file, chat: chat, dataDir: dataDir}
 }
 
-func (s *Server) Start(ctx context.Context) (string, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", fmt.Errorf("pluginapi: listen: %w", err)
+func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
+	ln, listenErr := net.Listen("tcp", "127.0.0.1:0")
+	if listenErr != nil {
+		return "", "", fmt.Errorf("pluginapi: listen: %w", listenErr)
 	}
 	s.addr = ln.Addr().String()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/identity",            onlyMethod(http.MethodGet, s.getIdentity))
-	mux.HandleFunc("/api/v1/role",                onlyMethod(http.MethodGet, s.getRole))
-	mux.HandleFunc("/api/v1/forum/pending",       onlyMethod(http.MethodGet, s.getPending))
-	mux.HandleFunc("/api/v1/forum/all-posts",     onlyMethod(http.MethodGet, s.getAllPosts))
-	mux.HandleFunc("/api/v1/forum/approve",       onlyMethod(http.MethodPost, s.postApprove))
-	mux.HandleFunc("/api/v1/forum/approve-author", onlyMethod(http.MethodPost, s.postApproveAuthor))
-	mux.HandleFunc("/api/v1/forum/reject",        onlyMethod(http.MethodPost, s.postReject))
-	mux.HandleFunc("/api/v1/forum/delete",        onlyMethod(http.MethodPost, s.postDeletePost))
-	mux.HandleFunc("/api/v1/forum/post",          onlyMethod(http.MethodPost, s.postCreate))
-	mux.HandleFunc("/api/v1/dm/send",             onlyMethod(http.MethodPost, s.postSendDM))
-	mux.HandleFunc("/api/v1/dm/poll",             onlyMethod(http.MethodGet, s.getDMPoll))
-	mux.HandleFunc("/api/v1/file/send",           onlyMethod(http.MethodPost, s.postSendFile))
-	mux.HandleFunc("/api/v1/file/poll",           onlyMethod(http.MethodGet, s.getFilePoll))
-	mux.HandleFunc("/api/v1/file/consent-poll",   onlyMethod(http.MethodGet, s.getConsentPoll))
-	mux.HandleFunc("/api/v1/file/consent",        onlyMethod(http.MethodPost, s.postConsent))
+	raw := make([]byte, 32)
+	if _, randErr := rand.Read(raw); randErr != nil {
+		ln.Close() //nolint:errcheck
+		return "", "", fmt.Errorf("pluginapi: generate token: %w", randErr)
+	}
+	s.token = hex.EncodeToString(raw)
 
-	s.srv = &http.Server{Handler: mux}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/identity",             onlyMethod(http.MethodGet, s.getIdentity))
+	mux.HandleFunc("/api/v1/role",                 onlyMethod(http.MethodGet, s.getRole))
+	mux.HandleFunc("/api/v1/peers",                onlyMethod(http.MethodGet, s.getPeers))
+	mux.HandleFunc("/api/v1/forum/pending",        onlyMethod(http.MethodGet, s.getPending))
+	mux.HandleFunc("/api/v1/forum/all-posts",      onlyMethod(http.MethodGet, s.getAllPosts))
+	mux.HandleFunc("/api/v1/forum/post",           s.handleForumPost)
+	mux.HandleFunc("/api/v1/forum/reply",          onlyMethod(http.MethodPost, s.postReply))
+	mux.HandleFunc("/api/v1/forum/approve",        onlyMethod(http.MethodPost, s.postApprove))
+	mux.HandleFunc("/api/v1/forum/approve-author", onlyMethod(http.MethodPost, s.postApproveAuthor))
+	mux.HandleFunc("/api/v1/forum/reject",         onlyMethod(http.MethodPost, s.postReject))
+	mux.HandleFunc("/api/v1/forum/delete",         onlyMethod(http.MethodPost, s.postDeletePost))
+	mux.HandleFunc("/api/v1/dm/send",              onlyMethod(http.MethodPost, s.postSendDM))
+	mux.HandleFunc("/api/v1/dm/poll",              onlyMethod(http.MethodGet, s.getDMPoll))
+	mux.HandleFunc("/api/v1/chat/send",            onlyMethod(http.MethodPost, s.postSendChat))
+	mux.HandleFunc("/api/v1/chat/poll",            onlyMethod(http.MethodGet, s.getChatPoll))
+	mux.HandleFunc("/api/v1/file/send",            onlyMethod(http.MethodPost, s.postSendFile))
+	mux.HandleFunc("/api/v1/file/poll",            onlyMethod(http.MethodGet, s.getFilePoll))
+	mux.HandleFunc("/api/v1/file/consent-poll",    onlyMethod(http.MethodGet, s.getConsentPoll))
+	mux.HandleFunc("/api/v1/file/consent",         onlyMethod(http.MethodPost, s.postConsent))
+
+	s.srv = &http.Server{Handler: s.authMiddleware(mux)}
 	go s.srv.Serve(ln) //nolint:errcheck
 	go func() {
 		<-ctx.Done()
 		s.srv.Close()
 	}()
-	return s.addr, nil
+	return s.addr, s.token, nil
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-And-Token") != s.token {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(errResp{Error: "yetkisiz erişim"}) //nolint:errcheck
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Addr() string { return s.addr }
@@ -218,6 +303,101 @@ func (s *Server) enforceModeratorRole(w http.ResponseWriter) bool {
 	w.WriteHeader(http.StatusForbidden)
 	json.NewEncoder(w).Encode(errResp{Error: "yetersiz yetki — kurucu veya moderatör gerekir"}) //nolint:errcheck
 	return false
+}
+
+func (s *Server) getPeers(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, s.id.ConnectedPeers())
+}
+
+// handleForumPost routes GET (read post) and POST (create post) on /api/v1/forum/post.
+func (s *Server) handleForumPost(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getForumPost(w, r)
+	case http.MethodPost:
+		s.postCreate(w, r)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(errResp{Error: "yöntem izin verilmiyor"}) //nolint:errcheck
+	}
+}
+
+func (s *Server) getForumPost(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if !validPostID(id) {
+		writeBadRequest(w, "geçersiz veya eksik id parametresi")
+		return
+	}
+	detail, err := s.f.GetPost(id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if detail == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(errResp{Error: "konu bulunamadı"}) //nolint:errcheck
+		return
+	}
+	writeJSON(w, detail)
+}
+
+func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
+	var req CreateReplyReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validPostID(req.PostID) {
+		writeBadRequest(w, "geçersiz post_id biçimi")
+		return
+	}
+	if req.Body == "" {
+		writeBadRequest(w, "body boş olamaz")
+		return
+	}
+	if err := s.f.CreateReply(r.Context(), req.PostID, req.Body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) postSendChat(w http.ResponseWriter, r *http.Request) {
+	if s.chat == nil {
+		writeErr(w, fmt.Errorf("chat kullanılamıyor"))
+		return
+	}
+	var req SendChatReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Message == "" {
+		writeBadRequest(w, "message boş olamaz")
+		return
+	}
+	if err := s.chat.SendChat(r.Context(), s.id.Name(), req.Message); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getChatPoll(w http.ResponseWriter, r *http.Request) {
+	if s.chat == nil {
+		writeJSON(w, []ChatMsg{})
+		return
+	}
+	ch := s.chat.Subscribe()
+	defer s.chat.Unsubscribe(ch)
+	select {
+	case msg := <-ch:
+		writeJSON(w, []ChatMsg{msg})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []ChatMsg{})
+	case <-r.Context().Done():
+		writeJSON(w, []ChatMsg{})
+	}
 }
 
 func (s *Server) getIdentity(w http.ResponseWriter, _ *http.Request) {
@@ -394,6 +574,14 @@ func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "local_path boş olamaz")
 		return
 	}
+	if s.dataDir != "" {
+		clean := filepath.Clean(req.LocalPath)
+		base := filepath.Clean(s.dataDir)
+		if clean == base || strings.HasPrefix(clean, base+string(os.PathSeparator)) {
+			writeBadRequest(w, "güvenlik kısıtlaması: AND veri dizininden dosya gönderilemez")
+			return
+		}
+	}
 	if err := s.file.SendFile(r.Context(), req.PeerID, s.id.Name(), req.LocalPath); err != nil {
 		writeErr(w, err)
 		return
@@ -485,6 +673,7 @@ func decodeBodyN(w http.ResponseWriter, r *http.Request, v any, maxBytes int64) 
 
 type Client struct {
 	base   string
+	token  string
 	hc     *http.Client
 	hcFile *http.Client // dosya transferleri için timeout yok — transfer süresi öngörülemiyor
 }
@@ -494,11 +683,21 @@ func NewClientFromEnv() (*Client, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("AND_API_ADDR tanımlı değil — bu binary AND tarafından başlatılmalıdır")
 	}
+	token := os.Getenv("AND_API_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("AND_API_TOKEN tanımlı değil — bu binary AND tarafından başlatılmalıdır")
+	}
 	return &Client{
 		base:   "http://" + addr,
+		token:  token,
 		hc:     &http.Client{Timeout: 35 * time.Second},
 		hcFile: &http.Client{},
 	}, nil
+}
+
+func (c *Client) Peers() ([]PeerInfo, error) {
+	var v []PeerInfo
+	return v, c.get("/api/v1/peers", &v)
 }
 
 func (c *Client) Identity() (IdentityInfo, error) {
@@ -543,6 +742,24 @@ func (c *Client) CreatePost(category, title, body string, permanentReq bool) err
 	})
 }
 
+func (c *Client) GetPost(id string) (*PostDetail, error) {
+	var v PostDetail
+	return &v, c.get("/api/v1/forum/post?id="+id, &v)
+}
+
+func (c *Client) CreateReply(postID, body string) error {
+	return c.post("/api/v1/forum/reply", CreateReplyReq{PostID: postID, Body: body})
+}
+
+func (c *Client) SendChat(message string) error {
+	return c.post("/api/v1/chat/send", SendChatReq{Message: message})
+}
+
+func (c *Client) PollChat() ([]ChatMsg, error) {
+	var v []ChatMsg
+	return v, c.get("/api/v1/chat/poll", &v)
+}
+
 func (c *Client) SendDM(peerID, message string) error {
 	return c.post("/api/v1/dm/send", SendDMReq{PeerID: peerID, Message: message})
 }
@@ -575,7 +792,12 @@ func DataDir() string { return os.Getenv("AND_DATA_DIR") }
 func Category() string { return os.Getenv("AND_CATEGORY") }
 
 func (c *Client) get(path string, out any) error {
-	resp, err := c.hc.Get(c.base + path)
+	req, err := http.NewRequest(http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-And-Token", c.token)
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return err
 	}
@@ -597,7 +819,13 @@ func (c *Client) postWith(hc *http.Client, path string, body any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := hc.Post(c.base+path, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, c.base+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-And-Token", c.token)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}
