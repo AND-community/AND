@@ -1,8 +1,0 @@
-{
-  "name":        "admin",
-  "label":       "Yönetici Paneli",
-  "version":     "2.0.0",
-  "description": "Onay bekleyen konuları yönet — onayla, reddet, toplu onayla",
-  "author":      "AND",
-  "requires":    []
-}
