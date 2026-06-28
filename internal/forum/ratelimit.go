@@ -12,11 +12,12 @@ import (
 // Spam protection constants.
 // Yazar başına saatte en fazla bu kadar mesaj kabul edilir; geri kalanlar düşürülür.
 const (
-	rlPostWindow   = time.Hour
-	rlMaxPosts     = 10   // saatte en fazla 10 konu
-	rlReplyWindow  = time.Hour
-	rlMaxReplies   = 40   // saatte en fazla 40 yanıt
-	rlMaxBodyBytes = 8192 // ağ katmanında zorunlu tutulan max içerik boyutu (8 KB)
+	rlPostWindow      = time.Hour
+	rlMaxPosts        = 10  // saatte en fazla 10 konu (yazar başına)
+	rlGlobalMaxPosts  = 200 // saatte en fazla 200 konu (tüm ağdan) — Sybil koruması
+	rlReplyWindow     = time.Hour
+	rlMaxReplies      = 40  // saatte en fazla 40 yanıt
+	rlMaxBodyBytes    = 8192 // ağ katmanında zorunlu tutulan max içerik boyutu (8 KB)
 
 	// rlSaveInterval: dirty state ne sıklıkla diske yazılır.
 	// Her izin verilen mesajda ayrı goroutine yerine tek bir arka plan döngüsü kullanılır.
@@ -32,10 +33,11 @@ type authorBucket struct {
 // Keyed by the author's hex-encoded Ed25519 public key so it's tied to a
 // cryptographic identity rather than an IP address.
 type rateLimiter struct {
-	mu      sync.Mutex
-	authors map[string]*authorBucket
-	dirty   bool   // true → in-memory state is ahead of the on-disk state
-	dataDir string
+	mu          sync.Mutex
+	authors     map[string]*authorBucket
+	globalPosts []time.Time // tüm yazarlardan gelen postlar — Sybil koruması
+	dirty       bool        // true → in-memory state is ahead of the on-disk state
+	dataDir     string
 }
 
 func newRateLimiter(dataDir string) *rateLimiter {
@@ -88,14 +90,22 @@ func (rl *rateLimiter) allowPost(authorKey string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	b := rl.bucket(authorKey)
-	cutoff := time.Now().Add(-rlPostWindow)
-	b.PostTimes = keepAfter(b.PostTimes, cutoff)
+	now := time.Now()
+	cutoff := now.Add(-rlPostWindow)
 
+	rl.globalPosts = keepAfter(rl.globalPosts, cutoff)
+	if len(rl.globalPosts) >= rlGlobalMaxPosts {
+		return false
+	}
+
+	b := rl.bucket(authorKey)
+	b.PostTimes = keepAfter(b.PostTimes, cutoff)
 	if len(b.PostTimes) >= rlMaxPosts {
 		return false
 	}
-	b.PostTimes = append(b.PostTimes, time.Now())
+
+	b.PostTimes = append(b.PostTimes, now)
+	rl.globalPosts = append(rl.globalPosts, now)
 	rl.dirty = true
 	return true
 }

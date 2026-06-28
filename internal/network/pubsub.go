@@ -16,6 +16,8 @@ const (
 func NewPubSub(ctx context.Context, h host.Host) (*pubsub.PubSub, error) {
 	ps, err := pubsub.NewGossipSub(ctx, h,
 		pubsub.WithMaxMessageSize(64*1024),
+		pubsub.WithMessageSigning(true),
+		pubsub.WithStrictSignatureVerification(true),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("network: start pubsub: %w", err)

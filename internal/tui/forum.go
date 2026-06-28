@@ -67,7 +67,7 @@ type forumModel struct {
 	gonderi bool
 }
 
-const fMaxYanit = 1000
+const fMaxYanit = 4096
 
 func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, approvalFn func(string) error, canCreatePost bool) forumModel {
 	ya := textarea.New()
@@ -203,6 +203,7 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.aktifKonu != nil {
 			m.yanitlar = m.forum.Replies(m.aktifKonu.ID)
 			m.forumKonuVPGuncelle()
+			m.konuVP.GotoBottom()
 			m.okMsg = "Yanıt gönderildi"
 			m.ekran = fEkKonu
 		}
@@ -404,6 +405,10 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.konuVP.LineUp(1)
 	case "down", "j":
 		m.konuVP.LineDown(1)
+	case "pgup":
+		m.konuVP.HalfViewUp()
+	case "pgdown":
+		m.konuVP.HalfViewDown()
 	case "g":
 		m.konuVP.GotoTop()
 	case "G":
@@ -461,9 +466,9 @@ func (m *forumModel) forumKonuVPGuncelle() {
 
 	b.WriteString(m.aktifKonu.Body)
 
+	b.WriteString("\n\n")
+	ayrac := strings.Repeat("─", vw-4)
 	if len(m.yanitlar) > 0 {
-		b.WriteString("\n\n")
-		ayrac := strings.Repeat("─", vw-4)
 		b.WriteString(fStAyrac.Render(ayrac))
 		b.WriteString("\n")
 		b.WriteString(fStAyrac.Render(fmt.Sprintf(" %d yanıt", len(m.yanitlar))))
@@ -479,6 +484,11 @@ func (m *forumModel) forumKonuVPGuncelle() {
 			b.WriteString(y.Body)
 			b.WriteString("\n\n")
 		}
+	} else {
+		b.WriteString(fStAyrac.Render(ayrac))
+		b.WriteString("\n")
+		b.WriteString(fStSoluk.Render("  Henüz yanıt yok  ·  r ile ilk yanıtı yaz"))
+		b.WriteString("\n")
 	}
 	m.konuVP.SetContent(b.String())
 }
@@ -777,7 +787,7 @@ func (m forumModel) forumGorunumKonu() string {
 		b.WriteString(bd + "\n")
 	}
 
-	helpText := "↑/↓  kaydır    g/G  başa/sona    r  yanıtla    esc  geri"
+	helpText := "↑/↓  kaydır    pgup/pgdn  sayfa    g/G  başa/sona    r  yanıtla    esc  geri"
 	if m.approvalFn != nil && !k.Approved {
 		helpText += "    a  onayla"
 	}

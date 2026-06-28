@@ -30,7 +30,7 @@ const (
 	maxBanDays        = 30
 	banRateWindow     = time.Hour
 	banRateLimit      = 20
-	seenCacheSize     = 512
+	seenCacheSize     = 4096
 	ratesSaveInterval = 30 * time.Second
 )
 
@@ -129,8 +129,9 @@ type Moderator struct {
 	founderID      peer.ID
 	dataDir        string
 
-	seenBans    *seenSet
-	seenRevokes *seenSet
+	seenBans      *seenSet
+	seenRevokes   *seenSet
+	seenApprovals *seenSet
 
 	rateMu     sync.Mutex
 	rates      map[string][]time.Time
@@ -183,6 +184,7 @@ func New(dataDir string, founderPeerID peer.ID) (*Moderator, error) {
 		rates:          make(map[string][]time.Time),
 		seenBans:       newSeenSet(seenCacheSize),
 		seenRevokes:    newSeenSet(seenCacheSize),
+		seenApprovals:  newSeenSet(seenCacheSize),
 	}
 
 	m.loadBans()
@@ -342,6 +344,9 @@ func (m *Moderator) handleApproveMsg(msg *ApprovalMsg) {
 	if msg.PostID == "" || msg.Sig == "" {
 		return
 	}
+	if m.seenApprovals.seen(msg.Sig) {
+		return
+	}
 	if !m.verifyApproval(msg) {
 		return
 	}
@@ -387,6 +392,9 @@ func (m *Moderator) verifyTrustedCert(cert *TrustedAuthorCert) bool {
 func (m *Moderator) verifyApproval(msg *ApprovalMsg) bool {
 	sig, err := hex.DecodeString(msg.Sig)
 	if err != nil || len(sig) != ed25519.SignatureSize {
+		return false
+	}
+	if time.Since(msg.IssuedAt) > 24*time.Hour {
 		return false
 	}
 	payload := fmt.Sprintf("approve|%s|%d", msg.PostID, msg.IssuedAt.Unix())
