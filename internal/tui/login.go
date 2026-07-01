@@ -61,7 +61,9 @@ type loginModel struct {
 	width, height int
 }
 
-func Login(path string) (*stdcrypto.Identity, error) {
+func Login(path, dataDir string) (*stdcrypto.Identity, error) {
+	loadAndApplyTheme(dataDir)
+
 	register := true
 	if _, err := os.Stat(path); err == nil {
 		register = false
@@ -355,7 +357,7 @@ func logoBlock() string {
 		Background(colorSelBG).Foreground(colorSelFG).
 		Bold(true).Padding(0, 1)
 
-	badge := badgeSt.Render("ALPHA")
+	badge := badgeSt.Render(ActiveThemeName)
 	ver   := verSt.Render("v0.1.0")
 
 	return lipgloss.JoinVertical(lipgloss.Center,
@@ -364,12 +366,6 @@ func logoBlock() string {
 		lipgloss.JoinHorizontal(lipgloss.Center, ver, "  ", badge),
 	)
 }
-
-var loginFormBoxSt = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorAccent).
-	Padding(1, 3).
-	Width(44)
 
 func (m loginModel) viewForm() string {
 	var b strings.Builder

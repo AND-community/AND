@@ -102,7 +102,7 @@ func startTestServer(t *testing.T, id IdentityBackend, f ForumBackend, dm DMBack
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	srv := NewServer(id, f, dm, nil, nil, "")
+	srv := NewServer(id, f, dm, nil, nil, "", nil)
 	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
@@ -440,7 +440,7 @@ func startTestServerWithFile(t *testing.T, id IdentityBackend, f ForumBackend, d
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	srv := NewServer(id, f, dm, file, nil, "")
+	srv := NewServer(id, f, dm, file, nil, "", nil)
 	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
@@ -573,7 +573,7 @@ func TestGetPeers_WithPeers(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	srv := NewServer(id, &mockForum{}, nil, nil, nil, "")
+	srv := NewServer(id, &mockForum{}, nil, nil, nil, "", nil)
 	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)
@@ -675,7 +675,7 @@ func startTestServerWithChat(t *testing.T, chat ChatBackend) *Client {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	srv := NewServer(&mockID{name: "ali"}, &mockForum{}, nil, nil, chat, "")
+	srv := NewServer(&mockID{name: "ali"}, &mockForum{}, nil, nil, chat, "", nil)
 	addr, token, err := srv.Start(ctx)
 	if err != nil {
 		t.Fatalf("server start: %v", err)

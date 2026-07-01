@@ -14,7 +14,7 @@ import (
 
 var (
 	Version    = "v0.1.0"
-	GitHubRepo = ""
+	GitHubRepo = "AND-community/AND"
 )
 
 type ReleaseInfo struct {
@@ -70,6 +70,7 @@ func AssetName() string {
 	}
 	return fmt.Sprintf("and_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
+
 
 func Apply(ctx context.Context, info *ReleaseInfo) error {
 	name := AssetName()

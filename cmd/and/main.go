@@ -201,7 +201,7 @@ func run() error {
 	}
 	identityFile := filepath.Join(dir, "identity.dat")
 
-	id, err := tui.Login(identityFile)
+	id, err := tui.Login(identityFile, dir)
 	if err != nil {
 		return err
 	}
@@ -332,7 +332,8 @@ func run() error {
 		chatBackend = newChatAdapter(ctx, pluginChatTopic, id.Name())
 	}
 
-	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker, fileBroker, chatBackend, dir)
+	themeCh := make(chan pluginapi.ThemeReq, 1)
+	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker, fileBroker, chatBackend, dir, themeCh)
 	apiAddr, apiToken, err := apiSrv.Start(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
@@ -346,7 +347,7 @@ func run() error {
 	restartCh := make(chan struct{}, 1)
 	go autoUpdate(ctx, updateCh, restartCh)
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dir, chatTopic, updateCh); err != nil {
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dir, chatTopic, updateCh, themeCh); err != nil {
 		return err
 	}
 

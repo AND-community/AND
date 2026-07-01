@@ -29,6 +29,7 @@ type Manifest struct {
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	Author      string `json:"author"`
+	Category    string `json:"category,omitempty"`
 }
 
 type IdentityInfo struct {
@@ -115,6 +116,18 @@ type ConsentResp struct {
 }
 
 type errResp struct{ Error string `json:"error"` }
+
+// ThemeReq is the request body for POST /api/v1/theme.
+// Color values are terminal palette numbers ("63") or hex codes ("#ff6600").
+type ThemeReq struct {
+	ThemeName string `json:"theme_name,omitempty"`
+	Accent    string `json:"accent,omitempty"`
+	SelBG     string `json:"sel_bg,omitempty"`
+	SelFG     string `json:"sel_fg,omitempty"`
+	Muted     string `json:"muted,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Badge     string `json:"badge,omitempty"`
+}
 
 // PeerInfo represents a connected libp2p peer.
 type PeerInfo struct {
@@ -219,10 +232,11 @@ type Server struct {
 	dm      DMBackend
 	file    FileBackend
 	chat    ChatBackend
+	themeCh chan<- ThemeReq
 }
 
-func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend, chat ChatBackend, dataDir string) *Server {
-	return &Server{id: id, f: f, dm: dm, file: file, chat: chat, dataDir: dataDir}
+func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend, chat ChatBackend, dataDir string, themeCh chan<- ThemeReq) *Server {
+	return &Server{id: id, f: f, dm: dm, file: file, chat: chat, dataDir: dataDir, themeCh: themeCh}
 }
 
 func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
@@ -259,6 +273,7 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	mux.HandleFunc("/api/v1/file/poll",            onlyMethod(http.MethodGet, s.getFilePoll))
 	mux.HandleFunc("/api/v1/file/consent-poll",    onlyMethod(http.MethodGet, s.getConsentPoll))
 	mux.HandleFunc("/api/v1/file/consent",         onlyMethod(http.MethodPost, s.postConsent))
+	mux.HandleFunc("/api/v1/theme",                onlyMethod(http.MethodPost, s.postTheme))
 
 	s.srv = &http.Server{Handler: s.authMiddleware(mux)}
 	go s.srv.Serve(ln) //nolint:errcheck
@@ -640,6 +655,20 @@ func (s *Server) postConsent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) postTheme(w http.ResponseWriter, r *http.Request) {
+	var req ThemeReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if s.themeCh != nil {
+		select {
+		case s.themeCh <- req:
+		default:
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
@@ -785,6 +814,10 @@ func (c *Client) PollConsent() ([]FileConsentReq, error) {
 
 func (c *Client) RespondConsent(transferID string, accept bool) error {
 	return c.post("/api/v1/file/consent", ConsentResp{TransferID: transferID, Accept: accept})
+}
+
+func (c *Client) SetTheme(req ThemeReq) error {
+	return c.post("/api/v1/theme", req)
 }
 
 func DataDir() string { return os.Getenv("AND_DATA_DIR") }

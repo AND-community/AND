@@ -19,6 +19,7 @@ import (
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/updater"
 )
@@ -131,6 +132,7 @@ type appModel struct {
 	chatOwn      []bool
 
 	settingsIdx    int
+	settingsTab    int // 0=Bilgi 1=Eklentiler 2=Temalar
 	settingsVP     viewport.Model
 	showMnemonic   bool
 
@@ -140,10 +142,14 @@ type appModel struct {
 	_canCreatePost bool
 }
 
+type themeChangedMsg struct{}
+
 func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 	plugins []pluginmgr.Plugin, apiAddr, apiToken string, approvalFn func(string) error,
 	forumStore *forum.Forum, dataDir string,
-	chatTopic *network.Topic, updateCh <-chan UpdateReadyMsg) error {
+	chatTopic *network.Topic, updateCh <-chan UpdateReadyMsg, themeCh <-chan pluginapi.ThemeReq) error {
+
+	loadAndApplyTheme(dataDir)
 
 	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dataDir, chatTopic)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
@@ -157,6 +163,33 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 						return
 					}
 					p.Send(msg)
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	if themeCh != nil {
+		go func() {
+			for {
+				select {
+				case req, ok := <-themeCh:
+					if !ok {
+						return
+					}
+					t := ThemeConfig{
+						ThemeName: req.ThemeName,
+						Accent:    req.Accent,
+						SelBG:     req.SelBG,
+						SelFG:     req.SelFG,
+						Muted:     req.Muted,
+						Name:      req.Name,
+						Badge:     req.Badge,
+					}
+					applyThemeColors(t)
+					SaveTheme(dataDir, t)
+					p.Send(themeChangedMsg{})
 				case <-ctx.Done():
 					return
 				}
@@ -182,7 +215,7 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	items := []string{"Forum"}
 	byIdx := []*pluginmgr.Plugin{nil}
 	for i := range plugins {
-		if plugins[i].Label() == "" {
+		if plugins[i].Label() == "" || plugins[i].Manifest.Category == "theme" {
 			continue
 		}
 		items = append(items, plugins[i].Label())
@@ -277,6 +310,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UpdateReadyMsg:
 		m.updateNotice = "▲  " + msg.Version + " indirildi — çıkışta otomatik yenilenir"
+		return m, nil
+
+	case themeChangedMsg:
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -538,7 +574,7 @@ func (m appModel) viewMenu() string {
 	}
 	leftLines = append(leftLines,
 		"",
-		tag2St.Render(updater.Version+"  ·  alpha"),
+		tag2St.Render(updater.Version+"  ·  "+ActiveThemeName),
 	)
 
 	var rightLines []string
@@ -684,6 +720,22 @@ func (m appModel) viewChat() string {
 	return box
 }
 
+func (m appModel) settingsPluginList() []int {
+	var out []int
+	cat := ""
+	if m.settingsTab == 2 {
+		cat = "theme"
+	}
+	for i, pl := range m.plugins {
+		if m.settingsTab == 1 && pl.Manifest.Category != "theme" {
+			out = append(out, i)
+		} else if m.settingsTab == 2 && pl.Manifest.Category == cat {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
@@ -691,43 +743,81 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc":
 		m.screen = screenMenu
-	// viewport scroll
-	case "up", "k":
-		m.settingsVP.LineUp(1)
-	case "down", "j":
-		m.settingsVP.LineDown(1)
-	case "pgup":
-		m.settingsVP.HalfViewUp()
-	case "pgdown":
-		m.settingsVP.HalfViewDown()
-	case "g":
-		m.settingsVP.GotoTop()
-	case "G":
-		m.settingsVP.GotoBottom()
-	// plugin navigation: [ ve ]
-	case "[":
-		if m.settingsIdx > 0 {
-			m.settingsIdx--
+		m.syncSettingsVP()
+		return m, nil
+
+	case "left", "h":
+		if m.settingsTab > 0 {
+			m.settingsTab--
+			m.settingsIdx = 0
 		}
-	case "]":
-		if m.settingsIdx < len(m.plugins)-1 {
-			m.settingsIdx++
+	case "right", "l":
+		if m.settingsTab < 2 {
+			m.settingsTab++
+			m.settingsIdx = 0
 		}
-	case "m":
-		m.showMnemonic = !m.showMnemonic
-	case " ":
-		if m.settingsIdx < len(m.plugins) {
-			m.plugins[m.settingsIdx].Enabled = !m.plugins[m.settingsIdx].Enabled
-			pluginmgr.SaveState(m.plugins, m.dataDir) //nolint:errcheck
+	case "tab":
+		m.settingsTab = (m.settingsTab + 1) % 3
+		m.settingsIdx = 0
+	}
+
+	switch m.settingsTab {
+	case 0: // Bilgi — sadece scroll
+		switch msg.String() {
+		case "up", "k":
+			m.settingsVP.LineUp(1)
+		case "down", "j":
+			m.settingsVP.LineDown(1)
+		case "pgup":
+			m.settingsVP.HalfViewUp()
+		case "pgdown":
+			m.settingsVP.HalfViewDown()
+		case "g":
+			m.settingsVP.GotoTop()
+		case "G":
+			m.settingsVP.GotoBottom()
+		case "m":
+			m.showMnemonic = !m.showMnemonic
+		}
+
+	case 1, 2: // Eklentiler / Temalar — liste navigasyonu
+		list := m.settingsPluginList()
+		switch msg.String() {
+		case "up", "k":
+			if m.settingsIdx > 0 {
+				m.settingsIdx--
+			}
+		case "down", "j":
+			if m.settingsIdx < len(list)-1 {
+				m.settingsIdx++
+			}
+		case " ":
+			if m.settingsIdx < len(list) {
+				pl := &m.plugins[list[m.settingsIdx]]
+				pl.Enabled = !pl.Enabled
+				pluginmgr.SaveState(m.plugins, m.dataDir) //nolint:errcheck
+			}
+		case "enter":
+			if m.settingsTab == 2 && m.settingsIdx < len(list) {
+				pl := &m.plugins[list[m.settingsIdx]]
+				if pl.Enabled {
+					cmd := pl.Launch(m.apiAddr, m.apiToken, m.dataDir)
+					m.syncSettingsVP()
+					return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+						return pluginExitMsg{name: pl.Name(), err: err}
+					})
+				}
+			}
 		}
 	}
+
 	m.syncSettingsVP()
 	return m, nil
 }
 
 func (m *appModel) syncSettingsVP() {
 	secSt  := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	keyW   := lipgloss.NewStyle().Foreground(colorMuted).Width(16)
+	keyW   := lipgloss.NewStyle().Foreground(colorMuted).Width(18)
 	valW   := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	divSt  := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	mutSt  := lipgloss.NewStyle().Foreground(colorMuted)
@@ -742,168 +832,204 @@ func (m *appModel) syncSettingsVP() {
 
 	var b strings.Builder
 
-	// ── Sistem ──────────────────────────────────────────────
-	b.WriteString(secSt.Render("Sistem") + "\n")
-	b.WriteString(row("Sürüm", updater.Version+"  ·  alpha"))
-	b.WriteString(row("Platform", runtime.GOOS+"/"+runtime.GOARCH))
-	b.WriteString(row("Veri dizini", m.dataDir))
-	b.WriteString("\n")
+	switch m.settingsTab {
 
-	// ── Kimlik ──────────────────────────────────────────────
-	b.WriteString(secSt.Render("Kimlik") + "\n")
-	name := m.identity.Name()
-	if name == "" {
-		name = "(adsız)"
-	}
-	b.WriteString(row("Ad", name))
-	pubHex := hex.EncodeToString(m.identity.PublicKey())
-	b.WriteString(row("Public key", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
-	if m.approvalFn != nil {
-		b.WriteString(row("Yetki", okSt.Render("● moderatör / kurucu")))
-	} else {
-		b.WriteString(row("Yetki", mutSt.Render("○ normal kullanıcı")))
-	}
-	mnemo := m.identity.RecoveryCode()
-	if mnemo != "" {
-		if m.showMnemonic {
-			mnemSt := lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
-			b.WriteString(row("Güvenlik kodu", mnemSt.Render(mnemo)))
-			b.WriteString(keyW.Render("") + mutSt.Render("m ile gizle") + "\n")
+	case 0: // ── Bilgi ──────────────────────────────────────────
+		b.WriteString(secSt.Render("Sistem") + "\n")
+		b.WriteString(row("Sürüm", updater.Version+"  ·  alpha"))
+		b.WriteString(row("Platform", runtime.GOOS+"/"+runtime.GOARCH))
+		b.WriteString(row("Veri dizini", m.dataDir))
+		b.WriteString("\n")
+
+		b.WriteString(div)
+		b.WriteString(secSt.Render("Kimlik") + "\n")
+		name := m.identity.Name()
+		if name == "" {
+			name = "(adsız)"
+		}
+		b.WriteString(row("Ad", name))
+		pubHex := hex.EncodeToString(m.identity.PublicKey())
+		b.WriteString(row("Public key", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
+		if m.approvalFn != nil {
+			b.WriteString(row("Yetki", okSt.Render("● moderatör / kurucu")))
 		} else {
-			b.WriteString(row("Güvenlik kodu", mutSt.Render("••••••••••••••••••  (m ile göster)")))
+			b.WriteString(row("Yetki", mutSt.Render("○ normal kullanıcı")))
 		}
-	}
-	b.WriteString("\n")
-
-	// ── Ağ ──────────────────────────────────────────────────
-	b.WriteString(secSt.Render("Ağ") + "\n")
-	if m.node != nil {
-		pid := m.node.Host.ID().String()
-		r := []rune(pid)
-		b.WriteString(row("Peer ID", string(r[:10])+"…"+string(r[len(r)-10:])))
-		n := m.peerCount()
-		if n == 0 {
-			b.WriteString(row("Bağlantı", warnSt.Render("◌  bağlanıyor…")))
-		} else {
-			b.WriteString(row("Bağlantı", okSt.Render(fmt.Sprintf("●  %d peer bağlı", n))))
-		}
-		addrs := m.node.Host.Network().ListenAddresses()
-		if len(addrs) > 0 {
-			b.WriteString(row("Adresler", addrs[0].String()))
-			for _, a := range addrs[1:] {
-				b.WriteString(keyW.Render("") + valW.Render(a.String()) + "\n")
-			}
-		}
-	} else {
-		b.WriteString(row("Ağ", mutSt.Render("(başlatılmadı)")))
-	}
-	b.WriteString("\n")
-
-	// ── Depolama ────────────────────────────────────────────
-	b.WriteString(secSt.Render("Depolama") + "\n")
-	fileSz := func(path string) string {
-		info, err := os.Stat(path)
-		if err != nil {
-			return mutSt.Render("(yok)")
-		}
-		sz := info.Size()
-		switch {
-		case sz < 1024:
-			return fmt.Sprintf("%d B", sz)
-		case sz < 1024*1024:
-			return fmt.Sprintf("%.1f KB", float64(sz)/1024)
-		default:
-			return fmt.Sprintf("%.1f MB", float64(sz)/1024/1024)
-		}
-	}
-	b.WriteString(row("forum.db", fileSz(filepath.Join(m.dataDir, "forum.db"))))
-	b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%s  (%d mesaj)", fileSz(filepath.Join(m.dataDir, chatHistoryFile)), len(m.chatLines))))
-	bansDir := filepath.Join(m.dataDir, "bans")
-	if entries, err := os.ReadDir(bansDir); err == nil {
-		b.WriteString(row("Yasaklar", fmt.Sprintf("%d kayıt", len(entries))))
-	}
-	b.WriteString("\n")
-
-	// ── Forum ───────────────────────────────────────────────
-	b.WriteString(secSt.Render("Forum") + "\n")
-	if m.forumStore != nil {
-		posts := m.forumStore.AllInMemoryPosts()
-		total, pending, approved, replies := len(posts), 0, 0, 0
-		for _, p := range posts {
-			if p.Approved {
-				approved++
+		mnemo := m.identity.RecoveryCode()
+		if mnemo != "" {
+			if m.showMnemonic {
+				mnemSt := lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
+				b.WriteString(row("Güvenlik kodu", mnemSt.Render(mnemo)))
+				b.WriteString(keyW.Render("") + mutSt.Render("  m ile gizle") + "\n")
 			} else {
-				pending++
+				b.WriteString(row("Güvenlik kodu", mutSt.Render("••••••••••••••  m ile göster")))
 			}
-			replies += m.forumStore.ReplyCount(p.ID)
-		}
-		b.WriteString(row("Toplam konu", fmt.Sprintf("%d", total)))
-		b.WriteString(row("Onaylı", fmt.Sprintf("%d", approved)))
-		if pending > 0 {
-			b.WriteString(row("Onay bekleyen", warnSt.Render(fmt.Sprintf("%d  ⚠", pending))))
-		} else {
-			b.WriteString(row("Onay bekleyen", "0"))
-		}
-		b.WriteString(row("Toplam yanıt", fmt.Sprintf("%d", replies)))
-	} else {
-		b.WriteString(row("Forum", mutSt.Render("(başlatılmadı)")))
-	}
-	b.WriteString("\n")
-
-	// ── Eklentiler ──────────────────────────────────────────
-	b.WriteString(div)
-	b.WriteString(secSt.Render(fmt.Sprintf("Eklentiler  (%d yüklü)", len(m.plugins))) + "\n")
-	b.WriteString(mutSt.Render("  [ / ] seç    space aç/kapat\n\n"))
-	for i, pl := range m.plugins {
-		mf := pl.Manifest
-		label := mf.Label
-		if label == "" {
-			label = mf.Name
-		}
-		var stStr string
-		if pl.Enabled {
-			stStr = onSt.Render("● etkin")
-		} else {
-			stStr = offSt.Render("○ kapalı")
-		}
-		ver := ""
-		if mf.Version != "" {
-			ver = "v" + mf.Version
-		}
-		if i == m.settingsIdx {
-			b.WriteString(selectedItemStyle.Render(fmt.Sprintf("▶  %-22s", label)) +
-				"  " + stStr + "  " + verSt.Render(ver) + "\n")
-			if mf.Description != "" {
-				b.WriteString(labelStyle.Render("   "+mf.Description) + "\n")
-			}
-			if mf.Label == "" {
-				b.WriteString(mutSt.Render("   (menüde görünmez — başka ekrandan tetiklenir)") + "\n")
-			}
-		} else {
-			b.WriteString(itemStyle.Render(fmt.Sprintf("   %-22s", label)) +
-				"  " + stStr + "  " + verSt.Render(ver) + "\n")
 		}
 		b.WriteString("\n")
+
+		b.WriteString(div)
+		b.WriteString(secSt.Render("Ağ") + "\n")
+		if m.node != nil {
+			pid := m.node.Host.ID().String()
+			r := []rune(pid)
+			b.WriteString(row("Peer ID", string(r[:10])+"…"+string(r[len(r)-10:])))
+			n := m.peerCount()
+			if n == 0 {
+				b.WriteString(row("Bağlantı", warnSt.Render("◌  bağlanıyor…")))
+			} else {
+				b.WriteString(row("Bağlantı", okSt.Render(fmt.Sprintf("●  %d peer bağlı", n))))
+			}
+			addrs := m.node.Host.Network().ListenAddresses()
+			if len(addrs) > 0 {
+				b.WriteString(row("Adres", addrs[0].String()))
+				for _, a := range addrs[1:] {
+					b.WriteString(keyW.Render("") + valW.Render(a.String()) + "\n")
+				}
+			}
+		} else {
+			b.WriteString(row("Ağ", mutSt.Render("(başlatılmadı)")))
+		}
+		b.WriteString("\n")
+
+		b.WriteString(div)
+		b.WriteString(secSt.Render("Depolama") + "\n")
+		fileSz := func(path string) string {
+			info, err := os.Stat(path)
+			if err != nil {
+				return mutSt.Render("(yok)")
+			}
+			sz := info.Size()
+			switch {
+			case sz < 1024:
+				return fmt.Sprintf("%d B", sz)
+			case sz < 1024*1024:
+				return fmt.Sprintf("%.1f KB", float64(sz)/1024)
+			default:
+				return fmt.Sprintf("%.1f MB", float64(sz)/1024/1024)
+			}
+		}
+		b.WriteString(row("forum.db", fileSz(filepath.Join(m.dataDir, "forum.db"))))
+		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%s  (%d mesaj)", fileSz(filepath.Join(m.dataDir, chatHistoryFile)), len(m.chatLines))))
+		if entries, err := os.ReadDir(filepath.Join(m.dataDir, "bans")); err == nil {
+			b.WriteString(row("Yasaklar", fmt.Sprintf("%d kayıt", len(entries))))
+		}
+		b.WriteString("\n")
+
+		b.WriteString(div)
+		b.WriteString(secSt.Render("Forum") + "\n")
+		if m.forumStore != nil {
+			posts := m.forumStore.AllInMemoryPosts()
+			total, pending, approved, replies := len(posts), 0, 0, 0
+			for _, p := range posts {
+				if p.Approved {
+					approved++
+				} else {
+					pending++
+				}
+				replies += m.forumStore.ReplyCount(p.ID)
+			}
+			b.WriteString(row("Toplam konu", fmt.Sprintf("%d", total)))
+			b.WriteString(row("Onaylı", fmt.Sprintf("%d", approved)))
+			if pending > 0 {
+				b.WriteString(row("Onay bekleyen", warnSt.Render(fmt.Sprintf("%d  ⚠", pending))))
+			} else {
+				b.WriteString(row("Onay bekleyen", "0"))
+			}
+			b.WriteString(row("Toplam yanıt", fmt.Sprintf("%d", replies)))
+		} else {
+			b.WriteString(row("Forum", mutSt.Render("(başlatılmadı)")))
+		}
+
+	case 1, 2: // ── Eklentiler / Temalar ────────────────────────
+		list := m.settingsPluginList()
+		if len(list) == 0 {
+			b.WriteString(mutSt.Render("\n  (bu kategoride eklenti yok)\n"))
+			break
+		}
+		for localIdx, globalIdx := range list {
+			pl := m.plugins[globalIdx]
+			mf := pl.Manifest
+			label := mf.Label
+			if label == "" {
+				label = mf.Name
+			}
+			ver := ""
+			if mf.Version != "" {
+				ver = "v" + mf.Version
+			}
+			var stStr string
+			if pl.Enabled {
+				stStr = onSt.Render("● etkin ")
+			} else {
+				stStr = offSt.Render("○ kapalı")
+			}
+			if localIdx == m.settingsIdx {
+				b.WriteString(selectedItemStyle.Render(fmt.Sprintf("▶  %-24s", label)) +
+					"  " + stStr + "  " + verSt.Render(ver) + "\n")
+				if mf.Description != "" {
+					b.WriteString(labelStyle.Render("   " + mf.Description) + "\n")
+				}
+				hint := "  space → aç/kapat"
+				if m.settingsTab == 2 && pl.Enabled {
+					hint += "    enter → uygula"
+				}
+				b.WriteString(mutSt.Render(hint) + "\n")
+			} else {
+				b.WriteString(itemStyle.Render(fmt.Sprintf("   %-24s", label)) +
+					"  " + stStr + "  " + verSt.Render(ver) + "\n")
+			}
+			b.WriteString("\n")
+		}
+		_ = div
 	}
 
 	m.settingsVP.SetContent(b.String())
 }
 
 func (m appModel) viewSettings() string {
-	titleSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	helpSt  := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	divSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	accentSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	helpSt   := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	divSt    := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	tabNames  := []string{"  Bilgi  ", " Eklentiler ", "  Temalar  "}
+	activeTab := lipgloss.NewStyle().Bold(true).Foreground(colorSelFG).Background(colorSelBG).Padding(0, 1)
+	inactTab  := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
 
 	var b strings.Builder
-	b.WriteString(titleSt.Render("◈  Ayarlar"))
-	b.WriteString("\n\n")
+
+	// başlık
+	b.WriteString(accentSt.Render("◈  Ayarlar") + "\n\n")
+
+	// sekme çubuğu
+	for i, name := range tabNames {
+		if i == m.settingsTab {
+			b.WriteString(activeTab.Render(name))
+		} else {
+			b.WriteString(inactTab.Render(name))
+		}
+		if i < len(tabNames)-1 {
+			b.WriteString(divSt.Render("│"))
+		}
+	}
+	b.WriteString("\n" + divSt.Render(strings.Repeat("─", 56)) + "\n\n")
+
 	b.WriteString(m.settingsVP.View())
 	b.WriteString("\n")
 	if !m.settingsVP.AtBottom() {
 		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Render("  ↓ daha fazla…\n"))
 	}
+
 	b.WriteString(divSt.Render(strings.Repeat("─", 56)) + "\n")
-	b.WriteString(helpSt.Render("↑/↓ j/k kaydır    pgup/pgdn sayfa    g/G baş/son    [ ] eklenti seç    space aç/kapat    m güvenlik kodu    esc geri"))
+
+	var help string
+	switch m.settingsTab {
+	case 0:
+		help = "↑/↓  kaydır    m  güvenlik kodu    ←/→ tab  sekme değiştir    esc  geri"
+	case 1:
+		help = "↑/↓  seç    space  aç/kapat    ←/→ tab  sekme değiştir    esc  geri"
+	case 2:
+		help = "↑/↓  seç    space  aç/kapat    enter  uygula    ←/→ tab  sekme değiştir    esc  geri"
+	}
+	b.WriteString(helpSt.Render(help))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
