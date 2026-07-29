@@ -46,7 +46,6 @@ var (
 	fStYardim          lipgloss.Style
 	fStAyrac           lipgloss.Style
 	fStYanitBaslik     lipgloss.Style
-	fStRozet           lipgloss.Style
 	fStAlanEtiket      lipgloss.Style
 	fStAlanEtiketAktif lipgloss.Style
 	fStBildirimOK      lipgloss.Style
@@ -106,10 +105,6 @@ func initStyles() {
 	fStYardim = lipgloss.NewStyle().Foreground(colorMuted).MarginTop(1).Italic(true)
 	fStAyrac = lipgloss.NewStyle().Foreground(colorMuted)
 	fStYanitBaslik = lipgloss.NewStyle().Bold(true).Foreground(colorName)
-	fStRozet = lipgloss.NewStyle().
-		Background(colorBadge).
-		Foreground(lipgloss.Color("255")).
-		Bold(true)
 	fStAlanEtiket = lipgloss.NewStyle().Foreground(colorMuted)
 	fStAlanEtiketAktif = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
 	fStBildirimOK = lipgloss.NewStyle().

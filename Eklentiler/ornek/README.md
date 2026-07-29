@@ -195,29 +195,30 @@ role, err := client.Role()
 // role.IsModerator → sertifikalı moderatör mü?
 ```
 
-### Onay bekleyen konular (moderatör / kurucu)
+### Tüm konuları listele (moderatör / kurucu)
 
 ```go
-posts, err := client.Pending()
+posts, err := client.AllPosts()
 for _, p := range posts {
-    // p.ID, p.Title, p.AuthorName, p.AuthorKey
-    // p.Category, p.Body, p.ExpiresAt
+    // p.ID, p.Category, p.Title, p.AuthorName, p.AuthorKey
 }
 ```
 
-### Konu onayla / reddet
+### Konu detayı görüntüle / sil
 
 ```go
-err = client.Approve("post-id-buraya")
-err = client.Reject("post-id-buraya")
-err = client.ApproveAuthor("pubkey-hex-buraya") // yazarın tüm konularını onayla
+detay, err := client.GetPost("post-id-buraya")
+// detay.Body, detay.CreatedAt, detay.Replies
+
+err = client.DeletePost("post-id-buraya") // moderatör/kurucu yetkisi ister
 ```
 
 ### Yeni konu oluştur
 
 ```go
-err = client.CreatePost("genel", "Başlık", "İçerik", false)
-// son parametre: kalıcı talep (true = moderatörden TTL muafiyeti iste)
+err = client.CreatePost("genel", "Başlık", "İçerik")
+// Forumda onay sistemi yok — konu hemen ağa yayılır ve 5 gün sonra
+// otomatik olarak silinir (bkz. README.md#moderasyon).
 ```
 
 ### Özel mesaj gönder / al
@@ -238,10 +239,9 @@ msgs, err := client.PollDM()
 |-------|-----|----------|
 | `GET` | `/api/v1/identity` | Kullanıcı kimliği |
 | `GET` | `/api/v1/role` | Kurucu / moderatör rolü |
-| `GET` | `/api/v1/forum/pending` | Onay bekleyen konular |
-| `POST` | `/api/v1/forum/approve` | Konu onayla `{"post_id":"..."}` |
-| `POST` | `/api/v1/forum/reject` | Konu reddet `{"post_id":"..."}` |
-| `POST` | `/api/v1/forum/approve-author` | Yazarın tüm konularını onayla `{"author_key":"..."}` |
+| `GET` | `/api/v1/forum/all-posts` | Ağdaki tüm konular (moderatör/kurucu) |
+| `GET` | `/api/v1/forum/post?id=...` | Konu detayı (gövde + yanıtlar) |
+| `POST` | `/api/v1/forum/delete` | Konu sil `{"post_id":"..."}` (moderatör/kurucu) |
 | `POST` | `/api/v1/forum/post` | Yeni konu oluştur |
 | `POST` | `/api/v1/dm/send` | DM gönder `{"peer_id":"...","message":"..."}` |
 | `GET` | `/api/v1/dm/poll` | Gelen DM bekle (5 sn. long poll) |

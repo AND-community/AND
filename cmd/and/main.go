@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lucian95511/and/internal/chatlog"
 	"github.com/lucian95511/and/internal/dmmgr"
 	"github.com/lucian95511/and/internal/filemgr"
 	"github.com/lucian95511/and/internal/forum"
@@ -22,10 +23,10 @@ import (
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/internal/updater"
 
-	lp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -47,19 +48,27 @@ func appDir() (string, error) {
 		return "", fmt.Errorf("create app dir: %w", err)
 	}
 
-	appDataID := filepath.Join(dir, "identity.dat")
-	if _, err := os.Stat(appDataID); os.IsNotExist(err) {
-		candidates := []string{}
-		if exe, err2 := os.Executable(); err2 == nil {
-			candidates = append(candidates, filepath.Join(filepath.Dir(exe), "identity.dat"))
-		}
-		if cwd, err2 := os.Getwd(); err2 == nil {
-			candidates = append(candidates, filepath.Join(cwd, "identity.dat"))
-		}
-		for _, c := range candidates {
-			if data, err2 := os.ReadFile(c); err2 == nil {
-				_ = os.WriteFile(appDataID, data, 0o600)
-				break
+	// Taşınabilir kurulum (ör. USB'den çalıştırma) için exe yanında/CWD'de
+	// duran bir identity.dat'i AND'ın gerçek yapılandırma dizinine kopyalar.
+	// Yalnızca AND_PORTABLE=1 açıkça ayarlandığında çalışır: varsayılan
+	// olarak AÇIK olması, kullanıcının çalıştırdığı klasöre "identity.dat"
+	// adlı bir dosya bırakan biri tarafından gerçek kimliğin sessizce ele
+	// geçirilebilmesi (kimlik taklidi) anlamına gelirdi.
+	if os.Getenv("AND_PORTABLE") == "1" {
+		appDataID := filepath.Join(dir, "identity.dat")
+		if _, err := os.Stat(appDataID); os.IsNotExist(err) {
+			candidates := []string{}
+			if exe, err2 := os.Executable(); err2 == nil {
+				candidates = append(candidates, filepath.Join(filepath.Dir(exe), "identity.dat"))
+			}
+			if cwd, err2 := os.Getwd(); err2 == nil {
+				candidates = append(candidates, filepath.Join(cwd, "identity.dat"))
+			}
+			for _, c := range candidates {
+				if data, err2 := os.ReadFile(c); err2 == nil {
+					_ = os.WriteFile(appDataID, data, 0o600)
+					break
+				}
 			}
 		}
 	}
@@ -68,43 +77,11 @@ func appDir() (string, error) {
 }
 
 func deriveFounderPeerID(pubHex string) peer.ID {
-	raw, err := hex.DecodeString(pubHex)
-	if err != nil || len(raw) != 32 {
-		return peer.ID("")
-	}
-	lp2pPub, err := lp2pcrypto.UnmarshalEd25519PublicKey(raw)
-	if err != nil {
-		return peer.ID("")
-	}
-	pid, err := peer.IDFromPublicKey(lp2pPub)
+	pid, err := moderation.AuthorKeyToPeerID(pubHex)
 	if err != nil {
 		return peer.ID("")
 	}
 	return pid
-}
-
-func publishSavedBans(ctx context.Context, topic *network.Topic, dataDir string) {
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(5 * time.Second):
-	}
-
-	bansDir := filepath.Join(dataDir, "bans")
-	entries, err := os.ReadDir(bansDir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(bansDir, e.Name()))
-		if err != nil {
-			continue
-		}
-		_ = topic.Publish(ctx, data)
-	}
 }
 
 func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
@@ -139,59 +116,6 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 		peers = append(peers, *pi)
 	}
 	return peers
-}
-
-func buildApprovalFn(
-	ctx context.Context,
-	dir string,
-	id interface {
-		PublicKey() ed25519.PublicKey
-		PrivateKey() ed25519.PrivateKey
-	},
-	isFounder bool,
-	localApprove func(postID string),
-	modTopic *network.Topic,
-) func(postID string) error {
-	if modTopic == nil {
-		return nil
-	}
-	myPubHex := hex.EncodeToString(id.PublicKey())
-	bansDir := filepath.Join(dir, "bans")
-
-	makePublish := func(certPtr *moderation.ModeratorCert) func(string) error {
-		privKey := id.PrivateKey()
-		return func(postID string) error {
-			now := time.Now().UTC()
-			payload := fmt.Sprintf("approve|%s|%d", postID, now.Unix())
-			sig := ed25519.Sign(privKey, []byte(payload))
-			msg := moderation.ApprovalMsg{PostID: postID, IssuedAt: now, Cert: certPtr, Sig: hex.EncodeToString(sig)}
-			envelope := moderation.Envelope{Type: "approve", Approve: &msg}
-			data, err := json.Marshal(envelope)
-			if err != nil {
-				return err
-			}
-			if err := modTopic.Publish(ctx, data); err != nil {
-				return err
-			}
-			localApprove(postID)
-			_ = os.MkdirAll(bansDir, 0o700)
-			short := postID
-			if len(short) > 8 {
-				short = short[:8]
-			}
-			fd, _ := json.MarshalIndent(envelope, "", "  ")
-			_ = os.WriteFile(filepath.Join(bansDir, "approve_"+short+".json"), fd, 0o600)
-			return nil
-		}
-	}
-
-	if isFounder {
-		return makePublish(nil)
-	}
-	if cert := moderation.FindModCert(dir, myPubHex); cert != nil {
-		return makePublish(cert)
-	}
-	return nil
 }
 
 func run() error {
@@ -262,20 +186,65 @@ func run() error {
 	} else {
 		mod.Start(ctx, modTopic)
 		defer modTopic.Close()
-		go publishSavedBans(ctx, modTopic, dir)
+		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			mod.PublishSavedBans(ctx, modTopic, dir)
+		}()
 	}
 
-	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"), mod)
+	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"))
 	if err != nil {
 		return fmt.Errorf("init forum: %w", err)
 	}
-
-	mod.SetOnApprove(forumStore.ApprovePost)
-	mod.SetOnTrustedAuthor(forumStore.ApprovePostsByAuthor)
+	forumStore.SetModerator(mod)
 
 	go forumStore.Run(ctx)
 
 	forumStore.RegisterSync(node.Host)
+
+	chatStore, err := chatlog.New(id, chatTopic, forumStore.DB(), dir)
+	if err != nil {
+		return fmt.Errorf("init chatlog: %w", err)
+	}
+	chatStore.SetModerator(mod)
+	go chatStore.Run(ctx)
+	chatStore.RegisterSync(node.Host)
+
+	profileTopic, err := network.JoinTopic(ps, node.Host, profile.ProfileTopic)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "profile topic:", err)
+		profileTopic = nil
+	} else {
+		defer profileTopic.Close()
+	}
+	profileStore, err := profile.New(id, profileTopic, forumStore.DB(), mod)
+	if err != nil {
+		return fmt.Errorf("init profile: %w", err)
+	}
+	go profileStore.Run(ctx)
+
+	// Kendi profilimizi (varsa) her başlangıçta bir kez yeniden yayınla —
+	// profil güncellemelerinin forum konuları gibi bir sync protokolü yoktur,
+	// bu yüzden yeni bağlanan bir peer'ın bunu görebilmesi ancak canlı bir
+	// gossip yayınıyla mümkündür (bkz. publishSavedBans'teki aynı desen).
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+		myKey := hex.EncodeToString(id.PublicKey())
+		if existing := profileStore.Get(myKey); existing != nil {
+			_ = profileStore.PublishOwn(ctx, profile.OwnUpdate{
+				Bio: existing.Bio, Status: existing.Status, Tags: existing.Tags, Link: existing.Link,
+				GitHubUser: existing.GitHubUser,
+			})
+		}
+	}()
 
 	go func() {
 		synced := make(map[peer.ID]bool)
@@ -293,6 +262,7 @@ func run() error {
 					case <-time.After(1 * time.Second):
 					}
 					_ = forumStore.SyncWithPeer(ctx, node.Host, pid)
+					_ = chatStore.SyncWithPeer(ctx, node.Host, pid)
 				}(peerID)
 			case <-ctx.Done():
 				return
@@ -314,8 +284,6 @@ func run() error {
 		defer pluginChatTopic.Close()
 	}
 
-	approvalFn := buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
-
 	idBackend := &identityAdapter{
 		id:        id,
 		node:      node,
@@ -323,8 +291,7 @@ func run() error {
 		dir:       dir,
 	}
 	fBackend := &forumAdapter{
-		store:      forumStore,
-		approvalFn: approvalFn,
+		store: forumStore,
 	}
 
 	var chatBackend pluginapi.ChatBackend
@@ -345,9 +312,12 @@ func run() error {
 
 	updateCh := make(chan tui.UpdateReadyMsg, 1)
 	restartCh := make(chan struct{}, 1)
-	go autoUpdate(ctx, updateCh, restartCh)
+	// AND_AUTO_UPDATE=0 ile kapatılabilir; varsayılan (tanımsız/başka değer) açıktır.
+	if os.Getenv("AND_AUTO_UPDATE") != "0" {
+		go autoUpdate(ctx, updateCh, restartCh)
+	}
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dir, chatTopic, updateCh, themeCh); err != nil {
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
 		return err
 	}
 
@@ -389,7 +359,7 @@ func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restart
 }
 
 type identityAdapter struct {
-	id        interface {
+	id interface {
 		Name() string
 		PublicKey() ed25519.PublicKey
 	}
@@ -432,39 +402,7 @@ func (a *identityAdapter) ConnectedPeers() []pluginapi.PeerInfo {
 }
 
 type forumAdapter struct {
-	store      *forum.Forum
-	approvalFn func(string) error
-}
-
-func (a *forumAdapter) PendingPosts() ([]pluginapi.PendingPost, error) {
-	posts, err := a.store.PendingPosts()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]pluginapi.PendingPost, len(posts))
-	for i, p := range posts {
-		out[i] = pluginapi.PendingPost{
-			ID:         p.ID,
-			Title:      p.Title,
-			AuthorName: p.AuthorName,
-			AuthorKey:  p.AuthorKey,
-			Category:   p.Category,
-			Body:       p.Body,
-			ExpiresAt:  p.ExpiresAt,
-		}
-	}
-	return out, nil
-}
-
-func (a *forumAdapter) ApprovePost(postID string) error {
-	if a.approvalFn == nil {
-		return fmt.Errorf("onay yetkisi yok")
-	}
-	return a.approvalFn(postID)
-}
-
-func (a *forumAdapter) RejectPost(postID string) error {
-	return a.store.RejectPost(postID)
+	store *forum.Forum
 }
 
 func (a *forumAdapter) DeletePost(postID string) error {
@@ -481,19 +419,13 @@ func (a *forumAdapter) AllPosts() ([]pluginapi.PostSummary, error) {
 			Title:      p.Title,
 			AuthorName: p.AuthorName,
 			AuthorKey:  p.AuthorKey,
-			Approved:   p.Approved,
 		})
 	}
 	return out, nil
 }
 
-func (a *forumAdapter) ApproveAuthor(authorKey string) error {
-	a.store.ApprovePostsByAuthor(authorKey)
-	return nil
-}
-
-func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error {
-	_, err := a.store.CreatePost(ctx, category, title, body, permanentReq)
+func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string) error {
+	_, err := a.store.CreatePost(ctx, category, title, body)
 	return err
 }
 
@@ -521,7 +453,6 @@ func (a *forumAdapter) GetPost(id string) (*pluginapi.PostDetail, error) {
 		Title:      p.Title,
 		Body:       p.Body,
 		CreatedAt:  p.CreatedAt,
-		Approved:   p.Approved,
 		Replies:    replyInfos,
 	}, nil
 }

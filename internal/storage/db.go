@@ -1,3 +1,10 @@
+// Package storage, forum gönderilerinin/yanıtlarının/moderasyon
+// tombstone'larının kalıcılığını SQLite (WAL modu, tek yazarlı bağlantı
+// havuzu) üzerinden sağlar. Şema, `schema_versions` tablosunda izlenen
+// numaralı, idempotent migrasyonlarla evrilir (bkz. migrate()); zaman
+// damgaları UnixNano olarak saklanır. Her konu oluşturulduktan postTTL (5
+// gün) sonra süresi dolar; `expires_at=0` yalnızca henüz atanmamış (geçici)
+// bir durumu ifade eder.
 package storage
 
 import (
@@ -100,25 +107,44 @@ var migrations = []migration{
 	{version: 3, ignoreErr: true, sql: `ALTER TABLE posts ADD COLUMN expires_at    INTEGER NOT NULL DEFAULT 0`},
 	{version: 4, ignoreErr: true, sql: `ALTER TABLE posts ADD COLUMN permanent_req INTEGER NOT NULL DEFAULT 0`},
 	{version: 5, sql: `UPDATE posts SET approved=1 WHERE approved=0 AND expires_at=0`},
+	// v6: onay sistemi kaldırıldı — her konu, onay durumundan bağımsız,
+	// oluşturulduktan postTTL (5 gün) sonra süresi dolar. Önceden onaylanmış
+	// ya da hiç TTL atanmamış (expires_at=0, "kalıcı") eski kayıtlara da
+	// created_at'a göre gerçek bir expires_at atanır.
+	{version: 6, sql: fmt.Sprintf(
+		`UPDATE posts SET expires_at = created_at + %d WHERE approved = 1 OR expires_at = 0;
+		 UPDATE posts SET approved = 0;`, postTTL.Nanoseconds())},
+	{version: 7, sql: `
+		CREATE TABLE IF NOT EXISTS profiles (
+			author_key TEXT PRIMARY KEY,
+			bio        TEXT NOT NULL,
+			updated_at INTEGER NOT NULL,
+			mod_cert   TEXT NOT NULL DEFAULT '',
+			sig        TEXT NOT NULL
+		);
+	`},
+	{version: 8, ignoreErr: true, sql: `ALTER TABLE profiles ADD COLUMN status TEXT NOT NULL DEFAULT ''`},
+	{version: 9, ignoreErr: true, sql: `ALTER TABLE profiles ADD COLUMN tags   TEXT NOT NULL DEFAULT ''`},
+	{version: 10, ignoreErr: true, sql: `ALTER TABLE profiles ADD COLUMN link  TEXT NOT NULL DEFAULT ''`},
+	{version: 11, ignoreErr: true, sql: `ALTER TABLE profiles ADD COLUMN github_user TEXT NOT NULL DEFAULT ''`},
+	{version: 12, sql: `
+		CREATE TABLE IF NOT EXISTS chat_messages (
+			id          TEXT PRIMARY KEY,
+			author_key  TEXT NOT NULL,
+			author_name TEXT NOT NULL,
+			text        TEXT NOT NULL,
+			sent_at     INTEGER NOT NULL,
+			expires_at  INTEGER NOT NULL DEFAULT 0,
+			sig         TEXT NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_chat_messages_sent ON chat_messages(sent_at);
+	`},
 }
 
 type RawPost struct {
 	ID, Category, AuthorName, AuthorKey, Title, Body, Sig string
-	CreatedAt    time.Time
-	Approved     bool
-	ExpiresAt    time.Time
-	PermanentReq bool
-}
-
-type PendingPost struct {
-	ID         string
-	Title      string
-	AuthorName string
-	AuthorKey  string
-	Category   string
-	Body       string
-	CreatedAt  time.Time
-	ExpiresAt  time.Time
+	CreatedAt                                             time.Time
+	ExpiresAt                                             time.Time
 }
 
 type RawReply struct {
@@ -131,19 +157,11 @@ func (s *DB) InsertPost(p RawPost) error {
 	if !p.ExpiresAt.IsZero() {
 		expiresNano = p.ExpiresAt.UnixNano()
 	}
-	approved := 0
-	if p.Approved {
-		approved = 1
-	}
-	permReq := 0
-	if p.PermanentReq {
-		permReq = 1
-	}
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO posts(id,category,author_name,author_key,title,body,created_at,sig,approved,expires_at,permanent_req)
-		 VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+		`INSERT OR IGNORE INTO posts(id,category,author_name,author_key,title,body,created_at,sig,expires_at)
+		 VALUES(?,?,?,?,?,?,?,?,?)`,
 		p.ID, p.Category, p.AuthorName, p.AuthorKey,
-		p.Title, p.Body, p.CreatedAt.UnixNano(), p.Sig, approved, expiresNano, permReq,
+		p.Title, p.Body, p.CreatedAt.UnixNano(), p.Sig, expiresNano,
 	)
 	return err
 }
@@ -199,52 +217,34 @@ func (s *DB) DeletePost(postID string) error {
 	return tx.Commit()
 }
 
-func (s *DB) ApprovePost(postID string) error {
-	_, err := s.db.Exec("UPDATE posts SET approved=1 WHERE id=?", postID)
-	return err
-}
-
-func (s *DB) ApprovePostsByAuthor(authorKey string) error {
-	_, err := s.db.Exec("UPDATE posts SET approved=1 WHERE author_key=?", authorKey)
-	return err
-}
-
-func (s *DB) SetPostExpiry(postID string, expiresAt time.Time) error {
-	_, err := s.db.Exec("UPDATE posts SET expires_at=? WHERE id=?",
-		expiresAt.UnixNano(), postID)
-	return err
-}
-
-func (s *DB) PendingPosts() ([]PendingPost, error) {
-	now := time.Now().UnixNano()
-	rows, err := s.db.Query(`
-		SELECT id, title, author_name, author_key, category, body, created_at, expires_at
-		FROM posts
-		WHERE approved=0 AND permanent_req=1 AND expires_at > ?
-		ORDER BY expires_at ASC`, now)
+// DeletePostWithTombstone, bir postu silme ve onun tombstone kaydını yazma
+// işlemlerini TEK bir transaction'da yapar — DeletePost + InsertTombstone'u
+// ayrı ayrı çağırmak, ikisi arasında bir çökme olursa "tombstone'suz silinmiş
+// post" durumuna yol açabilirdi (bkz. forum.go: applyDelete).
+func (s *DB) DeletePostWithTombstone(postID, msgJSON string) error {
+	tx, err := s.db.Begin()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	var out []PendingPost
-	for rows.Next() {
-		var p PendingPost
-		var createdTs, expiresTs int64
-		if err := rows.Scan(&p.ID, &p.Title, &p.AuthorName, &p.AuthorKey,
-			&p.Category, &p.Body, &createdTs, &expiresTs); err != nil {
-			return nil, err
-		}
-		p.CreatedAt = time.Unix(0, createdTs).UTC()
-		p.ExpiresAt = time.Unix(0, expiresTs).UTC()
-		out = append(out, p)
+	if _, err = tx.Exec("DELETE FROM replies WHERE post_id=?", postID); err != nil {
+		tx.Rollback() //nolint:errcheck
+		return err
 	}
-	return out, rows.Err()
+	if _, err = tx.Exec("DELETE FROM posts WHERE id=?", postID); err != nil {
+		tx.Rollback() //nolint:errcheck
+		return err
+	}
+	if _, err = tx.Exec(`INSERT OR IGNORE INTO tombstones(post_id, msg_json) VALUES(?, ?)`, postID, msgJSON); err != nil {
+		tx.Rollback() //nolint:errcheck
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *DB) DeleteExpiredPosts() (int, error) {
 	now := time.Now().UnixNano()
 	res, err := s.db.Exec(`
-		DELETE FROM posts WHERE approved=0 AND expires_at > 0 AND expires_at < ?`, now)
+		DELETE FROM posts WHERE expires_at > 0 AND expires_at < ?`, now)
 	if err != nil {
 		return 0, err
 	}
@@ -254,7 +254,7 @@ func (s *DB) DeleteExpiredPosts() (int, error) {
 
 func (s *DB) AllPosts() ([]RawPost, error) {
 	rows, err := s.db.Query(
-		`SELECT id,category,author_name,author_key,title,body,created_at,sig,approved,expires_at,permanent_req
+		`SELECT id,category,author_name,author_key,title,body,created_at,sig,expires_at
 		 FROM posts ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -264,14 +264,11 @@ func (s *DB) AllPosts() ([]RawPost, error) {
 	for rows.Next() {
 		var p RawPost
 		var ts, expiresNano int64
-		var approved, permReq int
 		if err := rows.Scan(&p.ID, &p.Category, &p.AuthorName, &p.AuthorKey,
-			&p.Title, &p.Body, &ts, &p.Sig, &approved, &expiresNano, &permReq); err != nil {
+			&p.Title, &p.Body, &ts, &p.Sig, &expiresNano); err != nil {
 			return nil, err
 		}
 		p.CreatedAt = time.Unix(0, ts).UTC()
-		p.Approved = approved != 0
-		p.PermanentReq = permReq != 0
 		if expiresNano > 0 {
 			p.ExpiresAt = time.Unix(0, expiresNano).UTC()
 		}
@@ -298,6 +295,126 @@ func (s *DB) AllReplies() ([]RawReply, error) {
 		}
 		r.CreatedAt = time.Unix(0, ts).UTC()
 		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// RawChatMessage is a signed chat message persisted so it survives restarts
+// and can be exchanged with peers who were offline when it was sent (see
+// internal/chatlog's sync protocol, mirroring how RawPost is synced by
+// internal/forum). AuthorKey/Sig may be empty for messages relayed from
+// sources that don't sign (e.g. the plugin API's chat adapter, which
+// predates this table) — those are never inserted here; only chatlog
+// persists messages it could verify.
+type RawChatMessage struct {
+	ID, AuthorKey, AuthorName, Text, Sig string
+	SentAt                               time.Time
+	ExpiresAt                            time.Time
+}
+
+func (s *DB) InsertChatMessage(m RawChatMessage) error {
+	var expiresNano int64
+	if !m.ExpiresAt.IsZero() {
+		expiresNano = m.ExpiresAt.UnixNano()
+	}
+	_, err := s.db.Exec(
+		`INSERT OR IGNORE INTO chat_messages(id,author_key,author_name,text,sent_at,expires_at,sig)
+		 VALUES(?,?,?,?,?,?,?)`,
+		m.ID, m.AuthorKey, m.AuthorName, m.Text, m.SentAt.UnixNano(), expiresNano, m.Sig,
+	)
+	return err
+}
+
+func (s *DB) AllChatMessages() ([]RawChatMessage, error) {
+	rows, err := s.db.Query(
+		`SELECT id,author_key,author_name,text,sent_at,expires_at,sig
+		 FROM chat_messages ORDER BY sent_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RawChatMessage
+	for rows.Next() {
+		var m RawChatMessage
+		var ts, expiresNano int64
+		if err := rows.Scan(&m.ID, &m.AuthorKey, &m.AuthorName, &m.Text, &ts, &expiresNano, &m.Sig); err != nil {
+			return nil, err
+		}
+		m.SentAt = time.Unix(0, ts).UTC()
+		if expiresNano > 0 {
+			m.ExpiresAt = time.Unix(0, expiresNano).UTC()
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *DB) DeleteExpiredChatMessages() (int, error) {
+	now := time.Now().UnixNano()
+	res, err := s.db.Exec(`DELETE FROM chat_messages WHERE expires_at > 0 AND expires_at < ?`, now)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// DeleteChatMessage removes a single message by ID — used when
+// chatlog.Store's MaxStoredMessages cap evicts the oldest entries.
+func (s *DB) DeleteChatMessage(id string) error {
+	_, err := s.db.Exec(`DELETE FROM chat_messages WHERE id=?`, id)
+	return err
+}
+
+// RawProfile is a peer's self-published profile: a free-text bio, a short
+// status line, a comma-joined set of category tags, an optional contact
+// link, an optional GitHub username (proven via githubverify's OAuth Device
+// Flow, not just self-typed like Link), and optionally a moderator
+// certificate (ModCertJSON) that proves the author currently holds
+// moderator status — verification of that cert, of Tags against
+// forum.Categories, and of GitHubUser's shape, happens in the profile
+// package, not here; storage just persists whatever bytes it's given.
+type RawProfile struct {
+	AuthorKey   string
+	Bio         string
+	Status      string
+	Tags        string // virgülle ayrılmış kategori adları, ör. "Go,Rust"
+	Link        string
+	GitHubUser  string
+	UpdatedAt   time.Time
+	ModCertJSON string
+	Sig         string
+}
+
+// UpsertProfile stores p, replacing any previous profile for the same
+// AuthorKey. Callers must ensure p.UpdatedAt is newer than what's already
+// stored — this method does not itself enforce "newer wins".
+func (s *DB) UpsertProfile(p RawProfile) error {
+	_, err := s.db.Exec(
+		`INSERT INTO profiles(author_key,bio,status,tags,link,github_user,updated_at,mod_cert,sig) VALUES(?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT(author_key) DO UPDATE SET bio=excluded.bio, status=excluded.status, tags=excluded.tags,
+		 	link=excluded.link, github_user=excluded.github_user, updated_at=excluded.updated_at,
+		 	mod_cert=excluded.mod_cert, sig=excluded.sig`,
+		p.AuthorKey, p.Bio, p.Status, p.Tags, p.Link, p.GitHubUser, p.UpdatedAt.UnixNano(), p.ModCertJSON, p.Sig,
+	)
+	return err
+}
+
+func (s *DB) AllProfiles() ([]RawProfile, error) {
+	rows, err := s.db.Query(`SELECT author_key,bio,status,tags,link,github_user,updated_at,mod_cert,sig FROM profiles`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RawProfile
+	for rows.Next() {
+		var p RawProfile
+		var ts int64
+		if err := rows.Scan(&p.AuthorKey, &p.Bio, &p.Status, &p.Tags, &p.Link, &p.GitHubUser, &ts, &p.ModCertJSON, &p.Sig); err != nil {
+			return nil, err
+		}
+		p.UpdatedAt = time.Unix(0, ts).UTC()
+		out = append(out, p)
 	}
 	return out, rows.Err()
 }

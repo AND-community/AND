@@ -149,7 +149,13 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	// Postları önce ekle — ardından tombstone'lar gelecek.
 	// Sıralama önemli: author doğrulaması post memory'de olmasını gerektirir.
 	for _, p := range resp.Posts {
-		if verifyPost(p) && f.rl.allowPost(p.AuthorKey) {
+		if f.rl.muted(p.AuthorKey) {
+			continue
+		}
+		if f.authorBanned(p.AuthorKey) {
+			continue
+		}
+		if verifyPost(p) && f.rl.allowPost(p.AuthorKey, false) {
 			f.storePost(p)
 		}
 	}
@@ -159,7 +165,13 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 			if limit >= 200 {
 				break
 			}
-			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey) {
+			if f.rl.muted(r.AuthorKey) {
+				continue
+			}
+			if f.authorBanned(r.AuthorKey) {
+				continue
+			}
+			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey, false) {
 				f.storeReply(r)
 				limit++
 			}
@@ -169,7 +181,7 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	// Peer'ın tombstone'larını uygula (az önce eklediğimiz postlar dahil).
 	for _, tsJSON := range resp.Tombstones {
 		var d DeleteMsg
-		if json.Unmarshal([]byte(tsJSON), &d) == nil && verifyDeleteMsg(&d) {
+		if json.Unmarshal([]byte(tsJSON), &d) == nil && !f.authorBanned(d.AuthorKey) && verifyDeleteMsg(&d) {
 			f.applyDelete(d.PostID, d.AuthorKey, []byte(tsJSON))
 		}
 	}

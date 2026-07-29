@@ -1,0 +1,8 @@
+{
+  "name":        "admin",
+  "label":       "Yönetici Paneli",
+  "version":     "3.0.0",
+  "description": "Tüm forum konularını görüntüle ve gerektiğinde sil (kurucu/moderatör yetkisi gerekir)",
+  "author":      "AND",
+  "requires":    []
+}

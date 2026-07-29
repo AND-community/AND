@@ -2,6 +2,8 @@ package updater
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -71,7 +73,6 @@ func AssetName() string {
 	return fmt.Sprintf("and_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
 }
 
-
 func Apply(ctx context.Context, info *ReleaseInfo) error {
 	name := AssetName()
 	var dlURL string
@@ -95,6 +96,19 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("indirme hatası: %w", err)
 	}
+
+	// Bütünlük doğrulaması: indirilen binary, release'in kendi
+	// SHA256SUMS.txt'sine karşı kontrol edilir. Bu bir ÖZET (checksum)
+	// doğrulamasıdır, kriptografik bir İMZA değildir — bir imzalama anahtarı
+	// GitHub Actions'ta yapılandırılmadığı sürece bu yalnızca indirmenin
+	// bozulmadığını/aktarım sırasında değişmediğini garanti eder; GitHub
+	// hesabının ele geçirilmesi gibi bir tedarik zinciri saldırısına karşı
+	// tam koruma sağlamaz.
+	if err := verifyChecksum(ctx, info, name, tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("bütünlük doğrulaması başarısız: %w", err)
+	}
+
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		os.Remove(tmpPath)
 		return err
@@ -113,6 +127,88 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 	}
 	go os.Remove(oldPath)
 	return nil
+}
+
+const checksumAssetName = "SHA256SUMS.txt"
+
+// verifyChecksum, info'daki release'in SHA256SUMS.txt asset'ini indirip
+// assetName için beklenen özeti bulur ve filePath'teki dosyanın gerçek
+// sha256 özetiyle karşılaştırır. SHA256SUMS.txt yoksa ya da assetName için
+// bir kayıt bulunamazsa doğrulama BAŞARISIZ sayılır (fail-closed) — eski
+// (bu alanı henüz üretmeyen) bir release'e karşı sessizce atlanmaz.
+func verifyChecksum(ctx context.Context, info *ReleaseInfo, assetName, filePath string) error {
+	var sumsURL string
+	for _, a := range info.Assets {
+		if a.Name == checksumAssetName {
+			sumsURL = a.BrowserDownloadURL
+			break
+		}
+	}
+	if sumsURL == "" {
+		return fmt.Errorf("bu sürümde %s bulunamadı", checksumAssetName)
+	}
+	sums, err := fetchChecksums(ctx, sumsURL)
+	if err != nil {
+		return fmt.Errorf("%s indirilemedi: %w", checksumAssetName, err)
+	}
+	want, ok := sums[assetName]
+	if !ok {
+		return fmt.Errorf("%s içinde %s için kayıt yok", checksumAssetName, assetName)
+	}
+	got, err := sha256File(filePath)
+	if err != nil {
+		return fmt.Errorf("indirilen dosyanın özeti hesaplanamadı: %w", err)
+	}
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("özet uyuşmuyor (beklenen %s, hesaplanan %s) — dosya bozuk ya da değiştirilmiş olabilir", want, got)
+	}
+	return nil
+}
+
+// fetchChecksums, `sha256sum` çıktı biçimindeki ("<özet>  <dosya adı>", satır
+// başına bir girdi) bir SHA256SUMS.txt dosyasını indirip dosya adı → özet
+// eşlemesi olarak döndürür.
+func fetchChecksums(ctx context.Context, url string) (map[string]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "AND/"+Version)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16)) // SHA256SUMS.txt küçük bir metin dosyasıdır
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		name := strings.TrimPrefix(fields[1], "*") // sha256sum binary modda "*dosyaadı" yazabilir
+		out[name] = fields[0]
+	}
+	return out, nil
+}
+
+func sha256File(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func SelfRestart() error {
