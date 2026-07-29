@@ -1,8 +1,0 @@
-{
-  "name":        "konu_ac",
-  "label":       "",
-  "version":     "2.5.0",
-  "description": "Yeni konu oluşturma ve taslak yönetimi (menüde gizli — forumdan n ile açılır)",
-  "author":      "AND",
-  "requires":    []
-}
