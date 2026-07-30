@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -94,29 +93,13 @@ func (b *Broker) handleStream(s libp2pnet.Stream) {
 	if pkt.Text == "" {
 		return
 	}
-	from := combineIdentity(pkt.From, s.Conn().RemotePeer().String())
+	from := pkt.From
+	if from == "" {
+		from = s.Conn().RemotePeer().String()
+	}
 	b.Deliver(pluginapi.DMMsg{
 		From:       from,
 		Text:       pkt.Text,
 		ReceivedAt: pkt.At,
 	})
-}
-
-// combineIdentity, DM göndericisinin öz-bildirdiği adını (pkt.From —
-// doğrulanmamış, gönderenin kendi beyanı) her zaman libp2p tarafından
-// doğrulanmış gerçek Peer ID'siyle birlikte döndürür. Yalnızca öz-bildirilen
-// ada güvenmek, bir eşin başka bir kullanıcının görünen adını taklit
-// etmesine izin verir; Peer ID'yi daima yanında tutmak, alıcının taklidi
-// fark edebilmesini sağlar. claimedName boşsa ya da zaten verifiedPeerID'nin
-// kendisiyse yalnızca doğrulanmış ID döner.
-func combineIdentity(claimedName, verifiedPeerID string) string {
-	claimedName = strings.TrimSpace(claimedName)
-	if claimedName == "" || claimedName == verifiedPeerID {
-		return verifiedPeerID
-	}
-	short := verifiedPeerID
-	if len(short) > 12 {
-		short = short[:12]
-	}
-	return fmt.Sprintf("%s (%s…)", claimedName, short)
 }

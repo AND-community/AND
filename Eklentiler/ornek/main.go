@@ -4,7 +4,7 @@
 //   - --manifest bayrağı ile statik manifest çıktısı
 //   - pluginapi.NewClientFromEnv() ile AND API bağlantısı
 //   - Kimlik ve rol sorgusu (Identity, Role)
-//   - Tüm forum konularını listeleme, detay görüntüleme ve silme (moderatör)
+//   - Onay bekleyen konuları listeleme ve onayla/reddet işlemleri (moderatör)
 //   - Çok aşamalı konu oluşturma formu (kategori seçimi + başlık + gövde)
 //   - Özel mesaj gönderme (DM)
 //   - AND_DATA_DIR ile yerel ayar dosyası okuma/yazma
@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,7 +33,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/pluginui"
 )
 
 // ─── Manifest ─────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ornek",
 	Label:       "Örnek Eklenti",
-	Version:     "1.1.0",
+	Version:     "1.0.0",
 	Description: "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici referansı",
 	Author:      "AND",
 }
@@ -102,8 +102,24 @@ func main() {
 //
 // P2P ağından gelen her string güvenilmezdir. Bir saldırgan post başlığına
 // ANSI escape kodu yerleştirerek terminali manipüle edebilir (ekran silme,
-// imleç taşıma, clipboard çalma vb.) — bkz. internal/pluginui.Safe.
-func safe(s string) string { return pluginui.Safe(s) }
+// imleç taşıma, clipboard çalma vb.). safe() bu riskleri ortadan kaldırır.
+
+var reANSI = regexp.MustCompile(
+	`\x1b(?:[@-Z\\-_]|\[[0-9;]*[a-zA-Z]|\][^\x07\x1b]*(?:\x07|\x1b\\))`,
+)
+
+// safe, kullanıcı kaynaklı stringleri terminale yazmadan önce temizler.
+// ANSI escape dizilerini ve kontrol karakterlerini siler; newline ve tab'ı korur.
+func safe(s string) string {
+	s = reANSI.ReplaceAllString(s, "")
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\n' || r == '\t' || r >= 0x20 {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
 
 // ─── Stiller ──────────────────────────────────────────────────────────────────
 
@@ -130,8 +146,8 @@ type ekran int
 const (
 	ekAnaMenu     ekran = iota // Ana menü — eklenti seçenekleri
 	ekKimlik                   // Kimlik bilgileri ekranı
-	ekTumKonular               // Tüm forum konuları listesi (mod/kurucu)
-	ekDetay                    // Konu detayı + sil
+	ekBekleyen                 // Onay bekleyen konular listesi (mod/kurucu)
+	ekDetay                    // Konu detayı + onayla/reddet
 	ekKonuOlustur              // Yeni konu oluşturma formu
 	ekDMGonder                 // Özel mesaj gönderme formu
 	ekAyarlar                  // AND_DATA_DIR'den okunan yerel ayarlar
@@ -143,9 +159,9 @@ const (
 // Bu, AND yeniden başlatılsa bile kalıcı ayarları mümkün kılar.
 
 type ayarlar struct {
-	IlkAcilis string `json:"ilk_acilis"` // eklenti ilk kez ne zaman açıldı
-	AcilisSay int    `json:"acilis_say"` // kaç kez açıldı
-	OzelNot   string `json:"ozel_not"`   // kullanıcının girdiği not
+	IlkAcilis  string `json:"ilk_acilis"`  // eklenti ilk kez ne zaman açıldı
+	AcilisSay  int    `json:"acilis_say"`  // kaç kez açıldı
+	OzelNot    string `json:"ozel_not"`    // kullanıcının girdiği not
 }
 
 func ayarlarOku(dataDir string) ayarlar {
@@ -175,14 +191,12 @@ func ayarlarKaydet(dataDir string, a ayarlar) error {
 // ─── tea.Msg tipleri ──────────────────────────────────────────────────────────
 
 type postlarYuklendi struct {
-	posts []pluginapi.PostSummary
+	posts []pluginapi.PendingPost
 	err   error
 }
-type konuDetayGeldi struct {
-	detay *pluginapi.PostDetail
-	err   error
-}
-type konuSilindi struct{ err error }
+type onaylandı struct{ err error }
+type reddedildi struct{ err error }
+type yazarOnaylandı struct{ err error }
 type konuOlusturuldu struct{ err error }
 type dmGonderildi struct{ err error }
 
@@ -212,11 +226,10 @@ type model struct {
 	// Ana menü
 	menuIdx int
 
-	// Tüm konular
-	posts       []pluginapi.PostSummary
-	postIdx     int
-	postVP      viewport.Model
-	seciliDetay *pluginapi.PostDetail
+	// Bekleyen konular
+	posts   []pluginapi.PendingPost
+	postIdx int
+	postVP  viewport.Model
 
 	// Konu oluşturma formu
 	// formFocus: 0=kategori seçimi, 1=başlık, 2=gövde
@@ -317,27 +330,32 @@ func (m model) Init() tea.Cmd {
 
 func cmdPostlarYukle(c *pluginapi.Client) tea.Cmd {
 	return func() tea.Msg {
-		posts, err := c.AllPosts()
+		posts, err := c.Pending()
 		return postlarYuklendi{posts: posts, err: err}
 	}
 }
 
-func cmdKonuGetir(c *pluginapi.Client, postID string) tea.Cmd {
+func cmdOnayla(c *pluginapi.Client, postID string) tea.Cmd {
 	return func() tea.Msg {
-		detay, err := c.GetPost(postID)
-		return konuDetayGeldi{detay: detay, err: err}
+		return onaylandı{err: c.Approve(postID)}
 	}
 }
 
-func cmdKonuSil(c *pluginapi.Client, postID string) tea.Cmd {
+func cmdReddet(c *pluginapi.Client, postID string) tea.Cmd {
 	return func() tea.Msg {
-		return konuSilindi{err: c.DeletePost(postID)}
+		return reddedildi{err: c.Reject(postID)}
+	}
+}
+
+func cmdYazarOnayla(c *pluginapi.Client, authorKey string) tea.Cmd {
+	return func() tea.Msg {
+		return yazarOnaylandı{err: c.ApproveAuthor(authorKey)}
 	}
 }
 
 func cmdKonuOlustur(c *pluginapi.Client, cat, title, body string) tea.Cmd {
 	return func() tea.Msg {
-		return konuOlusturuldu{err: c.CreatePost(cat, title, body)}
+		return konuOlusturuldu{err: c.CreatePost(cat, title, body, false)}
 	}
 }
 
@@ -357,8 +375,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.postVP.Width = msg.Width - 4
 		m.postVP.Height = msg.Height - 10
 		m.bodyTA.SetWidth(msg.Width - 6)
-		if m.ekran == ekDetay && m.seciliDetay != nil {
-			m.postVP.SetContent(detayMetni(m.seciliDetay))
+		if m.ekran == ekDetay && len(m.posts) > 0 {
+			m.postVP.SetContent(detayMetni(m.posts[m.postIdx]))
 		}
 		return m, nil
 
@@ -379,35 +397,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isErr = false
 		return m, nil
 
-	case konuDetayGeldi:
-		m.loading = false
-		if msg.err != nil || msg.detay == nil {
-			m.notice = "Konu yüklenemedi"
-			if msg.err != nil {
-				m.notice = "Konu yüklenemedi: " + msg.err.Error()
-			}
-			m.isErr = true
-			m.ekran = ekTumKonular
-			return m, nil
-		}
-		m.seciliDetay = msg.detay
-		m.postVP.Width = m.w - 4
-		m.postVP.Height = m.h - 10
-		m.postVP.SetContent(detayMetni(m.seciliDetay))
-		m.postVP.GotoTop()
-		return m, nil
-
-	case konuSilindi:
+	case onaylandı:
 		m.pending = false
 		if msg.err != nil {
-			m.notice = "Silme hatası: " + msg.err.Error()
+			m.notice = "Onay hatası: " + msg.err.Error()
 			m.isErr = true
 			return m, nil
 		}
-		m.notice = "Konu silindi."
+		m.notice = "Konu onaylandı ve ağda yayınlandı."
 		m.isErr = false
-		m.seciliDetay = nil
-		m.ekran = ekTumKonular
+		m.ekran = ekBekleyen
+		return m, cmdPostlarYukle(m.client)
+
+	case reddedildi:
+		m.pending = false
+		if msg.err != nil {
+			m.notice = "Red hatası: " + msg.err.Error()
+			m.isErr = true
+			return m, nil
+		}
+		m.notice = "Konu reddedildi."
+		m.isErr = false
+		m.ekran = ekBekleyen
+		return m, cmdPostlarYukle(m.client)
+
+	case yazarOnaylandı:
+		m.pending = false
+		if msg.err != nil {
+			m.notice = "Yazar onay hatası: " + msg.err.Error()
+			m.isErr = true
+			return m, nil
+		}
+		m.notice = "Yazarın tüm konuları onaylandı."
+		m.isErr = false
+		m.ekran = ekBekleyen
 		return m, cmdPostlarYukle(m.client)
 
 	case konuOlusturuldu:
@@ -417,7 +440,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isErr = true
 			return m, nil
 		}
-		m.notice = "Konu gönderildi — 5 gün süreyle listelenecek."
+		m.notice = "Konu gönderildi — onay bekleniyor."
 		m.isErr = false
 		// Formu sıfırla
 		m.titleIn.SetValue("")
@@ -471,8 +494,8 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.keyAnaMenu(msg)
 	case ekKimlik:
 		return m.keyGeri(msg)
-	case ekTumKonular:
-		return m.keyTumKonular(msg)
+	case ekBekleyen:
+		return m.keyBekleyen(msg)
 	case ekDetay:
 		return m.keyDetay(msg)
 	case ekKonuOlustur:
@@ -490,7 +513,7 @@ func (m model) menuSecenekleri() []string {
 	opts := []string{"Kimlik Bilgileri", "Yeni Konu Oluştur", "Özel Mesaj Gönder", "Ayarlar"}
 	if m.role.IsFounder || m.role.IsModerator {
 		// Moderatör/kurucu seçeneği ortaya ekle
-		opts = []string{"Kimlik Bilgileri", "Tüm Konular", "Yeni Konu Oluştur", "Özel Mesaj Gönder", "Ayarlar"}
+		opts = []string{"Kimlik Bilgileri", "Bekleyen Konular", "Yeni Konu Oluştur", "Özel Mesaj Gönder", "Ayarlar"}
 	}
 	return append(opts, "Çıkış")
 }
@@ -515,8 +538,8 @@ func (m model) keyAnaMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "Kimlik Bilgileri":
 			m.ekran = ekKimlik
-		case "Tüm Konular":
-			m.ekran = ekTumKonular
+		case "Bekleyen Konular":
+			m.ekran = ekBekleyen
 			m.loading = true
 			m.notice = ""
 			return m, cmdPostlarYukle(m.client)
@@ -549,7 +572,7 @@ func (m model) keyGeri(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) keyTumKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m model) keyBekleyen(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -565,11 +588,11 @@ func (m model) keyTumKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if len(m.posts) > 0 {
-			// GetPost, AllPosts'un vermediği gövde/oluşturulma bilgisini getirir.
 			m.ekran = ekDetay
-			m.loading = true
-			m.seciliDetay = nil
-			return m, cmdKonuGetir(m.client, m.posts[m.postIdx].ID)
+			m.postVP.Width = m.w - 4
+			m.postVP.Height = m.h - 10
+			m.postVP.SetContent(detayMetni(m.posts[m.postIdx]))
+			m.postVP.GotoTop()
 		}
 	case "r", "R":
 		m.loading = true
@@ -580,18 +603,37 @@ func (m model) keyTumKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) keyDetay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.posts) == 0 {
+		m.ekran = ekBekleyen
+		return m, nil
+	}
+	post := m.posts[m.postIdx]
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "esc", "q":
-		m.ekran = ekTumKonular
-	case "x", "X":
-		// Sil — sunucu tarafı da rol doğruluyor (çift güvence)
-		if m.pending || m.seciliDetay == nil {
+		m.ekran = ekBekleyen
+	case "a", "A":
+		// Onayla — sunucu tarafı da rol doğruluyor (çift güvence)
+		if m.pending {
 			return m, nil
 		}
 		m.pending = true
-		return m, cmdKonuSil(m.client, m.seciliDetay.ID)
+		return m, cmdOnayla(m.client, post.ID)
+	case "d", "D":
+		// Reddet
+		if m.pending {
+			return m, nil
+		}
+		m.pending = true
+		return m, cmdReddet(m.client, post.ID)
+	case "y", "Y":
+		// Yazarın tüm konularını onayla
+		if m.pending || post.AuthorKey == "" {
+			return m, nil
+		}
+		m.pending = true
+		return m, cmdYazarOnayla(m.client, post.AuthorKey)
 	default:
 		var cmd tea.Cmd
 		m.postVP, cmd = m.postVP.Update(msg)
@@ -803,8 +845,8 @@ func (m model) View() string {
 		return m.viewAnaMenu()
 	case ekKimlik:
 		return m.viewKimlik()
-	case ekTumKonular:
-		return m.viewTumKonular()
+	case ekBekleyen:
+		return m.viewBekleyen()
 	case ekDetay:
 		return m.viewDetay()
 	case ekKonuOlustur:
@@ -872,11 +914,11 @@ func (m model) viewKimlik() string {
 	return sb.String()
 }
 
-// ── Tüm konular view ──────────────────────────────────────────────────────────
+// ── Bekleyen konular view ─────────────────────────────────────────────────────
 
-func (m model) viewTumKonular() string {
+func (m model) viewBekleyen() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Tüm Konular") + "\n\n")
+	sb.WriteString(stTitle.Render("AND — Onay Bekleyen Konular") + "\n\n")
 
 	if m.loading {
 		sb.WriteString(stMuted.Render("Yükleniyor…") + "\n")
@@ -884,11 +926,15 @@ func (m model) viewTumKonular() string {
 	}
 
 	if len(m.posts) == 0 {
-		sb.WriteString(stOk.Render("Hiç konu yok.") + "\n")
+		sb.WriteString(stOk.Render("Onay bekleyen konu yok.") + "\n")
 	} else {
 		for i, p := range m.posts {
-			line := fmt.Sprintf("[%s] %s  %s",
-				safe(p.Category), safe(p.Title),
+			perm := ""
+			if p.PermanentReq {
+				perm = " ★"
+			}
+			line := fmt.Sprintf("[%s] %s%s  %s",
+				safe(p.Category), safe(p.Title), perm,
 				stDim.Render(safe(p.AuthorName)))
 			if i == m.postIdx {
 				sb.WriteString(stSel.Render(line) + "\n")
@@ -907,14 +953,11 @@ func (m model) viewTumKonular() string {
 // ── Konu detay view ───────────────────────────────────────────────────────────
 
 func (m model) viewDetay() string {
+	if len(m.posts) == 0 {
+		return ""
+	}
 	var sb strings.Builder
 	sb.WriteString(stTitle.Render("AND — Konu Detayı") + "\n\n")
-
-	if m.loading || m.seciliDetay == nil {
-		sb.WriteString(stMuted.Render("Yükleniyor…") + "\n")
-		return sb.String()
-	}
-
 	sb.WriteString(m.postVP.View() + "\n\n")
 
 	if m.pending {
@@ -922,7 +965,7 @@ func (m model) viewDetay() string {
 	} else {
 		m.yazBildirim(&sb)
 	}
-	sb.WriteString(stDim.Render("x sil   ↑/↓ kaydır   esc geri"))
+	sb.WriteString(stDim.Render("a onayla   d reddet   y yazar-onayla   ↑/↓ kaydır   esc geri"))
 	return sb.String()
 }
 
@@ -940,9 +983,9 @@ func (m model) viewKonuOlustur() string {
 	sb.WriteString(catLabel)
 	for i, c := range kategoriListesi {
 		if i == m.catIdx {
-			sb.WriteString(stSel.Render(" " + c + " "))
+			sb.WriteString(stSel.Render(" "+c+" "))
 		} else {
-			sb.WriteString(stDim.Render(" " + c + " "))
+			sb.WriteString(stDim.Render(" "+c+" "))
 		}
 	}
 	sb.WriteString("\n\n")
@@ -1041,13 +1084,17 @@ func (m model) viewAyarlar() string {
 
 // detayMetni, seçili konunun viewport içeriğini oluşturur.
 // Tüm kullanıcı verisi safe() ile temizlenir.
-func detayMetni(p *pluginapi.PostDetail) string {
+func detayMetni(p pluginapi.PendingPost) string {
 	var sb strings.Builder
-	sb.WriteString(stBold.Render("Başlık      : ") + safe(p.Title) + "\n")
-	sb.WriteString(stDim.Render("Yazar       : ") + safe(p.AuthorName) + "\n")
-	sb.WriteString(stDim.Render("Kategori    : ") + safe(p.Category) + "\n")
-	sb.WriteString(stDim.Render("Oluşturulma : ") + p.CreatedAt.Local().Format("2006-01-02 15:04") + "\n")
-	sb.WriteString(stDim.Render("Yanıt sayısı: ") + fmt.Sprintf("%d", len(p.Replies)) + "\n")
+	sb.WriteString(stBold.Render("Başlık   : ") + safe(p.Title) + "\n")
+	sb.WriteString(stDim.Render("Yazar    : ") + safe(p.AuthorName) + "\n")
+	sb.WriteString(stDim.Render("Kategori : ") + safe(p.Category) + "\n")
+	if !p.ExpiresAt.IsZero() {
+		sb.WriteString(stDim.Render("TTL      : ") + p.ExpiresAt.Local().Format("2006-01-02 15:04") + "\n")
+	}
+	if p.PermanentReq {
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true).Render(" ★ Kalıcılık talebi ") + "\n")
+	}
 	sb.WriteString("\n" + safe(p.Body) + "\n")
 	return sb.String()
 }

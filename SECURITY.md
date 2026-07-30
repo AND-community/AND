@@ -73,43 +73,16 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 ### Ağ güvenliği
 
 - libp2p Noise protokolü ile transport katmanı şifrelemesi sağlanır.
-- Banlanan peer'lar üç katmanda engellenir: bağlantı düzeyinde
-  (`ConnectionGater` — banlı bir peer ile libp2p bağlantısı hiç kurulmaz),
-  canlı GossipSub mesajlarında (yeni forum/sohbet içeriği reddedilir) ve
-  senkronizasyon (backfill) akışında (`SyncWithPeer` — banlı bir yazarın
-  geçmiş içeriği de senkron sırasında kabul edilmez).
-- Moderatör sertifikaları kurucu tarafından Ed25519 ile imzalanır;
-  sertifikasız onay mesajları (moderatör yolu) ağda geçersiz sayılır.
-  Kurucunun kendisi için ayrı, sertifikasız bir doğrudan-imza yolu vardır
-  (ban/unban) — kendi anahtarına karşı doğrudan doğrulanır, farklı bir
-  imza payload'u kullanır, bu yüzden bir moderatör mesajı kurucu mesajı
-  gibi yeniden oynatılamaz (ve tam tersi).
-- Bir moderatör sertifikası iptal edildiğinde (`revoke`), sertifikanın
-  imzalandığı an iptal anından ÖNCEYSE artık hiçbir işlemde (ban, unban)
-  kabul edilmez — süresi henüz dolmamış olsa bile. İptalden SONRA aynı
-  kişiye yeniden verilen bir sertifika bundan etkilenmez.
-- Ban/unban/iptal/moderatör-atama gibi kendi düğümünden kaynaklanan
-  (`Issue*`) her işlem, ağa yayınlanmadan önce kendi kendine kurucunun
-  gerçek anahtarına karşı doğrulanır — yanlış bir kimlikle çağrılırsa
-  hiçbir yerde geçerli olmayacak bir mesaj sessizce "başarılı" diye
-  bildirilmez, hemen hata döner.
-- GossipSub mesajları imzasız da yayılabilir; önem taşıyan kararlar (konu, yanıt, ban, unban, sertifika iptali) her zaman imzalıdır.
+- Banlanan peer'lar `ConnectionGater` arayüzü üzerinden bağlantı düzeyinde engellenir.
+- Moderatör sertifikaları kurucu tarafından Ed25519 ile imzalanır; sertifikasız onay mesajları ağda geçersiz sayılır.
+- GossipSub mesajları imzasız da yayılabilir; önem taşıyan kararlar (onay, ban) her zaman imzalıdır.
 
 ### Eklenti IPC güvenlik sınırları
 
 - AND, eklenti API sunucusunu yalnızca `127.0.0.1` (localhost) üzerinde rastgele bir portta başlatır.
-- `AND_API_ADDR`/`AND_API_TOKEN` ortam değişkenleri yalnızca AND tarafından başlatılan alt
-  süreçlere iletilir; bu ana dinleyiciye yapılan her istek `X-And-Token` başlığıyla doğrulanır —
-  doğru token'ı bilmeyen bir istek reddedilir.
-- **İkinci, opt-in bir dinleyici** (`AND_ENABLE_EXTERNAL_API=1` ile açılır; bkz.
-  `internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`) AND'ın kendi başlatmadığı
-  süreçlerin (ör. `and-vscode` uzantısı) bağlanabilmesi için vardır. Bu dinleyicide bearer token
-  YOKTUR — erişim kararını bir sır değil doğrudan işletim sistemi verir: Windows'ta sahibe özel bir
-  security descriptor'lı (`D:P(A;;GA;;;OW)`) named pipe, Unix'te `0600` izinli bir domain socket.
-  Yalnızca bu dinleyicide açık şekilde işaretlenmiş (`allowExternal:true`) route'lara erişilebilir —
-  varsayılan kapalıdır (bkz. `internal/pluginapi/api.go`'daki `routeTable()`).
-- Güven modeli: her iki dinleyici için de aynı işletim sistemi kullanıcısı = güvenilir. Farklı
-  kullanıcı hesaplarının erişemeyeceği yerel iletişimdir; ağa açık değildir.
+- `AND_API_ADDR` ortam değişkeni yalnızca AND tarafından başlatılan alt süreçlere iletilir.
+- API, kimlik doğrulama içermez; güven modeli: aynı işletim sistemi kullanıcısı = güvenilir.
+- Farklı kullanıcı hesaplarının erişemeyeceği yerel iletişim; ağa açık değildir.
 
 ### Yerel depolama
 
@@ -122,9 +95,6 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 - **İçerik kalıcılığı:** Ağda yayılan içerik geri alınamaz; silme mesajları yalnızca TTL dolmadan önce çalışır ve tüm peer'ların uygulamasına bağlıdır.
 - **Bootstrap güveni:** DHT bootstrap node'ları kimlik doğrulaması yapılmadan kullanılır; Sybil saldırısına karşı ek koruma yoktur.
 - **DM şifrelemesi:** Özel mesajlar yalnızca Noise transport şifrelemesiyle korunur; uçtan uca şifreleme yoktur.
-- **Tek kurucu anahtarı:** Tüm moderasyon yetkisi tek bir kurucu Ed25519 anahtarına dayanır — çoklu imza, yedek kurucu ya da anahtar döndürme (rotation) mekanizması yoktur. Kurucunun `identity.dat`'ı kaybolur/çalınırsa, moderasyon yetkisi kalıcı olarak devredilemez hale gelir; bu, `identity.dat`'ın (ve varsa yedeklerinin) güvenliğini kritik önemli kılar.
-- **Moderatör sertifikası dağıtımı ve keşfi:** Bir sertifika, kurucunun onu ilgili kişiye elle (ör. Özel Chat ile) iletmesini gerektirir; ağda "şu anki moderatörler kimler" sorusuna cevap verecek yayınlanmış bir kayıt yoktur (bkz. Moderasyon Paneli'nin "Moderatörler" sekmesi — bu yalnızca YEREL, o düğümün kendi verdiği sertifikaların defteridir).
-- **Yerel denetim geçmişi tahrif edilebilir:** `mod_history.json` imza doğrulamalı değildir, yalnızca yerel bir kayıt kolaylığıdır; diskine erişimi olan biri bu dosyayı düzenleyebilir/silebilir. Gerçek ban/unban kararlarının kendisi (ağa yayılan `BanMsg`/`UnbanMsg`) her zaman imzalıdır ve bundan etkilenmez.
 
 ---
 

@@ -88,6 +88,7 @@ go build ./...
 go build -o and          ./cmd/and
 go build -o andmod       ./cmd/andmod
 go build -o and-plugin-admin      ./Eklentiler/admin
+go build -o and-plugin-moderator  ./Eklentiler/moderator
 go build -o and-plugin-konu-ac    ./Eklentiler/konu_ac
 go build -o and-plugin-ozel-chat  ./Eklentiler/ozel_chat
 ```
@@ -113,35 +114,28 @@ go vet ./...
 cmd/
   and/              — ana uygulama
   andmod/           — moderasyon CLI
-
-Eklentiler/
-  admin/            — yönetici paneli binary'si
-  konu_ac/          — konu açma binary'si (menüde gizli, forumdan inline açılır)
-  ozel_chat/        — özel mesaj + dosya aktarımı binary'si
-  ornek/            — yeni eklenti geliştirme şablonu
+  plugin_admin/     — yönetici paneli binary'si
+  plugin_moderator/ — moderatör paneli binary'si
+  plugin_konu_ac/   — konu açma binary'si
+  plugin_ozel_chat/ — özel mesaj binary'si
 
 internal/
   crypto/           — BIP-39, Ed25519, kimlik depolama
   network/          — libp2p, GossipSub, DHT
-  forum/            — konu yönetimi, imza, TTL, tombstone senkronu
-  chatlog/          — genel P2P sohbet kanalı
-  moderation/       — sertifika, esnek süreli ban/unban, denetim geçmişi, ConnectionGater
-  profile/          — kullanıcı profili, rol rozetleri
+  forum/            — konu yönetimi, imza, TTL
+  moderation/       — sertifika, ban, ConnectionGater
   storage/          — SQLite WAL
   pluginapi/        — eklenti HTTP IPC sunucusu + istemci
   pluginmgr/        — binary keşif ve başlatma
-  pluginui/         — uzak/eklenti içeriği için ANSI temizliği
   dmmgr/            — DM akış yönetimi
-  filemgr/          — parçalı dosya aktarımı
-  githubverify/     — GitHub OAuth Device Flow doğrulaması
-  tui/              — Bubbletea TUI (forum, sohbet, moderasyon paneli, ayarlar)
+  tui/              — Bubbletea TUI
   updater/          — otomatik güncelleme
 ```
 
 Genel bağımlılık kuralları:
 
 - `internal/` paketleri yalnızca `cmd/` ve diğer `internal/` paketleri tarafından kullanılır.
-- `pluginapi` paketi eklenti binary'leri tarafından da (`Eklentiler/*`) kullanılır.
+- `pluginapi` paketi eklenti binary'leri tarafından da (`cmd/plugin_*`) kullanılır.
 - Döngüsel bağımlılık yasaktır.
 
 ---
@@ -239,7 +233,7 @@ Detaylı şablon ve API referansı: [Eklentiler/ornek/README.md](Eklentiler/orne
 
 ### Mevcut eklentileri değiştirmek
 
-- `Eklentiler/admin/`, `Eklentiler/konu_ac/`, `Eklentiler/ozel_chat/` içindeki `main.go` dosyalarını düzenle.
+- `Eklentiler/admin/`, `Eklentiler/moderator/`, `Eklentiler/konu_ac/`, `Eklentiler/ozel_chat/` içindeki `main.go` dosyalarını düzenle.
 - Manifest'teki `version` alanını semantik versiyonlama ile güncelle.
 - İlgili `Eklentiler/<isim>/README.md`'yi güncelle.
 

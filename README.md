@@ -41,7 +41,7 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 | Forum kategorileri | Python, Rust, Go, Siber Güvenlik, Yapay Zeka ve daha fazlası |
 | Özel mesajlaşma | libp2p stream (`/and/dm/1.0.0`) üzerinden P2P doğrudan mesaj |
 | Dosya aktarımı | Yeniden başlatılabilir parçalı aktarım (`/and/file/2.0.0`); onay isteği dialog'u |
-| Moderasyon sistemi | Esnek süreli (1 saat–ömür boyu) ban/unban, devredilebilir/iptal edilebilir moderatör sertifikaları, uygulama içi Moderasyon Paneli + denetim geçmişi |
+| Moderasyon sistemi | Kurucu sertifikası + devredilebilir moderatör sertifikaları |
 | Dinamik eklenti sistemi | Bağımsız binary'ler; AND'ı yeniden derlemeden eklenti ekle |
 | Otomatik güncelleme | GitHub Releases üzerinden arka planda güncelleme |
 | Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı TUI |
@@ -53,10 +53,11 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 ```
 cmd/
   and/              — ana uygulama giriş noktası
-  andmod/           — moderasyon CLI aracı (andmod grant, ban)
+  andmod/           — moderasyon CLI aracı (andmod grant, ban, trusted)
 
 Eklentiler/
   admin/            — yönetici paneli eklentisi (bağımsız binary)
+  moderator/        — moderatör paneli eklentisi (bağımsız binary)
   konu_ac/          — konu açma (menüde gizli; AND içinde inline açılır)
   ozel_chat/        — özel mesajlaşma + dosya aktarımı eklentisi
   ornek/            — yeni eklenti geliştirme rehberi
@@ -64,20 +65,14 @@ Eklentiler/
 internal/
   crypto/           — BIP-39 → Ed25519 kimlik, AES-GCM şifreli depolama
   network/          — libp2p düğümü, GossipSub, DHT keşfi, sync protokolü
-  forum/            — konu/yanıt yönetimi, imza doğrulama, TTL, tombstone senkronu
-  chatlog/          — genel P2P sohbet kanalı (imzalı mesaj, hız sınırı, senkron)
-  moderation/       — kurucu/moderatör sertifikası, esnek süreli ban/unban, denetim
-                       geçmişi, ConnectionGater
-  profile/          — kullanıcı profili (bio/durum/link/etiket), rol rozetleri
+  forum/            — konu/yanıt yönetimi, imza doğrulama, TTL
+  moderation/       — kurucu/moderatör sertifikası, ban sistemi, ConnectionGater
   storage/          — SQLite WAL, şema versiyonlama
   pluginapi/        — eklenti HTTP IPC API sunucusu + istemci kütüphanesi
   pluginmgr/        — and-plugin-* binary keşfi ve başlatma
-  pluginui/         — eklenti/uzak içerik render'ı için ANSI/kontrol karakteri temizliği
   dmmgr/            — libp2p DM stream handler + ozel_chat'e long-poll proxy
   filemgr/          — parçalı dosya gönderme/alma; onay (consent) mekanizması
-  githubverify/     — GitHub OAuth Device Flow ile hesap doğrulama
-  bbcode/           — forum gövdesi için basit BBCode → terminal render
-  tui/              — Bubbletea TUI (menü, forum, sohbet, profil, moderasyon paneli, ayarlar)
+  tui/              — Bubbletea TUI (menü, forum, konu açma inline, sohbet, ayarlar)
   updater/          — GitHub Releases kontrolü ve uygulama güncelleme
 ```
 
@@ -140,12 +135,9 @@ go build -o andmod  ./cmd/andmod
 
 # Eklenti binary'leri (and ile aynı dizine koy)
 go build -o and-plugin-admin      ./Eklentiler/admin
+go build -o and-plugin-moderator  ./Eklentiler/moderator
 go build -o and-plugin-konu-ac    ./Eklentiler/konu_ac
 go build -o and-plugin-ozel-chat  ./Eklentiler/ozel_chat
-go build -o and-plugin-pembis     ./Eklentiler/pembis
-
-# DeltaX — Eklentiler/DeltaX/ altına derlenmeli (plugin.json yanında)
-go build -o Eklentiler/DeltaX/and-plugin-DeltaX ./Eklentiler/DeltaX
 ```
 
 Windows'ta her binary adına `.exe` uzantısı ekle.
@@ -175,27 +167,6 @@ go build \
 
 Kurucu public key'i binary'ye gömülüdür; `founder.key` dosyası ilk çalıştırmada otomatik oluşur.
 
-### GitHub hesap doğrulamasını etkinleştirmek
-
-Ayarlar'daki "GitHub hesabını doğrula" (v) özelliği, GitHub'ın OAuth Device
-Flow'unu kullanır ve bir Client ID gerektirir:
-
-1. https://github.com/settings/developers → **New OAuth App**.
-2. Authorization callback URL alanına herhangi bir değer yazılabilir (Device
-   Flow bunu kullanmaz), ör. `https://example.com`.
-3. Uygulama ayarlarında **Enable Device Flow**'u işaretle.
-4. Oluşan **Client ID**'yi al (Client Secret'a ihtiyaç YOK — Device Flow
-   secret gerektirmeyen "public client" akışıdır).
-
-```bash
-go build \
-  -ldflags "-X github.com/lucian95511/and/internal/githubverify.ClientID=<client-id>" \
-  -o and ./cmd/and
-```
-
-Client ID ayarlanmazsa özellik sessizce devre dışı kalmaz — kullanıcı "v"ye
-bastığında açık bir hata gösterilir ("ClientID yapılandırılmamış").
-
 ---
 
 ## Kullanım
@@ -209,6 +180,7 @@ Tüm binary'leri aynı dizine koy:
   and[.exe]
   andmod[.exe]
   and-plugin-admin[.exe]
+  and-plugin-moderator[.exe]
   and-plugin-konu-ac[.exe]
   and-plugin-ozel-chat[.exe]
 ```
@@ -237,8 +209,8 @@ AND — ana menü
 
   [1] Forum              forum gözat, konu oku
   [2] Sohbet             genel P2P sohbet kanalı
-  [3] Moderasyon         ban listesi/geçmişi/moderatör yönetimi (yalnızca kurucu/moderatör)
-  [4] Yönetici Paneli    tüm konuları görüntüle, gerekirse sil (kurucu/moderatör)
+  [3] Yönetici Paneli    onay bekleyen konular (kurucu)
+  [4] Moderatör Paneli   onay bekleyen konular (moderatör)
   [5] Özel Chat          P2P doğrudan mesaj ve dosya aktarımı
   [6] Ayarlar            yüklü eklentiler ve sürüm bilgisi
 
@@ -246,9 +218,7 @@ AND — ana menü
 ```
 
 > Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve listeye eklenir.  
-> `Label: ""` olan eklentiler (örn. `konu_ac`) menüde görünmez; doğrudan forumdan açılır.  
-> "Moderasyon" girişi yalnızca kurucuya ya da geçerli (iptal edilmemiş) bir moderatör
-> sertifikası taşıyanlara görünür — başka hiçbir kullanıcı bu girişi hiç görmez.
+> `Label: ""` olan eklentiler (örn. `konu_ac`) menüde görünmez; doğrudan forumdan açılır.
 
 ### Ayarlar ekranı
 
@@ -263,28 +233,6 @@ AND sürümünü ve tüm yüklü eklentilerin adını, sürümünü, durumunu ve
 | `enter` | konuyu aç |
 | `n` | yeni konu aç (inline konu_ac ekranı) |
 | `tab` | kategori değiştir |
-| `esc` | ana menüye dön |
-
-### Klavye kısayolları — profil ekranı (forum + sohbet)
-
-Forumda bir konudaki yazarın adına git, ya da sohbette `ctrl+p` ile
-seçili mesajın yazarının profilini aç:
-
-| Tuş | İşlev |
-|-----|-------|
-| `b` | banla (yalnızca kurucu/geçerli sertifikalı moderatör görür) |
-| `u` | banı kaldır (yalnızca hedef zaten banlıysa ve yetkiniz varsa görünür) |
-| `esc` | önceki ekrana dön |
-
-### Klavye kısayolları — Moderasyon Paneli
-
-| Tuş | İşlev |
-|-----|-------|
-| `tab` / `←` `→` | sekme değiştir (Banlar / Geçmiş / Moderatörler) |
-| `↑` / `↓` | listede gez |
-| `u` | (Banlar) seçili banı kaldır |
-| `g` | (Moderatörler, yalnızca kurucu) yeni moderatör ata |
-| `r` | (Moderatörler, yalnızca kurucu) seçili sertifikayı iptal et |
 | `esc` | ana menüye dön |
 
 ### Peer ID'ni öğrenmek
@@ -306,94 +254,51 @@ Bilinen AND düğümlerine hızlı bağlanmak için `%APPDATA%\and\bootstrap.txt
 
 ## Moderasyon
 
-AND'ın moderasyon sistemi kurucu merkezli ve sertifika tabanlıdır; hem
-uygulama içinden (TUI) hem `andmod` CLI'dan yönetilebilir.
-
-Forumda konu onay sistemi yoktur: bir konu yazıldığı anda ağda yayılır ve
-her türlü konu, kim tarafından yazılırsa yazılsın, oluşturulduktan **5 gün**
-sonra otomatik olarak silinir. Moderatörlerin/kurucunun rolü, süresini
-beklemeden istenmeyen bir konuyu erken silebilmek (bkz.
-[Yönetici Paneli](#yerleşik-eklentiler)) ve peer banlayabilmektir.
+AND'ın moderasyon sistemi kurucu merkezli ve sertifika tabanlıdır.
 
 ### Roller
 
 | Rol | Yetki | Nasıl elde edilir |
 |-----|-------|-------------------|
-| **Normal kullanıcı** | Konu yaz, yanıt ver, sohbet et | Kimlik oluştur |
-| **Moderatör** | Herhangi bir konuyu sil, peer banla/banını kaldır | Kurucudan sertifika al (en fazla 7 gün geçerli; kalıcı da olabilir) |
-| **Kurucu** | Yukarıdakilerin hepsi + moderatör ata/iptal et, kendi banını da kaldırabilir | Binary'ye gömülü public key'e sahip olmak |
-
-Bir moderatör sertifikası iptal edilirse (`revoke`), o andan itibaren
-hâlâ süresi dolmamış olsa bile geçersiz sayılır — hem ban atma hem ban
-kaldırma yetkisini anında kaybeder.
-
-### Ban süresi
-
-Bir peer banlanırken süre esnektir: **1 saat**, **1 gün**, **7 gün**,
-**30 gün** ya da **ömür boyu (kalıcı)**. Bir ban tek bir "kapsam"a
-(chat/forum ayrı ayrı) bölünmez — ağ genelinde birleşik bir yasaktır ve
-hem forum/chat mesajlarını hem de banlı peer'ın diğer düğümlere doğrudan
-bağlanmasını (transport katmanında, `ConnectionGater` ile) engeller.
-
-Bir ban hatalıysa ya da süresi dolmadan kaldırılması gerekiyorsa, banı
-veren moderatörden bağımsız olarak **herhangi bir** geçerli moderatör ya
-da kurucu banı kaldırabilir (unban).
-
-### Uygulama içinden (TUI)
-
-Ban/unban aksiyonları CLI'a inmeden, doğrudan uygulama içinden yapılabilir:
-
-- **Profil ekranından** (forumda bir konudaki yazarın profiline gir, ya
-  da sohbette `ctrl+p` ile bir mesajın yazarının profilini aç): kurucu
-  veya geçerli sertifikalı bir moderatör iseniz `b` ile banlayabilir,
-  hedef zaten banlıysa `u` ile banını kaldırabilirsiniz. Profilde ayrıca
-  hedefin güncel ban durumu (⛔ Banlı, kalan süre/ömür boyu, sebep)
-  görünür.
-- **Moderasyon Paneli** (ana menüde yalnızca kurucuya/moderatöre görünen
-  "Moderasyon" girişi): üç sekme —
-  - *Banlar* — tüm aktif banları tek listede gösterir, `u` ile oradan
-    da kaldırılabilir.
-  - *Geçmiş* — kalıcı bir denetim kaydı: kim kimi ne zaman neden
-    banladı/banını kaldırdı (süresi dolmuş/kaldırılmış kayıtlar dahil,
-    hiç silinmez).
-  - *Moderatörler* (yalnızca kurucu) — `g` ile yeni moderatör ata (süre
-    seçenekleriyle), `r` ile mevcut birinin sertifikasını iptal et.
+| **Normal kullanıcı** | Konu yaz, yanıt ver | Kimlik oluştur |
+| **Moderatör** | Konu onayla/reddet | Kurucudan `.json` sertifika al |
+| **Kurucu** | Moderatör ata, toplu onayla | Binary'ye gömülü public key'e sahip olmak |
 
 ### andmod CLI
-
-Uygulama açık değilken ya da otomasyon/betik içinden moderasyon yapmak
-için:
 
 ```bash
 # Kendi public key'ini yazdır
 ./andmod pubkey
 
-# Moderatör yetkisi ver (7 gün — üst sınır)
-./andmod grant <hedef_pubkey_hex> --days 7
+# Moderatör yetkisi ver (30 gün)
+./andmod grant <hedef_pubkey_hex> --days 30
 
 # Süresiz moderatör yetkisi ver
 ./andmod grant <hedef_pubkey_hex> --permanent
 
-# Moderatör olarak peer banla (esnek süre)
-./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --duration 1h
-./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --permanent
+# Moderatör olarak peer banla (30 gün)
+./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --days 30
 
-# Kurucu kimliğiyle doğrudan banla (sertifika gerekmez)
-./andmod ban <peer_id> "sebep" --as-founder --duration 24h
-
-# Bir banı geri al (moderatör sertifikasıyla ya da kurucu olarak)
-./andmod unban <peer_id> --cert bans/mod_<kisa>.json
-./andmod unban <peer_id> --as-founder
-
-# Bir moderatörün yetkisini iptal et (yalnızca kurucu)
-./andmod revoke <moderatör_pubkey_hex>
+# Yazarı güvenilir olarak işaretle (90 gün; onay beklemiyor)
+./andmod trusted <yazar_pubkey_hex> --days 90
 ```
 
-Oluşturulan `.json` dosyaları `%APPDATA%\and\bans\` dizinine yazılır.
-AND yalnızca **açılışta bir kez** (5 saniye sonra) bu dizini tarayıp
-ağda yayınlar — uygulama zaten çalışırken CLI ile bir işlem yaparsan,
-AND yeniden başlatılana kadar etkisiz kalır. Anında etkili olması
-gereken işlemler için TUI'nin Moderasyon Paneli'ni tercih et.
+Oluşturulan `.json` dosyaları `%APPDATA%\and\bans\` dizinine yazılır.  
+AND yeniden başlatıldığında bu dosyaları otomatik olarak ağda yayınlar.
+
+### Onay akışı
+
+Varsayılan olarak tüm konular moderasyon kuyruğuna girer ve 5 günlük TTL'e tabidir:
+
+```
+Yeni konu  →  Beklemede (5 gün TTL)
+                    ↓
+       Kurucu veya moderatör  →  Ed25519 imzalı ApprovalMsg
+                                            ↓
+                                 GossipSub'da tüm ağa yayılır
+                                            ↓
+                                    Konusu kalıcı hale gelir
+```
 
 ---
 
@@ -418,36 +323,14 @@ AND eklentileri **bağımsız yürütülebilir binary**'lerdir. Her eklenti ayr�
 
 > **İstisna:** `konu_ac` eklentisi binary başlatılmaz; AND kodu içinde doğrudan inline Bubbletea ekranı olarak açılır. Bu sayede geçiş anında gerçekleşir ve siyah ekran oluşmaz.
 
-### Bağımsız harici araçlar (ör. VS Code eklentisi)
-
-Yukarıdaki `AND_API_ADDR`/`AND_API_TOKEN` mekanizması yalnızca AND'ın **kendisinin başlattığı**
-eklenti alt süreçlerine ulaşır — bağımsız başlatılmış bir süreç (ör. bir editör eklentisi) bu
-ortam değişkenlerini hiçbir zaman göremez, çünkü rastgele port + rastgele token her açılışta
-yalnızca bellekte tutulur ve hiçbir dosyaya yazılmaz.
-
-Bunu güvenli bir şekilde çözmek için `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
-etkinleştirilebilen, **opt-in ve varsayılan kapalı** ikinci bir dinleyici vardır
-(`internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
-
-- **Windows:** yalnızca dinleyiciyi açan kullanıcıya (owner) erişim izni veren bir security
-  descriptor'lı (`D:P(A;;GA;;;OW)`) **named pipe**.
-- **Linux/macOS:** `AND_DATA_DIR/api.sock` yolunda `0600` izinli bir **Unix domain socket**.
-
-Bu ikinci dinleyicide bearer token **yoktur** — erişim bir sırla değil doğrudan işletim sistemi
-tarafından (yalnızca aynı kullanıcı) kısıtlanır; pipe/socket adı `AND_DATA_DIR`'den türetilir ve
-gizli değildir (bkz. `and-vscode/src/live/liveAddr.ts` — aynı formülle bağımsızca hesaplar).
-`AND_ENABLE_EXTERNAL_API` ayarlanmadıysa bu dinleyici hiç açılmaz ve mevcut davranış hiçbir
-şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ paneli.
-
 ### Yerleşik eklentiler
 
 | Binary | Menü Etiketi | Açıklama |
 |--------|-------------|----------|
-| `and-plugin-admin` | Yönetici Paneli | Tüm konuları listele, gerekirse sil (kurucu/moderatör) |
+| `and-plugin-admin` | Yönetici Paneli | Onay kuyruğu (kurucu: onayla / reddet / toplu onayla) |
+| `and-plugin-moderator` | Moderatör Paneli | Onay kuyruğu (sertifikalı moderatör) |
 | `and-plugin-konu-ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla inline açılır |
 | `and-plugin-ozel-chat` | Özel Chat | Peer ID ile doğrudan P2P mesajlaşma ve dosya aktarımı |
-| `and-plugin-pembis` | Pembiş Tema | Arayüzü pembe tonlarda kız temasına boyar (bkz. [Eklentiler/pembis/README.md](Eklentiler/pembis/README.md)) |
-| `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (bkz. [Eklentiler/DeltaX/README.md](Eklentiler/DeltaX/README.md)) |
 
 ### Yeni eklenti yazmak
 
@@ -478,13 +361,8 @@ Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) alt�
 |---|---|
 | `identity.dat` | AES-256-GCM şifreli Ed25519 kimlik (parola korumalı) |
 | `founder.key` | Kurucunun Ed25519 public key'i (binary'e gömülüden türetilir) |
-| `forum.db` | SQLite forum + sohbet veritabanı (WAL modu) |
-| `bans/` | Moderasyon kararları (ban/unban/revoke/sertifika JSON'ları — `andmod` ve TUI'nin Moderatörler sekmesi tarafından yazılır) |
-| `active_bans.json` | Şu an etkili banların anlık görüntüsü (yeniden başlatmada geri yüklenir) |
-| `active_revocations.json` | İptal edilmiş moderatör sertifikalarının listesi |
-| `mod_history.json` | Moderasyon denetim geçmişi (Moderasyon Paneli'nin "Geçmiş" sekmesi) |
-| `granted_mods.json` | Bu düğümün (kurucuysa) verdiği moderatör sertifikalarının yerel defteri |
-| `mod_rates.json` | Moderatör başına saatlik ban/unban/revoke hız sınırı sayaçları |
+| `forum.db` | SQLite forum veritabanı (WAL modu) |
+| `bans/` | Moderasyon kararları (ban, sertifika, onay JSON'ları) |
 | `dosyalar/` | Alınan dosyalar |
 | `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
 | `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
@@ -508,4 +386,4 @@ Açıkları herkese açık issue olarak bildirme; doğrudan e-posta ile iletişi
 
 ## Lisans
 
-GNU Affero Genel Kamu Lisansı v3.0 (AGPL-3.0) — ayrıntılar için [LICENSE](LICENSE) dosyasına bak.
+MIT Lisansı — ayrıntılar için [LICENSE](LICENSE) dosyasına bak.
