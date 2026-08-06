@@ -351,14 +351,14 @@ func (m loginModel) center(content string) string {
 }
 
 func logoBlock() string {
-	logoSt  := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	verSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
+	logoSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	verSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
 	badgeSt := lipgloss.NewStyle().
 		Background(colorSelBG).Foreground(colorSelFG).
 		Bold(true).Padding(0, 1)
 
 	badge := badgeSt.Render(ActiveThemeName)
-	ver   := verSt.Render("v0.1.0")
+	ver := verSt.Render("v0.1.0")
 
 	return lipgloss.JoinVertical(lipgloss.Center,
 		logoSt.Render(andASCIIArt),

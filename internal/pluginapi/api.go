@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -20,7 +21,7 @@ import (
 const DMProtocol = "/and/dm/1.0.0"
 const FileProtocol = "/and/file/2.0.0"
 
-// MaxFileBytes is the maximum raw file size accepted for transfer (2 GB).
+// MaxFileBytes is the maximum raw file size accepted for transfer (20 GB).
 const MaxFileBytes = 20 * 1024 * 1024 * 1024
 
 type Manifest struct {
@@ -43,21 +44,10 @@ type RoleInfo struct {
 	IsModerator bool `json:"is_moderator"`
 }
 
-type PendingPost struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	AuthorName   string    `json:"author_name"`
-	AuthorKey    string    `json:"author_key"`
-	Category     string    `json:"category"`
-	Body         string    `json:"body"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	PermanentReq bool      `json:"permanent_req"`
+type DeletePostReq struct {
+	PostID string `json:"post_id"`
+	Reason string `json:"reason,omitempty"`
 }
-
-type ApproveReq struct{ PostID string `json:"post_id"` }
-type RejectReq struct{ PostID string `json:"post_id"` }
-type DeletePostReq struct{ PostID string `json:"post_id"` }
-type ApproveAuthorReq struct{ AuthorKey string `json:"author_key"` }
 
 type PostSummary struct {
 	ID         string `json:"id"`
@@ -65,13 +55,11 @@ type PostSummary struct {
 	Title      string `json:"title"`
 	AuthorName string `json:"author_name"`
 	AuthorKey  string `json:"author_key"`
-	Approved   bool   `json:"approved"`
 }
 type CreatePostReq struct {
-	Category     string `json:"category"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	PermanentReq bool   `json:"permanent_req,omitempty"`
+	Category string `json:"category"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
 }
 type SendDMReq struct {
 	PeerID  string `json:"peer_id"`
@@ -115,7 +103,9 @@ type ConsentResp struct {
 	Accept     bool   `json:"accept"`
 }
 
-type errResp struct{ Error string `json:"error"` }
+type errResp struct {
+	Error string `json:"error"`
+}
 
 // ThemeReq is the request body for POST /api/v1/theme.
 // Color values are terminal palette numbers ("63") or hex codes ("#ff6600").
@@ -165,7 +155,6 @@ type PostDetail struct {
 	Title      string      `json:"title"`
 	Body       string      `json:"body"`
 	CreatedAt  time.Time   `json:"created_at"`
-	Approved   bool        `json:"approved"`
 	Replies    []ReplyInfo `json:"replies"`
 }
 
@@ -176,13 +165,12 @@ type CreateReplyReq struct {
 }
 
 type ForumBackend interface {
-	PendingPosts() ([]PendingPost, error)
 	AllPosts() ([]PostSummary, error)
-	ApprovePost(postID string) error
-	RejectPost(postID string) error
-	DeletePost(postID string) error
-	ApproveAuthor(authorKey string) error
-	CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error
+	// DeletePost issues an authorized (network-wide, tombstoned) deletion
+	// of postID — the caller's moderator/founder authority is resolved
+	// by the backend itself; reason may be empty.
+	DeletePost(ctx context.Context, postID, reason string) error
+	CreatePost(ctx context.Context, category, title, body string) error
 	GetPost(id string) (*PostDetail, error)
 	CreateReply(ctx context.Context, postID, body string) error
 }
@@ -219,24 +207,114 @@ type ChatBackend interface {
 
 var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 
-func validPostID(id string) bool    { return reHex.MatchString(id) }
-func validAuthorKey(key string) bool { return len(key) == 64 && reHex.MatchString(key) }
+func validPostID(id string) bool { return reHex.MatchString(id) }
 
 type Server struct {
-	addr    string
-	token   string
-	dataDir string
-	srv     *http.Server
-	id      IdentityBackend
-	f       ForumBackend
-	dm      DMBackend
-	file    FileBackend
-	chat    ChatBackend
-	themeCh chan<- ThemeReq
+	addr        string
+	token       string
+	dataDir     string
+	srv         *http.Server
+	externalLn  net.Listener
+	externalSrv *http.Server
+	id          IdentityBackend
+	f           ForumBackend
+	dm          DMBackend
+	file        FileBackend
+	chat        ChatBackend
+	themeCh     chan<- ThemeReq
 }
 
 func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend, chat ChatBackend, dataDir string, themeCh chan<- ThemeReq) *Server {
 	return &Server{id: id, f: f, dm: dm, file: file, chat: chat, dataDir: dataDir, themeCh: themeCh}
+}
+
+// enableExternalAPI, AND_ENABLE_EXTERNAL_API=1 ortam değişkeniyle
+// etkinleştirilen, güvenilir harici araçlar (ör. bir editör eklentisi) için
+// ikinci bir dinleyici açar (bkz. listenExternal / externalpipe_*.go).
+//
+// Bu ikinci dinleyici AND_API_ADDR/AND_API_TOKEN mekanizmasından TAMAMEN
+// AYRIDIR ve bir bearer token KULLANMAZ: Windows'ta yalnızca pipe'ın
+// sahibine (owner) erişim izni veren bir security descriptor'lı named pipe,
+// diğer platformlarda ise 0600 izinli bir Unix domain socket olarak açılır.
+// Böylece erişim, diskte/bellekte kopyalanabilecek bir sırla değil,
+// doğrudan işletim sistemi tarafından ("yalnızca bu kullanıcı") zorlanır —
+// bu yüzden bu dinleyiciye gelen istekler authMiddleware'den GEÇMEZ, token
+// kontrolü yoktur (bkz. Start).
+//
+// Pipe/socket adı, AND_DATA_DIR'e göre türetilir ve sabittir (bir sır
+// değildir) — bunu bilen bağımsız bir süreç yalnızca BAĞLANMAYI dener,
+// bağlanabilmesi OS'in erişim denetimine bağlıdır.
+func enableExternalAPI() bool {
+	return os.Getenv("AND_ENABLE_EXTERNAL_API") == "1"
+}
+
+// route, tek bir HTTP endpoint'inin tanımıdır. allowExternal, bu endpoint'in
+// enableExternalAPI() etkinken token GEREKTİRMEYEN harici dinleyicide
+// (bkz. externalpipe_*.go) de sunulup sunulmayacağını belirler.
+//
+// allowExternal alanı KASITLI olarak "false" varsayılana sahiptir (Go'nun
+// bool zero value'su) — routeTable'a eklenen yeni bir route, bu alan açıkça
+// "true" yazılmadıkça yalnızca token'lı TCP dinleyicisinde sunulur. Böylece
+// "harici erişime açık mı?" sorusu her yeni endpoint için BİLİNÇLİ, tek
+// satırlık bir karar olmak zorundadır — yalnızca bir yorumu okuyup
+// hatırlamaya güvenilmez (bkz. buildMux, Start).
+type route struct {
+	pattern       string
+	handler       http.HandlerFunc
+	allowExternal bool
+}
+
+// routeTable, Server'ın tüm HTTP endpoint'lerini tanımlayan TEK yerdir.
+// Buradaki route'ların tamamı bugün allowExternal:true olarak işaretlidir
+// çünkü harici dinleyicinin tüm amacı, VS Code gibi güvenilir bir aracın
+// AND'ın normal eklenti API'siyle eşdeğer erişime sahip olmasıdır — ama
+// ileride yalnızca token'lı erişime açık kalması gereken bir endpoint
+// eklenirse (ör. kimlik anahtarı dışa aktarma), bu alanı yazmadan
+// bırakmak yeterlidir.
+func (s *Server) routeTable() []route {
+	return []route{
+		{"/api/v1/identity", onlyMethod(http.MethodGet, s.getIdentity), true},
+		{"/api/v1/role", onlyMethod(http.MethodGet, s.getRole), true},
+		{"/api/v1/peers", onlyMethod(http.MethodGet, s.getPeers), true},
+		{"/api/v1/forum/all-posts", onlyMethod(http.MethodGet, s.getAllPosts), true},
+		{"/api/v1/forum/post", s.handleForumPost, true},
+		{"/api/v1/forum/reply", onlyMethod(http.MethodPost, s.postReply), true},
+		{"/api/v1/forum/delete", onlyMethod(http.MethodPost, s.postDeletePost), true},
+		{"/api/v1/dm/send", onlyMethod(http.MethodPost, s.postSendDM), true},
+		{"/api/v1/dm/poll", onlyMethod(http.MethodGet, s.getDMPoll), true},
+		{"/api/v1/chat/send", onlyMethod(http.MethodPost, s.postSendChat), true},
+		{"/api/v1/chat/poll", onlyMethod(http.MethodGet, s.getChatPoll), true},
+		{"/api/v1/file/send", onlyMethod(http.MethodPost, s.postSendFile), true},
+		{"/api/v1/file/poll", onlyMethod(http.MethodGet, s.getFilePoll), true},
+		{"/api/v1/file/consent-poll", onlyMethod(http.MethodGet, s.getConsentPoll), true},
+		{"/api/v1/file/consent", onlyMethod(http.MethodPost, s.postConsent), true},
+		{"/api/v1/theme", s.handleTheme, true},
+	}
+}
+
+// buildMux, routeTable()'dan bir *http.ServeMux inşa eder. externalOnly
+// true ise yalnızca allowExternal:true olan route'lar eklenir — bu,
+// harici dinleyicinin (token'sız) hangi endpoint'lere sahip olduğunu
+// routeTable() üzerinden STATİK ve DENETLENEBİLİR kılar.
+func (s *Server) buildMux(externalOnly bool) *http.ServeMux {
+	return buildMuxFromRoutes(s.routeTable(), externalOnly)
+}
+
+// buildMuxFromRoutes, buildMux'un asıl filtreleme mantığıdır — Server'dan
+// bağımsız, sabit bir route listesi üzerinde çalışır. Bu ayrım, filtreleme
+// davranışının (allowExternal:false bir route'un gerçekten externalOnly
+// mux'ta bulunmadığının) gerçek routeTable()'a ihtiyaç duymadan, sabit/test
+// amaçlı bir route listesiyle doğrulanabilmesini sağlar (bkz.
+// TestBuildMuxExternalFiltering).
+func buildMuxFromRoutes(routes []route, externalOnly bool) *http.ServeMux {
+	mux := http.NewServeMux()
+	for _, r := range routes {
+		if externalOnly && !r.allowExternal {
+			continue
+		}
+		mux.HandleFunc(r.pattern, r.handler)
+	}
+	return mux
 }
 
 func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
@@ -253,33 +331,31 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	}
 	s.token = hex.EncodeToString(raw)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/identity",             onlyMethod(http.MethodGet, s.getIdentity))
-	mux.HandleFunc("/api/v1/role",                 onlyMethod(http.MethodGet, s.getRole))
-	mux.HandleFunc("/api/v1/peers",                onlyMethod(http.MethodGet, s.getPeers))
-	mux.HandleFunc("/api/v1/forum/pending",        onlyMethod(http.MethodGet, s.getPending))
-	mux.HandleFunc("/api/v1/forum/all-posts",      onlyMethod(http.MethodGet, s.getAllPosts))
-	mux.HandleFunc("/api/v1/forum/post",           s.handleForumPost)
-	mux.HandleFunc("/api/v1/forum/reply",          onlyMethod(http.MethodPost, s.postReply))
-	mux.HandleFunc("/api/v1/forum/approve",        onlyMethod(http.MethodPost, s.postApprove))
-	mux.HandleFunc("/api/v1/forum/approve-author", onlyMethod(http.MethodPost, s.postApproveAuthor))
-	mux.HandleFunc("/api/v1/forum/reject",         onlyMethod(http.MethodPost, s.postReject))
-	mux.HandleFunc("/api/v1/forum/delete",         onlyMethod(http.MethodPost, s.postDeletePost))
-	mux.HandleFunc("/api/v1/dm/send",              onlyMethod(http.MethodPost, s.postSendDM))
-	mux.HandleFunc("/api/v1/dm/poll",              onlyMethod(http.MethodGet, s.getDMPoll))
-	mux.HandleFunc("/api/v1/chat/send",            onlyMethod(http.MethodPost, s.postSendChat))
-	mux.HandleFunc("/api/v1/chat/poll",            onlyMethod(http.MethodGet, s.getChatPoll))
-	mux.HandleFunc("/api/v1/file/send",            onlyMethod(http.MethodPost, s.postSendFile))
-	mux.HandleFunc("/api/v1/file/poll",            onlyMethod(http.MethodGet, s.getFilePoll))
-	mux.HandleFunc("/api/v1/file/consent-poll",    onlyMethod(http.MethodGet, s.getConsentPoll))
-	mux.HandleFunc("/api/v1/file/consent",         onlyMethod(http.MethodPost, s.postConsent))
-	mux.HandleFunc("/api/v1/theme",                onlyMethod(http.MethodPost, s.postTheme))
-
-	s.srv = &http.Server{Handler: s.authMiddleware(mux)}
+	s.srv = &http.Server{Handler: s.authMiddleware(s.buildMux(false))}
 	go s.srv.Serve(ln) //nolint:errcheck
+
+	if enableExternalAPI() && s.dataDir != "" {
+		if extLn, perr := listenExternal(s.dataDir); perr != nil {
+			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı dinleyicisi başlatılamadı:", perr)
+		} else {
+			s.externalLn = extLn
+			// authMiddleware YOK: bu dinleyiciye erişim zaten OS tarafından
+			// (yalnızca bu kullanıcı) kısıtlanmış durumda — bkz. enableExternalAPI.
+			// buildMux(true), yalnızca routeTable()'da allowExternal:true
+			// işaretli route'ları içerir.
+			s.externalSrv = &http.Server{Handler: s.buildMux(true)}
+			go s.externalSrv.Serve(extLn) //nolint:errcheck
+			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı etkin —", externalDescription(s.dataDir))
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
 		s.srv.Close()
+		if s.externalSrv != nil {
+			s.externalSrv.Close()
+			cleanupExternal(s.dataDir)
+		}
 	}()
 	return s.addr, s.token, nil
 }
@@ -320,8 +396,20 @@ func (s *Server) enforceModeratorRole(w http.ResponseWriter) bool {
 	return false
 }
 
+// nonNilSlice, nil bir dilimi boş (ama nil olmayan) bir dilime çevirir.
+// json.Marshal nil bir dilimi "null" olarak kodlar, boş bir dilimi ise
+// "[]" olarak — istemciler (ör. VS Code eklentisi) her zaman bir dizi
+// bekler; tüm liste döndüren endpoint'ler bu yüzden yanıtlarını buradan
+// geçirmelidir (bkz. getPeers, getAllPosts).
+func nonNilSlice[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
 func (s *Server) getPeers(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, s.id.ConnectedPeers())
+	writeJSON(w, nonNilSlice(s.id.ConnectedPeers()))
 }
 
 // handleForumPost routes GET (read post) and POST (create post) on /api/v1/forum/post.
@@ -427,75 +515,6 @@ func (s *Server) getRole(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, RoleInfo{IsFounder: s.id.IsFounder(), IsModerator: s.id.IsModerator()})
 }
 
-func (s *Server) getPending(w http.ResponseWriter, _ *http.Request) {
-	if !s.enforceModeratorRole(w) {
-		return
-	}
-	posts, err := s.f.PendingPosts()
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, posts)
-}
-
-func (s *Server) postApprove(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceModeratorRole(w) {
-		return
-	}
-	var req ApproveReq
-	if !decodeBody(w, r, &req) {
-		return
-	}
-	if !validPostID(req.PostID) {
-		writeBadRequest(w, "geçersiz post_id biçimi")
-		return
-	}
-	if err := s.f.ApprovePost(req.PostID); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) postApproveAuthor(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceModeratorRole(w) {
-		return
-	}
-	var req ApproveAuthorReq
-	if !decodeBody(w, r, &req) {
-		return
-	}
-	if !validAuthorKey(req.AuthorKey) {
-		writeBadRequest(w, "geçersiz author_key biçimi (64 karakter hex bekleniyor)")
-		return
-	}
-	if err := s.f.ApproveAuthor(req.AuthorKey); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) postReject(w http.ResponseWriter, r *http.Request) {
-	if !s.enforceModeratorRole(w) {
-		return
-	}
-	var req RejectReq
-	if !decodeBody(w, r, &req) {
-		return
-	}
-	if !validPostID(req.PostID) {
-		writeBadRequest(w, "geçersiz post_id biçimi")
-		return
-	}
-	if err := s.f.RejectPost(req.PostID); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (s *Server) getAllPosts(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceModeratorRole(w) {
 		return
@@ -505,7 +524,7 @@ func (s *Server) getAllPosts(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, posts)
+	writeJSON(w, nonNilSlice(posts))
 }
 
 func (s *Server) postDeletePost(w http.ResponseWriter, r *http.Request) {
@@ -520,7 +539,7 @@ func (s *Server) postDeletePost(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "geçersiz post_id biçimi")
 		return
 	}
-	if err := s.f.DeletePost(req.PostID); err != nil {
+	if err := s.f.DeletePost(r.Context(), req.PostID, req.Reason); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -532,7 +551,7 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := s.f.CreatePost(r.Context(), req.Category, req.Title, req.Body, req.PermanentReq); err != nil {
+	if err := s.f.CreatePost(r.Context(), req.Category, req.Title, req.Body); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -572,6 +591,49 @@ func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// pathWithinDir, target'ın dir'in içinde (ya da dir'in kendisi) olup
+// olmadığını denetler.
+//
+// target ÖNCE mutlak yola çözülür (filepath.Abs, süreç çalışma dizinine
+// göre) — aksi halde göreli bir yol (ör. "identity.dat" ya da
+// "../and/identity.dat") filepath.Clean'den sonra bile dataDir'in mutlak
+// yoluyla asla eşleşmez/prefix olmaz ve bu korumayı tamamen atlatır.
+//
+// Windows ve macOS'ta varsayılan dosya sistemleri büyük/küçük harfe
+// duyarsızdır (case-insensitive) — bu yüzden bu platformlarda karşılaştırma
+// harf duyarsız yapılır; aksi halde "C:\Users\bob\AppData\Roaming\and\
+// identity.dat" ile aynı dosyaya işaret eden farklı harf biçimli bir yol
+// (ör. "c:\users\bob\...\identity.dat") bu korumayı atlatabilir.
+func pathWithinDir(target, dir string) bool {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		absTarget = filepath.Clean(target)
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = filepath.Clean(dir)
+	}
+
+	// Sembolik bağları çöz: target metinsel olarak dataDir dışında görünse
+	// bile, gerçekte dataDir içindeki bir dosyaya işaret eden bir sembolik
+	// bağ olabilir (ör. dataDir dışına yerleştirilmiş, identity.dat'a
+	// işaret eden bir link). EvalSymlinks başarısız olursa (ör. dosya henüz
+	// yoksa ya da bir sembolik bağ değilse) mutlak yolu olduğu gibi
+	// kullanmaya devam ederiz.
+	if resolved, rerr := filepath.EvalSymlinks(absTarget); rerr == nil {
+		absTarget = resolved
+	}
+	if resolved, rerr := filepath.EvalSymlinks(absDir); rerr == nil {
+		absDir = resolved
+	}
+
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		absTarget = strings.ToLower(absTarget)
+		absDir = strings.ToLower(absDir)
+	}
+	return absTarget == absDir || strings.HasPrefix(absTarget, absDir+string(os.PathSeparator))
+}
+
 func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
 	if s.file == nil {
 		writeErr(w, fmt.Errorf("dosya aktarımı kullanılamıyor"))
@@ -589,13 +651,9 @@ func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "local_path boş olamaz")
 		return
 	}
-	if s.dataDir != "" {
-		clean := filepath.Clean(req.LocalPath)
-		base := filepath.Clean(s.dataDir)
-		if clean == base || strings.HasPrefix(clean, base+string(os.PathSeparator)) {
-			writeBadRequest(w, "güvenlik kısıtlaması: AND veri dizininden dosya gönderilemez")
-			return
-		}
+	if s.dataDir != "" && pathWithinDir(req.LocalPath, s.dataDir) {
+		writeBadRequest(w, "güvenlik kısıtlaması: AND veri dizininden dosya gönderilemez")
+		return
 	}
 	if err := s.file.SendFile(r.Context(), req.PeerID, s.id.Name(), req.LocalPath); err != nil {
 		writeErr(w, err)
@@ -655,6 +713,21 @@ func (s *Server) postConsent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleTheme routes GET (read the active theme) and POST (set the active
+// theme) on /api/v1/theme.
+func (s *Server) handleTheme(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getTheme(w, r)
+	case http.MethodPost:
+		s.postTheme(w, r)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(errResp{Error: "yöntem izin verilmiyor"}) //nolint:errcheck
+	}
+}
+
 func (s *Server) postTheme(w http.ResponseWriter, r *http.Request) {
 	var req ThemeReq
 	if !decodeBody(w, r, &req) {
@@ -667,6 +740,41 @@ func (s *Server) postTheme(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ThemeFile is the JSON file (under AND_DATA_DIR) that internal/tui persists
+// the active theme to whenever it's changed (see internal/tui.SaveTheme).
+// pluginapi reads it directly for GET /api/v1/theme instead of importing
+// internal/tui, which would create an import cycle (tui already imports
+// pluginapi for ThemeReq).
+const ThemeFile = "theme.json"
+
+// defaultTheme mirrors AND's built-in default colors (internal/tui/styles.go)
+// so plugins that ask for the active theme before any custom theme has ever
+// been set still get a theme that matches what the user actually sees.
+var defaultTheme = ThemeReq{
+	ThemeName: "Turkuaz",
+	Accent:    "63",
+	SelBG:     "57",
+	SelFG:     "255",
+	Muted:     "241",
+	Name:      "86",
+	Badge:     "33",
+}
+
+// getTheme returns the theme AND's main TUI currently has active, so
+// plugins can match their own color scheme to it.
+func (s *Server) getTheme(w http.ResponseWriter, _ *http.Request) {
+	if s.dataDir != "" {
+		if data, err := os.ReadFile(filepath.Join(s.dataDir, ThemeFile)); err == nil {
+			var req ThemeReq
+			if json.Unmarshal(data, &req) == nil {
+				writeJSON(w, req)
+				return
+			}
+		}
+	}
+	writeJSON(w, defaultTheme)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -739,23 +847,6 @@ func (c *Client) Role() (RoleInfo, error) {
 	return v, c.get("/api/v1/role", &v)
 }
 
-func (c *Client) Pending() ([]PendingPost, error) {
-	var v []PendingPost
-	return v, c.get("/api/v1/forum/pending", &v)
-}
-
-func (c *Client) Approve(postID string) error {
-	return c.post("/api/v1/forum/approve", ApproveReq{PostID: postID})
-}
-
-func (c *Client) ApproveAuthor(authorKey string) error {
-	return c.post("/api/v1/forum/approve-author", ApproveAuthorReq{AuthorKey: authorKey})
-}
-
-func (c *Client) Reject(postID string) error {
-	return c.post("/api/v1/forum/reject", RejectReq{PostID: postID})
-}
-
 func (c *Client) AllPosts() ([]PostSummary, error) {
 	var v []PostSummary
 	return v, c.get("/api/v1/forum/all-posts", &v)
@@ -765,9 +856,9 @@ func (c *Client) DeletePost(postID string) error {
 	return c.post("/api/v1/forum/delete", DeletePostReq{PostID: postID})
 }
 
-func (c *Client) CreatePost(category, title, body string, permanentReq bool) error {
+func (c *Client) CreatePost(category, title, body string) error {
 	return c.post("/api/v1/forum/post", CreatePostReq{
-		Category: category, Title: title, Body: body, PermanentReq: permanentReq,
+		Category: category, Title: title, Body: body,
 	})
 }
 
@@ -820,6 +911,13 @@ func (c *Client) SetTheme(req ThemeReq) error {
 	return c.post("/api/v1/theme", req)
 }
 
+// GetTheme returns the theme AND's main TUI currently has active. Plugins
+// can use this to match their own color scheme to the user's chosen theme.
+func (c *Client) GetTheme() (ThemeReq, error) {
+	var v ThemeReq
+	return v, c.get("/api/v1/theme", &v)
+}
+
 func DataDir() string { return os.Getenv("AND_DATA_DIR") }
 
 func Category() string { return os.Getenv("AND_CATEGORY") }
@@ -870,4 +968,3 @@ func (c *Client) postWith(hc *http.Client, path string, body any) error {
 	json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
 	return fmt.Errorf("api: %s", e.Error)
 }
-

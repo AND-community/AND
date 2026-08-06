@@ -5,6 +5,8 @@ active_bans.json
 active_revocations.json
 trusted_authors.json
 mod_rates.json
+mod_history.json
+granted_mods.json
 bootstrap.txt
 
 # Moderasyon çıktı dosyaları — andmod tarafından oluşturulur, local.

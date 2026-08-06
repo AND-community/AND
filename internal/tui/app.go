@@ -3,7 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,26 +16,35 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/githubverify"
+	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/internal/pluginui"
+	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/updater"
 )
 
 type appScreen int
 
 const (
-	screenMenu     appScreen = iota
+	screenMenu appScreen = iota
 	screenForum
 	screenChat
+	screenChatProfile
 	screenSettings
+	screenModeration
 )
 
 type chatMsg struct {
-	line string
-	own  bool
+	line       string
+	own        bool
+	authorKey  string
+	authorName string
 }
 type chatClosedMsg struct{}
 
@@ -47,61 +56,34 @@ func peerTick() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return peerTickMsg(t) })
 }
 
-// ─── Chat geçmişi ────────────────────────────────────────────────────────────
+// profileField identifies which field of the local identity's profile (if
+// any) Settings' Bilgi tab is currently editing.
+type profileField int
 
-const chatHistoryFile = "chat_history.json"
-const chatHistoryMax = 500
+const (
+	profileFieldNone profileField = iota
+	profileFieldBio
+	profileFieldStatus
+	profileFieldLink
+	profileFieldTags
+)
 
-type chatRecord struct {
-	Line string `json:"l"`
-	Own  bool   `json:"o"`
-}
-
-func loadChatHistory(dataDir string) ([]string, []bool) {
-	if dataDir == "" {
-		return nil, nil
+// roleBadgeText renders authorKey's role label via ps, styled with
+// colorBadge when the role is elevated (Moderatör/Kurucu) so every screen
+// that shows a role (Settings' own-profile view, forum's viewed-profile
+// screen — see forum.go's profileSummaryText) looks consistent, and the
+// theme's Badge color (see styles.go/ThemeConfig.Badge) actually renders
+// somewhere.
+func roleBadgeText(ps *profile.Store, authorKey string) string {
+	if ps == nil {
+		return profile.RoleMember.Label()
 	}
-	data, err := os.ReadFile(filepath.Join(dataDir, chatHistoryFile))
-	if err != nil {
-		return nil, nil
+	role := ps.RoleOf(authorKey)
+	label := role.Label()
+	if role == profile.RoleMember {
+		return label
 	}
-	var recs []chatRecord
-	if json.Unmarshal(data, &recs) != nil {
-		return nil, nil
-	}
-	lines := make([]string, len(recs))
-	own := make([]bool, len(recs))
-	for i, r := range recs {
-		lines[i] = r.Line
-		own[i] = r.Own
-	}
-	return lines, own
-}
-
-func saveChatHistory(dataDir string, lines []string, own []bool) {
-	if dataDir == "" {
-		return
-	}
-	n := len(lines)
-	if n > chatHistoryMax {
-		lines = lines[n-chatHistoryMax:]
-		own = own[n-chatHistoryMax:]
-	}
-	recs := make([]chatRecord, len(lines))
-	for i, l := range lines {
-		recs[i] = chatRecord{Line: l, Own: own[i]}
-	}
-	data, err := json.Marshal(recs)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(filepath.Join(dataDir, chatHistoryFile), data, 0o600)
-}
-
-type chatPkt struct {
-	N string    `json:"n"`
-	T string    `json:"t"`
-	A time.Time `json:"a"`
+	return lipgloss.NewStyle().Bold(true).Foreground(colorBadge).Render(label)
 }
 
 type appModel struct {
@@ -109,20 +91,25 @@ type appModel struct {
 	identity *stdcrypto.Identity
 	node     *network.Node
 
-	plugins    []pluginmgr.Plugin
-	apiAddr    string
-	apiToken   string
-	approvalFn func(string) error
+	plugins  []pluginmgr.Plugin
+	apiAddr  string
+	apiToken string
 
-	forumStore *forum.Forum
-	dataDir    string
-	forumModel tea.Model
+	forumStore   *forum.Forum
+	profileStore *profile.Store
+	dataDir      string
+	forumModel   tea.Model
 
-	chatTopic    *network.Topic
-	chatMessages <-chan []byte
-	screen       appScreen
+	chatStore *chatlog.Store
+	screen    appScreen
+
+	// mod/modTopic: moderasyon (peer ban) sistemine erişim, nil olabilir
+	// (moderasyon topic'i açılamamışsa) — ban aksiyonu bu durumda gizlenir.
+	mod      *moderation.Moderator
+	modTopic *network.Topic
 
 	menuItems   []string
+	menuGroups  []string // menuItems ile paralel — her öğenin ağaç görünümünde ait olduğu dal ("Topluluk"/"Eklentiler"/"Sistem")
 	menuIndex   int
 	pluginByIdx []*pluginmgr.Plugin
 
@@ -130,11 +117,92 @@ type appModel struct {
 	chatViewport viewport.Model
 	chatLines    []string
 	chatOwn      []bool
+	// chatAuthorKeys/chatAuthorNames, chatLines/chatOwn ile paralel diziler
+	// — her satırın hangi AuthorKey/AuthorName'e ait olduğunu tutar (imzasız/
+	// eklenti kaynaklı satırlarda AuthorKey boş kalır, bkz. formatChatLine'ın
+	// çağrıldığı yerler). chatCursor ile seçilen mesajın profilini açmak
+	// (ctrl+p, bkz. handleChatKey) için gerekli — chatlog.Message'ın kendisi
+	// yalnızca satır render edilirken elde bulunur, sonrasında atılırdı.
+	chatAuthorKeys  []string
+	chatAuthorNames []string
+	// chatCursor, chatLines içinde "seçili" mesajın indeksidir — ↑/↓ ile
+	// taşınır (bkz. handleChatKey), syncChatViewport'ta vurgulanır ve ctrl+p
+	// ile o mesajın yazarının profilini açar. -1 (ya da mesaj yokken) "seçim
+	// yok" anlamına gelir.
+	chatCursor int
+	// chatFollow, viewport'un yeni gelen mesajlarda otomatik en alta
+	// kaydırılıp kaydırılmayacağını belirler — kullanıcı yukarı kaydırdığında
+	// false olur (geçmişi okurken yeni mesajlar seni yerinden oynatmasın
+	// diye), en alta geri dönüldüğünde ya da kendi mesajını gönderdiğinde
+	// tekrar true olur.
+	chatFollow bool
+	// chatNotice shows a send-failure message (e.g. "Gönderilemedi: ...")
+	// below the input box — cleared on the next successful send.
+	chatNotice string
 
-	settingsIdx    int
-	settingsTab    int // 0=Bilgi 1=Eklentiler 2=Temalar
-	settingsVP     viewport.Model
-	showMnemonic   bool
+	// chatProfilKey/chatProfilAd, screenChatProfile aktifken hangi yazarın
+	// profilinin gösterildiğini tutar — forum.go'daki profilKey/profilAd'ın
+	// chat tarafındaki eşdeğeri.
+	chatProfilKey string
+	chatProfilAd  string
+	// chatProfilCanBan/banIsFounder/banCert: ctrl+p ile bir kez hesaplanır
+	// (bkz. resolveBanAuthority).
+	chatProfilCanBan   bool
+	banIsFounder       bool
+	banCert            *moderation.ModeratorCert
+	chatProfilIsBanned bool
+	// banConfirming/banDurationIdx/banReasonInput: profil ekranında "b"
+	// ile açılan süre+sebep onay alt-durumu; unbanConfirming "u" ile
+	// açılan daha basit e/h onayı.
+	banConfirming   bool
+	banDurationIdx  int
+	banReasonInput  textinput.Model
+	unbanConfirming bool
+	banNotice       string
+	banNoticeErr    bool
+
+	// Moderasyon paneli (screenModeration) durumu — bkz. moderation.go.
+	modIsFounder        bool
+	modTab              moderationTab
+	modCursor           int
+	modBans             []moderation.BanEntry
+	modHistory          []moderation.HistoryEntry
+	modGrants           []moderation.GrantedMod
+	modUnbanConfirming  bool
+	modGranting         bool
+	modGrantStep        int
+	modGrantKeyInput    textinput.Model
+	modGrantDurationIdx int
+	modRevokeConfirming bool
+	modNotice           string
+	modNoticeErr        bool
+
+	settingsIdx  int
+	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar
+	settingsVP   viewport.Model
+	showMnemonic bool
+
+	profileEdit      profileField
+	bioInput         textinput.Model
+	statusInput      textinput.Model
+	linkInput        textinput.Model
+	tagSelected      map[string]bool
+	tagIdx           int
+	profileNotice    string
+	profileNoticeErr bool
+
+	// GitHub hesap doğrulama (OAuth Device Flow) durumu — bkz.
+	// startGitHubLink/handleGitHubLinkKey ve msgs.go'daki
+	// githubDeviceCodeMsg/githubLinkedMsg. githubCtx/githubCancel, kullanıcı
+	// esc ile akışı iptal ettiğinde ya da uygulama kapandığında (m.ctx'in
+	// çocuğu olduğundan) arka plandaki yoklama goroutine'inin sızmadan
+	// durmasını sağlar.
+	githubLinking         bool
+	githubUserCode        string
+	githubVerificationURI string
+	githubCtx             context.Context
+	githubCancel          context.CancelFunc
+	githubLastAttempt     time.Time
 
 	width, height  int
 	quitting       bool
@@ -142,16 +210,17 @@ type appModel struct {
 	_canCreatePost bool
 }
 
-type themeChangedMsg struct{}
+type themeChangedMsg struct{ theme ThemeConfig }
 
 func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr, apiToken string, approvalFn func(string) error,
-	forumStore *forum.Forum, dataDir string,
-	chatTopic *network.Topic, updateCh <-chan UpdateReadyMsg, themeCh <-chan pluginapi.ThemeReq) error {
+	plugins []pluginmgr.Plugin, apiAddr, apiToken string,
+	forumStore *forum.Forum, profileStore *profile.Store, dataDir string,
+	chatStore *chatlog.Store, mod *moderation.Moderator, modTopic *network.Topic,
+	updateCh <-chan UpdateReadyMsg, themeCh <-chan pluginapi.ThemeReq) error {
 
 	loadAndApplyTheme(dataDir)
 
-	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, approvalFn, forumStore, dataDir, chatTopic)
+	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, dataDir, chatStore, mod, modTopic)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
 
 	if updateCh != nil {
@@ -187,9 +256,14 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 						Name:      req.Name,
 						Badge:     req.Badge,
 					}
-					applyThemeColors(t)
+					// applyThemeColors, paylaşılan paket-seviyeli stil
+					// değişkenlerini mutasyona uğratır (styles.go) — bu
+					// goroutine'den değil, Bubble Tea'nin tek goroutine'li
+					// Update() döngüsünden çağrılmalı (aşağıdaki
+					// themeChangedMsg işleyicisi), aksi halde View()'un
+					// aynı anda okumasıyla veri yarışı oluşur.
 					SaveTheme(dataDir, t)
-					p.Send(themeChangedMsg{})
+					p.Send(themeChangedMsg{theme: t})
 				case <-ctx.Done():
 					return
 				}
@@ -205,15 +279,43 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 }
 
 func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr, apiToken string, approvalFn func(string) error,
-	forumStore *forum.Forum, dataDir string, chatTopic *network.Topic) appModel {
+	plugins []pluginmgr.Plugin, apiAddr, apiToken string,
+	forumStore *forum.Forum, profileStore *profile.Store, dataDir string, chatStore *chatlog.Store,
+	mod *moderation.Moderator, modTopic *network.Topic) appModel {
 
 	chatIn := textinput.New()
 	chatIn.Placeholder = "mesaj…"
 	chatIn.CharLimit = 500
 
-	items := []string{"Forum"}
-	byIdx := []*pluginmgr.Plugin{nil}
+	bioIn := textinput.New()
+	bioIn.Placeholder = "kendinden kısaca bahset…"
+	bioIn.CharLimit = profile.MaxBioBytes
+
+	statusIn := textinput.New()
+	statusIn.Placeholder = "şu an ne yapıyorsun?…"
+	statusIn.CharLimit = profile.MaxStatusBytes
+
+	linkIn := textinput.New()
+	linkIn.Placeholder = "github.com/kullanici-adi"
+	linkIn.CharLimit = profile.MaxLinkBytes
+
+	banIn := textinput.New()
+	banIn.Placeholder = "sebep…"
+	banIn.CharLimit = 256
+
+	modGrantKeyIn := textinput.New()
+	modGrantKeyIn.Placeholder = "hedef public key (hex, 64 karakter)…"
+	modGrantKeyIn.CharLimit = 64
+
+	// Ana menü, ağaç görünümünde üç dala ayrılır: Topluluk (Forum/Chat),
+	// Eklentiler (etkin eklentiler, dinamik) ve Sistem (Ayarlar/Quit).
+	// menuGroups, menuItems ile paraleldir ve yalnızca viewMenu'nün dal
+	// başlıklarını nerede çizeceğini belirler — Enter/Space tuş işleyicileri
+	// (handleMenuKey) hâlâ etiket string'ine ya da pluginByIdx'e bakar,
+	// gruplamadan bağımsızdır.
+	items := []string{"Forum", "Chat"}
+	byIdx := []*pluginmgr.Plugin{nil, nil}
+	groups := []string{"Topluluk", "Topluluk"}
 	for i := range plugins {
 		if plugins[i].Label() == "" || plugins[i].Manifest.Category == "theme" {
 			continue
@@ -221,16 +323,39 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		items = append(items, plugins[i].Label())
 		pl := &plugins[i]
 		byIdx = append(byIdx, pl)
+		groups = append(groups, "Eklentiler")
 	}
-	items = append(items, "Chat", "Ayarlar", "Quit")
-	byIdx = append(byIdx, nil, nil, nil)
-
-	var chatMessages <-chan []byte
-	if chatTopic != nil {
-		chatMessages = chatTopic.Messages(ctx)
+	// "Moderasyon" yalnızca kurucuya ya da geçerli bir moderatör
+	// sertifikası taşıyana gösterilir — bkz. canAccessModeration.
+	if mod != nil && modTopic != nil {
+		myKey := hex.EncodeToString(id.PublicKey())
+		if canAccessModeration(mod, dataDir, myKey) {
+			items = append(items, "Moderasyon")
+			byIdx = append(byIdx, nil)
+			groups = append(groups, "Yönetim")
+		}
 	}
+	items = append(items, "Ayarlar", "Quit")
+	byIdx = append(byIdx, nil, nil)
+	groups = append(groups, "Sistem", "Sistem")
 
-	chatLines, chatOwn := loadChatHistory(dataDir)
+	// Sohbet geçmişi artık chatStore'un SQLite'a kalıcılaştırdığı,
+	// peer'lar arası senkronize edilen mesajlardan yükleniyor — bkz.
+	// internal/chatlog. "own" işareti, mesajın AuthorKey'inin bizim
+	// anahtarımızla eşleşip eşleşmediğine bakılarak hesaplanıyor.
+	var chatLines []string
+	var chatOwn []bool
+	var chatAuthorKeys []string
+	var chatAuthorNames []string
+	if chatStore != nil {
+		myKey := hex.EncodeToString(id.PublicKey())
+		for _, msg := range chatStore.All() {
+			chatLines = append(chatLines, formatChatLine(msg))
+			chatOwn = append(chatOwn, msg.AuthorKey == myKey)
+			chatAuthorKeys = append(chatAuthorKeys, msg.AuthorKey)
+			chatAuthorNames = append(chatAuthorNames, msg.AuthorName)
+		}
+	}
 
 	canCreatePost := false
 	for i := range plugins {
@@ -241,36 +366,53 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	}
 
 	return appModel{
-		ctx:            ctx,
-		identity:       id,
-		node:           node,
-		plugins:        plugins,
-		apiAddr:        apiAddr,
-		apiToken:       apiToken,
-		approvalFn:     approvalFn,
-		forumStore:     forumStore,
-		dataDir:        dataDir,
-		chatTopic:      chatTopic,
-		chatMessages:   chatMessages,
-		screen:         screenMenu,
-		menuItems:      items,
-		pluginByIdx:    byIdx,
-		chatInput:      chatIn,
-		chatViewport:   viewport.New(0, 0),
-		chatLines:      chatLines,
-		chatOwn:        chatOwn,
-		_canCreatePost: canCreatePost,
+		ctx:              ctx,
+		identity:         id,
+		node:             node,
+		plugins:          plugins,
+		apiAddr:          apiAddr,
+		apiToken:         apiToken,
+		forumStore:       forumStore,
+		profileStore:     profileStore,
+		dataDir:          dataDir,
+		chatStore:        chatStore,
+		mod:              mod,
+		modTopic:         modTopic,
+		chatFollow:       true,
+		screen:           screenMenu,
+		menuItems:        items,
+		menuGroups:       groups,
+		pluginByIdx:      byIdx,
+		chatInput:        chatIn,
+		chatViewport:     viewport.New(0, 0),
+		chatLines:        chatLines,
+		chatOwn:          chatOwn,
+		chatAuthorKeys:   chatAuthorKeys,
+		chatAuthorNames:  chatAuthorNames,
+		chatCursor:       len(chatLines) - 1,
+		bioInput:         bioIn,
+		statusInput:      statusIn,
+		linkInput:        linkIn,
+		banReasonInput:   banIn,
+		modGrantKeyInput: modGrantKeyIn,
+		tagSelected:      make(map[string]bool),
+		_canCreatePost:   canCreatePost,
 	}
 }
-
 
 func (m appModel) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
 		peerTick(),
 		func() tea.Msg {
-			if m.chatMessages != nil {
-				return listenForChat(m.chatMessages)()
+			if m.chatStore != nil {
+				return listenForChat(m.chatStore.NewMessages())()
+			}
+			return nil
+		},
+		func() tea.Msg {
+			if m.chatStore != nil {
+				return listenForChatHistoryChange(m.chatStore.HistoryChanged())()
 			}
 			return nil
 		},
@@ -284,19 +426,23 @@ func (m appModel) peerCount() int {
 	return len(m.node.Host.Network().Peers())
 }
 
-func listenForChat(ch <-chan []byte) tea.Cmd {
+// formatChatLine renders m the way it's displayed in the chat viewport —
+// shared by the initial history load (newAppModel), live incoming messages
+// (listenForChat), and the local echo of our own sent messages (sendChat).
+func formatChatLine(m *chatlog.Message) string {
+	return fmt.Sprintf("[%s] %s: %s", m.SentAt.Local().Format("15:04"), m.AuthorName, m.Text)
+}
+
+func listenForChat(ch <-chan *chatlog.Message) tea.Cmd {
 	return func() tea.Msg {
-		data, ok := <-ch
+		msg, ok := <-ch
 		if !ok {
 			return chatClosedMsg{}
 		}
-		var pkt chatPkt
-		if err := json.Unmarshal(data, &pkt); err != nil || pkt.T == "" {
-			return chatMsg{line: string(data), own: false}
-		}
-		ts := pkt.A.Local().Format("15:04")
-		line := fmt.Sprintf("[%s] %s: %s", ts, pkt.N, pkt.T)
-		return chatMsg{line: line, own: false}
+		// own her zaman false: chatStore.NewMessages(), Publish'i yapan
+		// düğümün kendi mesajını filtreler (network.Topic.Messages) — bu
+		// kanaldan yalnızca BAŞKALARININ mesajları gelir.
+		return chatMsg{line: formatChatLine(msg), own: false, authorKey: msg.AuthorKey, authorName: msg.AuthorName}
 	}
 }
 
@@ -313,6 +459,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case themeChangedMsg:
+		// Paylaşılan stil değişkenlerine tek dokunan yer burası olmalı —
+		// bkz. Run()'daki themeCh goroutine'i.
+		applyThemeColors(msg.theme)
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -328,7 +477,25 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatViewport.Width = vw
 		m.chatViewport.Height = vh
 		m.chatInput.Width = vw
-		m.syncChatViewport()
+		m.banReasonInput.Width = vw
+		m.modGrantKeyInput.Width = vw
+		// chatViewport, sohbet içeriği ile görüntülenen profil metni
+		// arasında paylaşılıyor (bkz. handleChatKey'deki ctrl+p) — hangi
+		// ekran aktifse yalnızca onun içeriği yeniden oluşturulmalı, aksi
+		// halde profil ekranındayken içerik sessizce sohbetle değişebilir.
+		if m.screen == screenChatProfile {
+			m.chatViewport.SetContent(profilMetni(m.chatViewport.Width, m.profileStore, m.forumStore, m.chatStore, m.mod, m.chatProfilKey))
+		} else {
+			m.syncChatViewport()
+			if m.chatFollow {
+				m.chatViewport.GotoBottom()
+			} else {
+				// Yeniden boyutlandırma, kaydırılmış içeriği tamamen görünür
+				// hale getirmiş olabilir (ör. pencere büyütüldü) — bu durumda
+				// takibi otomatik olarak sürdür.
+				m.chatFollow = m.chatViewport.AtBottom()
+			}
+		}
 		svh := msg.Height - 8
 		if svh < 4 {
 			svh = 4
@@ -359,14 +526,147 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case profileSavedMsg:
+		if msg.err != nil {
+			m.profileNotice = "Kaydedilemedi: " + msg.err.Error()
+			m.profileNoticeErr = true
+		} else {
+			m.profileNotice = "Profil kaydedildi"
+			m.profileNoticeErr = false
+		}
+		m.syncSettingsVP()
+		return m, nil
+
+	case githubDeviceCodeMsg:
+		if errors.Is(msg.err, context.Canceled) {
+			// Kullanıcı kod dönmeden önce esc ile zaten iptal etti ve
+			// "iptal edildi" bildirimini gördü — RequestDeviceCode'un geç
+			// gelen bu sonucu o bildirimin üzerine yazmamalı (bkz.
+			// githubLinkedMsg'deki aynı korumaya paralel).
+			return m, nil
+		}
+		if msg.err != nil {
+			m.githubLinking = false
+			if m.githubCancel != nil {
+				m.githubCancel()
+			}
+			m.githubCancel = nil
+			m.githubCtx = nil
+			m.profileNotice = "GitHub bağlantısı başlatılamadı: " + msg.err.Error()
+			m.profileNoticeErr = true
+			m.syncSettingsVP()
+			return m, nil
+		}
+		m.githubUserCode = msg.dc.UserCode
+		m.githubVerificationURI = msg.dc.VerificationURI
+		m.profileNotice = ""
+		m.syncSettingsVP()
+		ctx, ps, myKey, dc := m.githubCtx, m.profileStore, hex.EncodeToString(m.identity.PublicKey()), msg.dc
+		return m, func() tea.Msg {
+			token, err := githubverify.PollForToken(ctx, dc)
+			if err != nil {
+				return githubLinkedMsg{err: err}
+			}
+			username, err := githubverify.FetchUsername(ctx, token)
+			if err != nil {
+				return githubLinkedMsg{err: err}
+			}
+			// PublishOwn tam değiştirme yapar (kısmi güncelleme yok) —
+			// diğer alanları mevcut depolanmış profilden taşımazsak GitHub
+			// bağlama işlemi bio/durum/link/etiketleri sessizce silerdi.
+			u := profile.OwnUpdate{GitHubUser: username}
+			if p := ps.Get(myKey); p != nil {
+				u.Bio, u.Status, u.Link, u.Tags = p.Bio, p.Status, p.Link, p.Tags
+			}
+			if err := ps.PublishOwn(ctx, u); err != nil {
+				return githubLinkedMsg{err: err}
+			}
+			return githubLinkedMsg{username: username}
+		}
+
+	case githubLinkedMsg:
+		if errors.Is(msg.err, context.Canceled) {
+			// Kullanıcı esc ile zaten iptal etti ve "iptal edildi" bildirimini
+			// gördü — arka planda iptalden önce başlamış bu isteğin geç gelen
+			// sonucu o bildirimin üzerine yazmamalı.
+			return m, nil
+		}
+		m.githubLinking = false
+		m.githubUserCode = ""
+		m.githubVerificationURI = ""
+		// context.WithCancel'ın sözleşmesi, işlem kendiliğinden bittiğinde
+		// bile cancel'ın çağrılmasını gerektirir — aksi halde küçük bir
+		// cancelCtx düğümü m.ctx'in children kümesinde oturum sonuna kadar
+		// serbest bırakılmadan kalır.
+		if m.githubCancel != nil {
+			m.githubCancel()
+		}
+		m.githubCancel = nil
+		m.githubCtx = nil
+		if msg.err != nil {
+			m.profileNotice = "GitHub bağlanamadı: " + msg.err.Error()
+			m.profileNoticeErr = true
+		} else {
+			m.profileNotice = "GitHub bağlandı: @" + msg.username
+			m.profileNoticeErr = false
+		}
+		m.syncSettingsVP()
+		return m, nil
+
 	case chatMsg:
+		wasFollowing := m.chatFollow
 		m.chatLines = append(m.chatLines, msg.line)
 		m.chatOwn = append(m.chatOwn, msg.own)
+		m.chatAuthorKeys = append(m.chatAuthorKeys, msg.authorKey)
+		m.chatAuthorNames = append(m.chatAuthorNames, msg.authorName)
+		if wasFollowing {
+			// Kullanıcı zaten en yeni mesajı takip ediyordu — seçili imleç
+			// de yeni gelenle birlikte "en yeni"de kalsın.
+			m.chatCursor = len(m.chatLines) - 1
+		}
 		m.syncChatViewport()
-		lines, own := append([]string{}, m.chatLines...), append([]bool{}, m.chatOwn...)
-		dir := m.dataDir
-		go saveChatHistory(dir, lines, own)
-		return m, listenForChat(m.chatMessages)
+		if wasFollowing {
+			m.chatViewport.GotoBottom()
+		}
+		if m.chatStore != nil {
+			return m, listenForChat(m.chatStore.NewMessages())
+		}
+		return m, nil
+
+	case chatHistoryChangedMsg:
+		// chatStore, canlı yayından değil bir peer senkronizasyonundan
+		// mesajlar aldı — bunlar zaten gösterilenlerden ESKİ olabileceği
+		// için (canlı akışın aksine) tek tek eklemek yerine tüm geçmişi
+		// All()'dan (kronolojik sırayla) baştan yüklüyoruz.
+		if m.chatStore != nil {
+			wasFollowing := m.chatFollow
+			myKey := hex.EncodeToString(m.identity.PublicKey())
+			m.chatLines = nil
+			m.chatOwn = nil
+			m.chatAuthorKeys = nil
+			m.chatAuthorNames = nil
+			for _, cm := range m.chatStore.All() {
+				m.chatLines = append(m.chatLines, formatChatLine(cm))
+				m.chatOwn = append(m.chatOwn, cm.AuthorKey == myKey)
+				m.chatAuthorKeys = append(m.chatAuthorKeys, cm.AuthorKey)
+				m.chatAuthorNames = append(m.chatAuthorNames, cm.AuthorName)
+			}
+			// Geriye eski mesajlar eklenmiş olabileceğinden eski chatCursor
+			// artık farklı bir mesajı işaret edebilir — takipteyse en
+			// yeniye, değilse en azından geçerli bir indekse sabitle.
+			switch {
+			case wasFollowing:
+				m.chatCursor = len(m.chatLines) - 1
+			case m.chatCursor >= len(m.chatLines):
+				m.chatCursor = len(m.chatLines) - 1
+			}
+			m.syncChatViewport()
+			if wasFollowing {
+				m.chatViewport.GotoBottom()
+			}
+			return m, listenForChatHistoryChange(m.chatStore.HistoryChanged())
+		}
+		return m, nil
 
 	case chatClosedMsg:
 		return m, nil
@@ -407,8 +707,12 @@ func (m appModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleMenuKey(msg)
 	case screenChat:
 		return m.handleChatKey(msg)
+	case screenChatProfile:
+		return m.handleChatProfileKey(msg)
 	case screenSettings:
 		return m.handleSettingsKey(msg)
+	case screenModeration:
+		return m.handleModerationKey(msg)
 	}
 	return m, nil
 }
@@ -446,7 +750,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			fm := newForumModel(m.ctx, m.forumStore, m.identity, m.dataDir, m.approvalFn, canCreate)
+			fm := newForumModel(m.ctx, m.forumStore, m.identity, m.profileStore, m.chatStore, m.dataDir, canCreate, m.mod, m.modTopic)
 			initCmd := fm.Init()
 			sized, sizeCmd := fm.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
 			m.forumModel = sized
@@ -455,11 +759,16 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case label == "Chat":
 			m.screen = screenChat
 			m.chatInput.Focus()
+			m.chatFollow = true
+			m.chatCursor = len(m.chatLines) - 1
 			m.syncChatViewport()
+			m.chatViewport.GotoBottom()
 		case label == "Ayarlar":
 			m.screen = screenSettings
 			m.settingsIdx = 0
 			m.syncSettingsVP()
+		case label == "Moderasyon":
+			return m.enterModeration(), nil
 		case pl != nil:
 			if !pl.Enabled {
 				return m, nil
@@ -484,54 +793,294 @@ func (m appModel) handleChatKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.sendChat()
+	case "ctrl+p":
+		// Seçili mesajın (chatCursor) yazarının profilini aç — bkz.
+		// appModel.chatProfilKey'in doc yorumu. Düz "p" değil ctrl+p:
+		// chatInput her zaman odaktayken düz bir harf tuşu, kullanıcı
+		// mesajına "p" yazmaya çalışırken bunu yakalardı.
+		if m.chatCursor < 0 || m.chatCursor >= len(m.chatAuthorKeys) {
+			return m, nil
+		}
+		key := m.chatAuthorKeys[m.chatCursor]
+		if key == "" {
+			// İmzasız/eklenti kaynaklı bir mesaj — arkasında bir kriptografik
+			// kimlik yok, profillenecek biri yok.
+			return m, nil
+		}
+		m.chatProfilKey = key
+		m.chatProfilAd = m.chatAuthorNames[m.chatCursor]
+		m.screen = screenChatProfile
+		m.banConfirming = false
+		m.unbanConfirming = false
+		myKey := hex.EncodeToString(m.identity.PublicKey())
+		m.chatProfilCanBan, m.banIsFounder, m.banCert = resolveBanAuthority(m.mod, m.dataDir, myKey, key)
+		m.chatProfilIsBanned = false
+		if m.mod != nil {
+			_, m.chatProfilIsBanned = m.mod.AuthorBanInfo(key)
+		}
+		m.chatViewport.SetContent(profilMetni(m.chatViewport.Width, m.profileStore, m.forumStore, m.chatStore, m.mod, key))
+		m.chatViewport.GotoTop()
+		return m, nil
+	case "up":
+		if m.chatCursor > 0 {
+			m.chatCursor--
+		}
+		m.chatFollow = false
+		m.syncChatViewport()
+		m.ensureChatCursorVisible()
+		return m, nil
+	case "down":
+		if m.chatCursor < len(m.chatLines)-1 {
+			m.chatCursor++
+		}
+		m.chatFollow = m.chatCursor >= len(m.chatLines)-1
+		m.syncChatViewport()
+		m.ensureChatCursorVisible()
+		return m, nil
+	case "pgup":
+		step := m.chatViewport.Height
+		if step < 1 {
+			step = 1
+		}
+		m.chatCursor -= step
+		if m.chatCursor < 0 {
+			m.chatCursor = 0
+		}
+		m.chatFollow = false
+		m.syncChatViewport()
+		m.ensureChatCursorVisible()
+		return m, nil
+	case "pgdown":
+		step := m.chatViewport.Height
+		if step < 1 {
+			step = 1
+		}
+		m.chatCursor += step
+		if m.chatCursor > len(m.chatLines)-1 {
+			m.chatCursor = len(m.chatLines) - 1
+		}
+		m.chatFollow = m.chatCursor >= len(m.chatLines)-1
+		m.syncChatViewport()
+		m.ensureChatCursorVisible()
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.chatInput, cmd = m.chatInput.Update(msg)
 	return m, cmd
 }
 
+// handleChatProfileKey, screenChatProfile aktifken tuş girdisini işler.
+// esc/q, paylaşılan chatViewport'u gerçek sohbet içeriğine geri döndürür
+// (syncChatViewport) — aksi halde profil metni ekranda kalırdı.
+func (m appModel) handleChatProfileKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.banConfirming {
+		return m.handleChatBanConfirmKey(msg)
+	}
+	if m.unbanConfirming {
+		return m.handleChatUnbanConfirmKey(msg)
+	}
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc", "q":
+		m.screen = screenChat
+		m.syncChatViewport()
+		m.ensureChatCursorVisible()
+		return m, nil
+	case "b":
+		if m.chatProfilCanBan {
+			m.banConfirming = true
+			m.banDurationIdx = 0
+			m.banReasonInput.SetValue("")
+			m.banNotice = ""
+			return m, m.banReasonInput.Focus()
+		}
+	case "u":
+		if m.chatProfilCanBan && m.chatProfilIsBanned {
+			m.unbanConfirming = true
+			m.banNotice = ""
+		}
+	case "up", "k":
+		m.chatViewport.LineUp(1)
+	case "down", "j":
+		m.chatViewport.LineDown(1)
+	case "pgup":
+		m.chatViewport.HalfViewUp()
+	case "pgdown":
+		m.chatViewport.HalfViewDown()
+	case "g":
+		m.chatViewport.GotoTop()
+	case "G":
+		m.chatViewport.GotoBottom()
+	}
+	return m, nil
+}
+
+// handleChatBanConfirmKey, screenChatProfile içinde "b" ile açılan
+// süre+sebep onay alt-durumunu (banConfirming) işler.
+func (m appModel) handleChatBanConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		m.banConfirming = false
+		m.banReasonInput.Blur()
+		return m, nil
+	case "left", "up":
+		if m.banDurationIdx > 0 {
+			m.banDurationIdx--
+		}
+		return m, nil
+	case "right", "down":
+		if m.banDurationIdx < len(banDurationPresets)-1 {
+			m.banDurationIdx++
+		}
+		return m, nil
+	case "enter":
+		return m.issueChatBan()
+	}
+	var cmd tea.Cmd
+	m.banReasonInput, cmd = m.banReasonInput.Update(msg)
+	return m, cmd
+}
+
+// issueChatBan sends the ban confirmed via handleChatBanConfirmKey.
+func (m appModel) issueChatBan() (tea.Model, tea.Cmd) {
+	reason := strings.TrimSpace(m.banReasonInput.Value())
+	if reason == "" {
+		m.banNotice = "Sebep boş olamaz"
+		m.banNoticeErr = true
+		return m, nil
+	}
+	preset := banDurationPresets[m.banDurationIdx]
+	if err := issueBanFor(m.ctx, m.mod, m.modTopic, m.identity, m.chatProfilKey, m.banIsFounder, m.banCert, reason, preset); err != nil {
+		m.banNotice = "Banlama başarısız: " + err.Error()
+		m.banNoticeErr = true
+		return m, nil
+	}
+	m.banConfirming = false
+	m.banReasonInput.Blur()
+	m.chatProfilIsBanned = true
+	m.banNotice = fmt.Sprintf("%s banlandı (%s)", pluginui.Safe(m.chatProfilAd), preset.label)
+	m.banNoticeErr = false
+	return m, nil
+}
+
+// handleChatUnbanConfirmKey, screenChatProfile içinde "u" ile açılan basit
+// e/h onayını işler.
+func (m appModel) handleChatUnbanConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc", "h", "n":
+		m.unbanConfirming = false
+		return m, nil
+	case "e", "y", "enter":
+		return m.issueChatUnban()
+	}
+	return m, nil
+}
+
+// issueChatUnban sends the unban confirmed via handleChatUnbanConfirmKey.
+func (m appModel) issueChatUnban() (tea.Model, tea.Cmd) {
+	if err := issueUnbanFor(m.ctx, m.mod, m.modTopic, m.identity, m.chatProfilKey, m.banIsFounder, m.banCert); err != nil {
+		m.banNotice = "Ban kaldırma başarısız: " + err.Error()
+		m.banNoticeErr = true
+		m.unbanConfirming = false
+		return m, nil
+	}
+	m.unbanConfirming = false
+	m.chatProfilIsBanned = false
+	m.banNotice = fmt.Sprintf("%s adlı kullanıcının banı kaldırıldı", pluginui.Safe(m.chatProfilAd))
+	m.banNoticeErr = false
+	return m, nil
+}
+
+// ensureChatCursorVisible, chatViewport'un görünür penceresini chatCursor
+// satırını kapsayacak şekilde kaydırır — chatLines'ın her girdisi
+// syncChatViewport tarafından tam olarak bir satıra render edildiğinden
+// (uzun mesajların olası sarması hesaba katılmaz — forum'un liste
+// seçimlerinin de yapmadığı bir basitleştirme), chatCursor'ı doğrudan bir
+// satır indeksi olarak ele almak yeterli.
+func (m *appModel) ensureChatCursorVisible() {
+	if m.chatCursor < 0 {
+		return
+	}
+	top := m.chatViewport.YOffset
+	bottom := top + m.chatViewport.Height - 1
+	switch {
+	case m.chatCursor < top:
+		m.chatViewport.SetYOffset(m.chatCursor)
+	case m.chatCursor > bottom:
+		m.chatViewport.SetYOffset(m.chatCursor - m.chatViewport.Height + 1)
+	}
+}
+
+// sendChat signs, persists, and publishes text synchronously (not via a
+// tea.Cmd) — deliberately: Bubbletea runs tea.Cmds as independent
+// goroutines with no ordering guarantee between them, and Send stamps
+// SentAt at call time, so two quick "enter" presses racing as separate
+// commands could persist/display out of the order the user actually typed
+// them. Running inline on Update's single goroutine makes send order
+// exactly match keypress order; the work involved (one local SQLite write,
+// one GossipSub Publish that only queues locally rather than waiting on
+// remote peers) is fast enough not to visibly block input.
 func (m appModel) sendChat() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.chatInput.Value())
 	m.chatInput.SetValue("")
-	if text == "" {
+	if text == "" || m.chatStore == nil {
 		return m, nil
 	}
 
-	if m.chatTopic == nil {
-		return m, nil
+	sent, err := m.chatStore.Send(m.ctx, text)
+	if err != nil {
+		m.chatNotice = "Gönderilemedi: " + err.Error()
+	} else {
+		m.chatNotice = ""
 	}
-	name := m.identity.Name()
-	if name == "" {
-		name = "anonymous"
+	// Send persists locally before attempting the network publish (see
+	// chatlog.Store.Send), so sent is non-nil even when err reports a
+	// publish failure — show the local echo regardless, matching what's
+	// actually now in the store, instead of silently discarding a message
+	// the user believes they sent.
+	if sent != nil {
+		m.chatLines = append(m.chatLines, formatChatLine(sent))
+		m.chatOwn = append(m.chatOwn, true)
+		m.chatAuthorKeys = append(m.chatAuthorKeys, sent.AuthorKey)
+		m.chatAuthorNames = append(m.chatAuthorNames, sent.AuthorName)
+		m.chatCursor = len(m.chatLines) - 1
+		m.syncChatViewport()
+		m.chatViewport.GotoBottom()
+		m.chatFollow = true
 	}
-	now := time.Now()
-	pkt := chatPkt{N: name, T: text, A: now.UTC()}
-	line := fmt.Sprintf("[%s] %s: %s", now.Local().Format("15:04"), name, text)
-	m.chatLines = append(m.chatLines, line)
-	m.chatOwn = append(m.chatOwn, true)
-	m.syncChatViewport()
-	lines, own := append([]string{}, m.chatLines...), append([]bool{}, m.chatOwn...)
-	go saveChatHistory(m.dataDir, lines, own)
-	data, _ := json.Marshal(pkt)
-	topic := m.chatTopic
-	ctx := m.ctx
-	return m, func() tea.Msg {
-		_ = topic.Publish(ctx, data)
-		return nil
+	return m, nil
+}
+
+func listenForChatHistoryChange(ch <-chan struct{}) tea.Cmd {
+	return func() tea.Msg {
+		if _, ok := <-ch; !ok {
+			return nil
+		}
+		return chatHistoryChangedMsg{}
 	}
 }
 
 func (m *appModel) syncChatViewport() {
 	rendered := make([]string, len(m.chatLines))
 	for i, line := range m.chatLines {
-		if i < len(m.chatOwn) && m.chatOwn[i] {
+		switch {
+		case i == m.chatCursor:
+			rendered[i] = fStSeciliSatir.Render(line)
+		case i < len(m.chatOwn) && m.chatOwn[i]:
 			rendered[i] = selfMsgStyle.Render(line)
-		} else {
+		default:
 			rendered[i] = line
 		}
 	}
 	m.chatViewport.SetContent(strings.Join(rendered, "\n"))
-	m.chatViewport.GotoBottom()
 }
 
 func (m appModel) View() string {
@@ -546,8 +1095,12 @@ func (m appModel) View() string {
 		return m.viewMenu()
 	case screenChat:
 		return m.viewChat()
+	case screenChatProfile:
+		return m.viewChatProfile()
 	case screenSettings:
 		return m.viewSettings()
+	case screenModeration:
+		return m.viewModeration()
 	default:
 		return m.viewMenu()
 	}
@@ -559,13 +1112,14 @@ func (m appModel) viewMenu() string {
 		name = "anonim"
 	}
 
-	logoSt     := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	tag2St     := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
-	sepSt      := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	divSt      := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	helpSt     := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	offSt      := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	offSelSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Bold(true)
+	logoSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	tag2St := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
+	sepSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	offSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	offSelSt := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Bold(true)
+	groupSt := lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
 
 	rawLines := strings.Split(andASCIIArt, "\n")
 	leftLines := make([]string, len(rawLines))
@@ -598,17 +1152,28 @@ func (m appModel) viewMenu() string {
 	rightLines = append(rightLines, "")
 	rightLines = append(rightLines, divSt.Render(strings.Repeat("─", 30)))
 
+	var sonGrup string
 	for i, item := range m.menuItems {
+		grup := m.menuGroups[i]
+		if grup != sonGrup {
+			rightLines = append(rightLines, groupSt.Render("▾ "+grup))
+			sonGrup = grup
+		}
+		dal := "├── "
+		if i == len(m.menuItems)-1 || m.menuGroups[i+1] != grup {
+			dal = "└── " // grubun son öğesi
+		}
+
 		pl := m.pluginByIdx[i]
 		disabled := pl != nil && !pl.Enabled
 		if i == m.menuIndex {
-			line := selectedItemStyle.Render("▶  " + item)
+			line := selectedItemStyle.Render("▶ " + dal + item)
 			if disabled {
 				line += offSelSt.Render(" [kapalı]")
 			}
 			rightLines = append(rightLines, line)
 		} else {
-			line := itemStyle.Render("   " + item)
+			line := itemStyle.Render("  " + dal + item)
 			if disabled {
 				line += offSt.Render(" [kapalı]")
 			}
@@ -668,8 +1233,8 @@ func (m appModel) viewChat() string {
 	}
 
 	titleSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	divSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	helpSt  := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
 
 	innerW := m.width - 10
 	if innerW < 20 {
@@ -702,11 +1267,79 @@ func (m appModel) viewChat() string {
 		b.WriteString(strings.Repeat("\n", m.chatViewport.Height-pad-1))
 	} else {
 		b.WriteString(m.chatViewport.View())
+		if !m.chatViewport.AtBottom() {
+			b.WriteString("\n" + helpSt.Render("  ↓ daha fazla…"))
+		}
 	}
 
 	b.WriteString("\n" + div + "\n")
 	b.WriteString(m.chatInput.View() + "\n")
-	b.WriteString(helpSt.Render("enter  gönder    esc  ana menü"))
+	if m.chatNotice != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorError).Render(m.chatNotice) + "\n")
+	}
+	b.WriteString(helpSt.Render("↑/↓  mesaj seç/kaydır    ctrl+p  profili gör    enter  gönder    esc  ana menü"))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccent).
+		Padding(1, 3).
+		Render(b.String())
+
+	if m.width > 0 && m.height > 0 {
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	}
+	return box
+}
+
+// viewChatProfile, chatCursor'daki mesajın yazarı için ctrl+p ile açılan
+// profil ekranını çizer — forum.go'daki forumGorunumProfil'in chat
+// tarafındaki eşdeğeri, aynı profilMetni içeriğini gösterir.
+func (m appModel) viewChatProfile() string {
+	titleSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+
+	innerW := m.width - 10
+	if innerW < 20 {
+		innerW = 60
+	}
+	div := divSt.Render(strings.Repeat("─", innerW))
+
+	var b strings.Builder
+	b.WriteString(titleSt.Render("◈  Profil: " + forumKisalt(pluginui.Safe(m.chatProfilAd), 40)))
+	b.WriteString("\n" + div + "\n")
+	b.WriteString(m.chatViewport.View())
+	if !m.chatViewport.AtBottom() {
+		b.WriteString("\n" + helpSt.Render("  ↓ daha fazla…"))
+	}
+
+	if m.banConfirming {
+		b.WriteString(banOnayGorunumu(m.chatProfilAd, m.banDurationIdx, m.banReasonInput))
+	}
+	if m.unbanConfirming {
+		b.WriteString(unbanOnayGorunumu(m.chatProfilAd))
+	}
+
+	b.WriteString("\n" + div + "\n")
+	if m.banNotice != "" {
+		noticeSt := lipgloss.NewStyle().Foreground(colorOK)
+		if m.banNoticeErr {
+			noticeSt = lipgloss.NewStyle().Foreground(colorError)
+		}
+		b.WriteString(noticeSt.Render(m.banNotice) + "\n")
+	}
+	switch {
+	case m.banConfirming:
+		b.WriteString(helpSt.Render("←/→  süre seç    enter  onayla    esc  vazgeç"))
+	case m.unbanConfirming:
+		b.WriteString(helpSt.Render("e  onayla    esc  vazgeç"))
+	case m.chatProfilCanBan && m.chatProfilIsBanned:
+		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    b  banla    u  banı kaldır    esc  sohbete dön"))
+	case m.chatProfilCanBan:
+		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    b  banla    esc  sohbete dön"))
+	default:
+		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    esc  sohbete dön"))
+	}
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -737,6 +1370,13 @@ func (m appModel) settingsPluginList() []int {
 }
 
 func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.githubLinking {
+		return m.handleGitHubLinkKey(msg)
+	}
+	if m.profileEdit != profileFieldNone {
+		return m.handleProfileEditKey(msg)
+	}
+
 	switch msg.String() {
 	case "ctrl+c":
 		m.quitting = true
@@ -778,6 +1418,32 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsVP.GotoBottom()
 		case "m":
 			m.showMnemonic = !m.showMnemonic
+		case "b":
+			if m.profileStore != nil {
+				m.enterProfileEdit(profileFieldBio)
+				m.syncSettingsVP()
+				return m, m.bioInput.Focus()
+			}
+		case "s":
+			if m.profileStore != nil {
+				m.enterProfileEdit(profileFieldStatus)
+				m.syncSettingsVP()
+				return m, m.statusInput.Focus()
+			}
+		case "w":
+			if m.profileStore != nil {
+				m.enterProfileEdit(profileFieldLink)
+				m.syncSettingsVP()
+				return m, m.linkInput.Focus()
+			}
+		case "t":
+			if m.profileStore != nil {
+				m.enterProfileEdit(profileFieldTags)
+			}
+		case "v":
+			if m.profileStore != nil {
+				return m.startGitHubLink()
+			}
 		}
 
 	case 1, 2: // Eklentiler / Temalar — liste navigasyonu
@@ -816,16 +1482,17 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *appModel) syncSettingsVP() {
-	secSt  := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	keyW   := lipgloss.NewStyle().Foreground(colorMuted).Width(18)
-	valW   := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	divSt  := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	mutSt  := lipgloss.NewStyle().Foreground(colorMuted)
-	onSt   := lipgloss.NewStyle().Foreground(colorOK).Bold(true)
-	offSt  := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	verSt  := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	secSt := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	keyW := lipgloss.NewStyle().Foreground(colorMuted).Width(18)
+	valW := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	mutSt := lipgloss.NewStyle().Foreground(colorMuted)
+	onSt := lipgloss.NewStyle().Foreground(colorOK).Bold(true)
+	offSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	verSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 	warnSt := lipgloss.NewStyle().Foreground(colorWarning)
-	okSt   := lipgloss.NewStyle().Foreground(colorOK)
+	okSt := lipgloss.NewStyle().Foreground(colorOK)
+	errSt := lipgloss.NewStyle().Foreground(colorError)
 
 	row := func(k, v string) string { return keyW.Render(k) + valW.Render(v) + "\n" }
 	div := divSt.Render(strings.Repeat("─", 54)) + "\n"
@@ -835,6 +1502,45 @@ func (m *appModel) syncSettingsVP() {
 	switch m.settingsTab {
 
 	case 0: // ── Bilgi ──────────────────────────────────────────
+		myKey := hex.EncodeToString(m.identity.PublicKey())
+
+		if m.profileEdit == profileFieldTags {
+			b.WriteString(secSt.Render("Etiket Seç") + "\n")
+			b.WriteString(mutSt.Render(fmt.Sprintf("en fazla %d etiket · ↑/↓ gezin · enter/space işaretle · ctrl+s kaydet · esc iptal", profile.MaxTags)) + "\n\n")
+			const headerLines = 3
+			for i, cat := range forum.Categories {
+				mark := "[ ]"
+				if m.tagSelected[cat] {
+					mark = "[x]"
+				}
+				line := fmt.Sprintf("%s %s", mark, cat)
+				if i == m.tagIdx {
+					b.WriteString(selectedItemStyle.Render("▶ "+line) + "\n")
+				} else {
+					b.WriteString(itemStyle.Render("  "+line) + "\n")
+				}
+			}
+			if m.profileNotice != "" {
+				noticeSt := okSt
+				if m.profileNoticeErr {
+					noticeSt = errSt
+				}
+				b.WriteString("\n" + noticeSt.Render(m.profileNotice) + "\n")
+			}
+			visible := m.settingsVP.Height
+			if visible <= 0 {
+				visible = 15
+			}
+			target := headerLines + m.tagIdx
+			switch {
+			case target < m.settingsVP.YOffset:
+				m.settingsVP.SetYOffset(target)
+			case target >= m.settingsVP.YOffset+visible:
+				m.settingsVP.SetYOffset(target - visible + 1)
+			}
+			break
+		}
+
 		b.WriteString(secSt.Render("Sistem") + "\n")
 		b.WriteString(row("Sürüm", updater.Version+"  ·  alpha"))
 		b.WriteString(row("Platform", runtime.GOOS+"/"+runtime.GOARCH))
@@ -850,10 +1556,16 @@ func (m *appModel) syncSettingsVP() {
 		b.WriteString(row("Ad", name))
 		pubHex := hex.EncodeToString(m.identity.PublicKey())
 		b.WriteString(row("Public key", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
-		if m.approvalFn != nil {
-			b.WriteString(row("Yetki", okSt.Render("● moderatör / kurucu")))
-		} else {
-			b.WriteString(row("Yetki", mutSt.Render("○ normal kullanıcı")))
+		if m.profileStore != nil {
+			b.WriteString(row("Rol", roleBadgeText(m.profileStore, myKey)))
+		}
+		if m.forumStore != nil {
+			postCount, replyCount, joinDate := m.forumStore.AuthorStats(myKey)
+			stat := fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)
+			if !joinDate.IsZero() {
+				stat += "  ·  ilk görülme " + turkceTarih(joinDate.Local())
+			}
+			b.WriteString(row("Aktivite", stat))
 		}
 		mnemo := m.identity.RecoveryCode()
 		if mnemo != "" {
@@ -866,6 +1578,88 @@ func (m *appModel) syncSettingsVP() {
 			}
 		}
 		b.WriteString("\n")
+
+		if m.profileStore != nil {
+			b.WriteString(div)
+			b.WriteString(secSt.Render("Profil") + "\n")
+
+			fieldRow := func(label string, field profileField, key, storedVal string, input textinput.Model, maxBytes int) {
+				if m.profileEdit == field {
+					b.WriteString(row(label, ""))
+					b.WriteString(keyW.Render("") + input.View() + "\n")
+					used := len([]byte(input.Value()))
+					counterSt := mutSt
+					if used > maxBytes {
+						counterSt = errSt
+					}
+					b.WriteString(keyW.Render("") + counterSt.Render(fmt.Sprintf("  %d/%d bayt", used, maxBytes)) + "\n")
+					b.WriteString(keyW.Render("") + mutSt.Render("  enter kaydet · esc iptal") + "\n")
+					return
+				}
+				if storedVal == "" {
+					b.WriteString(row(label, mutSt.Render("(belirtilmemiş)")))
+				} else {
+					b.WriteString(row(label, storedVal))
+				}
+				b.WriteString(keyW.Render("") + mutSt.Render("  "+key+" ile düzenle") + "\n")
+			}
+
+			p := m.profileStore.Get(myKey)
+			bio, status, link, tags := "", "", "", ""
+			if p != nil {
+				bio, status, link = p.Bio, p.Status, p.Link
+				if len(p.Tags) > 0 {
+					tags = strings.Join(p.Tags, ", ")
+				}
+			}
+
+			fieldRow("Bio", profileFieldBio, "b", bio, m.bioInput, profile.MaxBioBytes)
+			fieldRow("Durum", profileFieldStatus, "s", status, m.statusInput, profile.MaxStatusBytes)
+			fieldRow("Link", profileFieldLink, "w", link, m.linkInput, profile.MaxLinkBytes)
+
+			if tags == "" {
+				b.WriteString(row("Etiketler", mutSt.Render("(belirtilmemiş)")))
+			} else {
+				b.WriteString(row("Etiketler", tags))
+			}
+			b.WriteString(keyW.Render("") + mutSt.Render("  t ile düzenle") + "\n")
+
+			// GitHub — metin girişi değil: bir hesap adı yazmak onu
+			// KANITLAMAZ, bu yüzden burada bir textinput yok. Değer
+			// yalnızca startGitHubLink'in OAuth Device Flow akışı GitHub'ın
+			// kendi API'sinden başarıyla bir kullanıcı adı çektiğinde
+			// dolar (bkz. Update'teki githubDeviceCodeMsg/githubLinkedMsg
+			// işleyicileri).
+			githubUser := ""
+			if p != nil {
+				githubUser = p.GitHubUser
+			}
+			switch {
+			case m.githubLinking && m.githubUserCode != "":
+				b.WriteString(row("GitHub", ""))
+				codeSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+				b.WriteString(keyW.Render("") + "  Kod: " + codeSt.Render(m.githubUserCode) + "\n")
+				b.WriteString(keyW.Render("") + mutSt.Render("  "+m.githubVerificationURI+" adresinde onaylayın") + "\n")
+				b.WriteString(keyW.Render("") + mutSt.Render("  onay bekleniyor… (esc ile iptal)") + "\n")
+			case m.githubLinking:
+				b.WriteString(row("GitHub", mutSt.Render("kod alınıyor…")))
+			case githubUser != "":
+				b.WriteString(row("GitHub", okSt.Render("@"+githubUser+" (doğrulandı)")))
+				b.WriteString(keyW.Render("") + mutSt.Render("  v ile yeniden bağla") + "\n")
+			default:
+				b.WriteString(row("GitHub", mutSt.Render("(bağlanmamış)")))
+				b.WriteString(keyW.Render("") + mutSt.Render("  v ile GitHub hesabını doğrula") + "\n")
+			}
+
+			if m.profileNotice != "" {
+				noticeSt := okSt
+				if m.profileNoticeErr {
+					noticeSt = errSt
+				}
+				b.WriteString(keyW.Render("") + noticeSt.Render("  "+m.profileNotice) + "\n")
+			}
+			b.WriteString("\n")
+		}
 
 		b.WriteString(div)
 		b.WriteString(secSt.Render("Ağ") + "\n")
@@ -909,7 +1703,7 @@ func (m *appModel) syncSettingsVP() {
 			}
 		}
 		b.WriteString(row("forum.db", fileSz(filepath.Join(m.dataDir, "forum.db"))))
-		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%s  (%d mesaj)", fileSz(filepath.Join(m.dataDir, chatHistoryFile)), len(m.chatLines))))
+		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%d mesaj (forum.db içinde, senkronize)", len(m.chatLines))))
 		if entries, err := os.ReadDir(filepath.Join(m.dataDir, "bans")); err == nil {
 			b.WriteString(row("Yasaklar", fmt.Sprintf("%d kayıt", len(entries))))
 		}
@@ -919,22 +1713,11 @@ func (m *appModel) syncSettingsVP() {
 		b.WriteString(secSt.Render("Forum") + "\n")
 		if m.forumStore != nil {
 			posts := m.forumStore.AllInMemoryPosts()
-			total, pending, approved, replies := len(posts), 0, 0, 0
+			replies := 0
 			for _, p := range posts {
-				if p.Approved {
-					approved++
-				} else {
-					pending++
-				}
 				replies += m.forumStore.ReplyCount(p.ID)
 			}
-			b.WriteString(row("Toplam konu", fmt.Sprintf("%d", total)))
-			b.WriteString(row("Onaylı", fmt.Sprintf("%d", approved)))
-			if pending > 0 {
-				b.WriteString(row("Onay bekleyen", warnSt.Render(fmt.Sprintf("%d  ⚠", pending))))
-			} else {
-				b.WriteString(row("Onay bekleyen", "0"))
-			}
+			b.WriteString(row("Toplam konu", fmt.Sprintf("%d", len(posts))))
 			b.WriteString(row("Toplam yanıt", fmt.Sprintf("%d", replies)))
 		} else {
 			b.WriteString(row("Forum", mutSt.Render("(başlatılmadı)")))
@@ -967,7 +1750,7 @@ func (m *appModel) syncSettingsVP() {
 				b.WriteString(selectedItemStyle.Render(fmt.Sprintf("▶  %-24s", label)) +
 					"  " + stStr + "  " + verSt.Render(ver) + "\n")
 				if mf.Description != "" {
-					b.WriteString(labelStyle.Render("   " + mf.Description) + "\n")
+					b.WriteString(labelStyle.Render("   "+mf.Description) + "\n")
 				}
 				hint := "  space → aç/kapat"
 				if m.settingsTab == 2 && pl.Enabled {
@@ -986,13 +1769,224 @@ func (m *appModel) syncSettingsVP() {
 	m.settingsVP.SetContent(b.String())
 }
 
+// enterProfileEdit switches Settings' Bilgi tab into edit mode for field,
+// first re-syncing all editable inputs (and the tag-selection map) from the
+// currently stored profile — so saving after editing just one field (say,
+// Status) publishes the others' actual current values instead of stale or
+// blank state (PublishOwn always replaces the whole Profile; there's no
+// partial-update wire format).
+func (m *appModel) enterProfileEdit(field profileField) {
+	if m.profileStore == nil {
+		return
+	}
+	m.syncProfileInputsFromStore()
+	m.profileEdit = field
+	m.profileNotice = ""
+	m.profileNoticeErr = false
+	switch field {
+	case profileFieldBio:
+		m.bioInput.CursorEnd()
+	case profileFieldStatus:
+		m.statusInput.CursorEnd()
+	case profileFieldLink:
+		m.linkInput.CursorEnd()
+	}
+}
+
+func (m *appModel) syncProfileInputsFromStore() {
+	if m.profileStore == nil {
+		return
+	}
+	myKey := hex.EncodeToString(m.identity.PublicKey())
+	p := m.profileStore.Get(myKey)
+	m.tagSelected = make(map[string]bool)
+	if p == nil {
+		m.bioInput.SetValue("")
+		m.statusInput.SetValue("")
+		m.linkInput.SetValue("")
+		return
+	}
+	m.bioInput.SetValue(p.Bio)
+	m.statusInput.SetValue(p.Status)
+	m.linkInput.SetValue(p.Link)
+	for _, t := range p.Tags {
+		m.tagSelected[t] = true
+	}
+}
+
+func (m appModel) handleProfileEditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.profileEdit == profileFieldTags {
+		return m.handleTagPickerKey(msg)
+	}
+	return m.handleProfileTextKey(msg)
+}
+
+func (m appModel) handleProfileTextKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		m.profileEdit = profileFieldNone
+		m.bioInput.Blur()
+		m.statusInput.Blur()
+		m.linkInput.Blur()
+		m.syncSettingsVP()
+		return m, nil
+	case "enter":
+		return m.savePublishedProfile()
+	}
+	var cmd tea.Cmd
+	switch m.profileEdit {
+	case profileFieldBio:
+		m.bioInput, cmd = m.bioInput.Update(msg)
+	case profileFieldStatus:
+		m.statusInput, cmd = m.statusInput.Update(msg)
+	case profileFieldLink:
+		m.linkInput, cmd = m.linkInput.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m appModel) handleTagPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		m.profileEdit = profileFieldNone
+		m.syncProfileInputsFromStore() // kaydedilmemiş seçim değişikliklerini at
+		m.syncSettingsVP()
+		return m, nil
+	case "up", "k":
+		if m.tagIdx > 0 {
+			m.tagIdx--
+		}
+	case "down", "j":
+		if m.tagIdx < len(forum.Categories)-1 {
+			m.tagIdx++
+		}
+	case "enter", " ":
+		cat := forum.Categories[m.tagIdx]
+		switch {
+		case m.tagSelected[cat]:
+			delete(m.tagSelected, cat)
+		case len(m.tagSelected) < profile.MaxTags:
+			m.tagSelected[cat] = true
+		default:
+			m.profileNotice = fmt.Sprintf("en fazla %d etiket seçebilirsin", profile.MaxTags)
+			m.profileNoticeErr = true
+		}
+	case "ctrl+s":
+		return m.savePublishedProfile()
+	}
+	m.syncSettingsVP()
+	return m, nil
+}
+
+func (m appModel) savePublishedProfile() (tea.Model, tea.Cmd) {
+	bio := strings.TrimSpace(m.bioInput.Value())
+	status := strings.TrimSpace(m.statusInput.Value())
+	link := strings.TrimSpace(m.linkInput.Value())
+	tags := make([]string, 0, len(m.tagSelected))
+	for _, cat := range forum.Categories {
+		if m.tagSelected[cat] {
+			tags = append(tags, cat)
+		}
+	}
+
+	m.profileEdit = profileFieldNone
+	m.bioInput.Blur()
+	m.statusInput.Blur()
+	m.linkInput.Blur()
+	if m.profileStore == nil {
+		return m, nil
+	}
+	// GitHubUser burada düzenlenmiyor (v ile ayrı bir akışta doğrulanıyor),
+	// ama PublishOwn kısmi güncelleme yapmıyor — mevcut bağlı hesabı
+	// taşımazsak sadece bio'yu değiştirmek GitHub bağlantısını sessizce
+	// silerdi.
+	githubUser := ""
+	if p := m.profileStore.Get(hex.EncodeToString(m.identity.PublicKey())); p != nil {
+		githubUser = p.GitHubUser
+	}
+	ps, ctx := m.profileStore, m.ctx
+	return m, func() tea.Msg {
+		return profileSavedMsg{err: ps.PublishOwn(ctx, profile.OwnUpdate{
+			Bio: bio, Status: status, Link: link, Tags: tags, GitHubUser: githubUser,
+		})}
+	}
+}
+
+// githubLinkCooldown bounds how often startGitHubLink can fire a fresh
+// RequestDeviceCode call — without it, rapidly alternating "v" (start) and
+// "esc" (cancel) sends an unbounded stream of POSTs to GitHub's device-code
+// endpoint (esc only cancels the pending HTTP round-trip, it doesn't stop
+// the caller from immediately starting another one), which can trip
+// GitHub's own abuse-rate limiting for the shared ClientID.
+const githubLinkCooldown = 3 * time.Second
+
+// startGitHubLink kicks off githubverify's OAuth Device Flow by requesting
+// a short user code from GitHub. The code (once it arrives — see the
+// githubDeviceCodeMsg handler in Update) is shown in Settings while a
+// second, chained tea.Cmd polls in the background until the user approves
+// it at github.com/login/device.
+func (m appModel) startGitHubLink() (tea.Model, tea.Cmd) {
+	if m.profileStore == nil || m.githubLinking {
+		return m, nil
+	}
+	if !m.githubLastAttempt.IsZero() && time.Since(m.githubLastAttempt) < githubLinkCooldown {
+		return m, nil
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.githubLinking = true
+	m.githubUserCode = ""
+	m.githubVerificationURI = ""
+	m.githubCtx = ctx
+	m.githubCancel = cancel
+	m.githubLastAttempt = time.Now()
+	m.profileNotice = "GitHub kodu alınıyor…"
+	m.profileNoticeErr = false
+	m.syncSettingsVP()
+	return m, func() tea.Msg {
+		dc, err := githubverify.RequestDeviceCode(ctx)
+		return githubDeviceCodeMsg{dc: dc, err: err}
+	}
+}
+
+// handleGitHubLinkKey is Settings' key handler while a GitHub link flow is
+// in progress (see appModel.githubLinking) — the only live action is
+// cancelling; every other key is swallowed so the code/URL box stays put
+// until the flow resolves.
+func (m appModel) handleGitHubLinkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		if m.githubCancel != nil {
+			m.githubCancel()
+		}
+		m.githubLinking = false
+		m.githubUserCode = ""
+		m.githubVerificationURI = ""
+		m.githubCancel = nil
+		m.githubCtx = nil
+		m.profileNotice = "GitHub bağlantısı iptal edildi"
+		m.profileNoticeErr = false
+		m.syncSettingsVP()
+		return m, nil
+	}
+	return m, nil
+}
+
 func (m appModel) viewSettings() string {
 	accentSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	helpSt   := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	divSt    := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	tabNames  := []string{"  Bilgi  ", " Eklentiler ", "  Temalar  "}
+	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
+	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	tabNames := []string{"  Bilgi  ", " Eklentiler ", "  Temalar  "}
 	activeTab := lipgloss.NewStyle().Bold(true).Foreground(colorSelFG).Background(colorSelBG).Padding(0, 1)
-	inactTab  := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
+	inactTab := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
 
 	var b strings.Builder
 
@@ -1021,12 +2015,18 @@ func (m appModel) viewSettings() string {
 	b.WriteString(divSt.Render(strings.Repeat("─", 56)) + "\n")
 
 	var help string
-	switch m.settingsTab {
-	case 0:
-		help = "↑/↓  kaydır    m  güvenlik kodu    ←/→ tab  sekme değiştir    esc  geri"
-	case 1:
+	switch {
+	case m.settingsTab == 0 && m.githubLinking:
+		help = "esc  iptal"
+	case m.settingsTab == 0 && m.profileEdit == profileFieldTags:
+		help = "↑/↓  gezin    enter/space  işaretle    ctrl+s  kaydet    esc  iptal"
+	case m.settingsTab == 0 && m.profileEdit != profileFieldNone:
+		help = "enter  kaydet    esc  iptal"
+	case m.settingsTab == 0:
+		help = "↑/↓  kaydır    m  güvenlik kodu    b/s/w  bio/durum/link düzenle    t  etiketler    v  GitHub doğrula    ←/→ tab  sekme değiştir    esc  geri"
+	case m.settingsTab == 1:
 		help = "↑/↓  seç    space  aç/kapat    ←/→ tab  sekme değiştir    esc  geri"
-	case 2:
+	case m.settingsTab == 2:
 		help = "↑/↓  seç    space  aç/kapat    enter  uygula    ←/→ tab  sekme değiştir    esc  geri"
 	}
 	b.WriteString(helpSt.Render(help))

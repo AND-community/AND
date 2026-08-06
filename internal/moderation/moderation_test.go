@@ -3,7 +3,6 @@ package moderation
 import (
 	"crypto/ed25519"
 	"encoding/hex"
-	"fmt"
 	"testing"
 	"time"
 
@@ -35,25 +34,21 @@ func newTestMod(t *testing.T, founderPub ed25519.PublicKey) *Moderator {
 }
 
 func signCert(founderPriv ed25519.PrivateKey, modKey string, permanent bool, expiresAt time.Time) ModeratorCert {
-	var payload string
-	if permanent {
-		payload = fmt.Sprintf("%s|permanent", modKey)
-	} else {
-		payload = fmt.Sprintf("%s|%d", modKey, expiresAt.Unix())
-	}
-	sig := ed25519.Sign(founderPriv, []byte(payload))
+	return signCertIssuedAt(founderPriv, modKey, permanent, time.Now(), expiresAt)
+}
+
+// signCertIssuedAt is signCert with an explicit IssuedAt — needed by
+// revocation tests, which must control whether the cert predates or
+// postdates a given revoke (bkz. ModeratorCert.IssuedAt'in doc yorumu).
+func signCertIssuedAt(founderPriv ed25519.PrivateKey, modKey string, permanent bool, issuedAt, expiresAt time.Time) ModeratorCert {
+	sig := ed25519.Sign(founderPriv, ModeratorCertPayload(modKey, issuedAt, expiresAt, permanent))
 	return ModeratorCert{
 		ModeratorKey: modKey,
 		Permanent:    permanent,
+		IssuedAt:     issuedAt,
 		ExpiresAt:    expiresAt,
 		Sig:          hex.EncodeToString(sig),
 	}
-}
-
-func signApproval(priv ed25519.PrivateKey, postID string, issuedAt time.Time, cert *ModeratorCert) ApprovalMsg {
-	payload := fmt.Sprintf("approve|%s|%d", postID, issuedAt.Unix())
-	sig := ed25519.Sign(priv, []byte(payload))
-	return ApprovalMsg{PostID: postID, IssuedAt: issuedAt, Cert: cert, Sig: hex.EncodeToString(sig)}
 }
 
 // ─── seenSet ──────────────────────────────────────────────────────────────────
@@ -123,6 +118,24 @@ func TestVerifyCert_Valid(t *testing.T) {
 	}
 }
 
+func TestVerifyModeratorCert_MatchesInternalVerifyCert(t *testing.T) {
+	founderPub, founderPriv := genKey(t)
+	mod := newTestMod(t, founderPub)
+
+	modPub, _ := genKey(t)
+	modKey := hex.EncodeToString(modPub)
+	expires := time.Now().Add(24 * time.Hour)
+	valid := signCert(founderPriv, modKey, false, expires)
+	expired := signCert(founderPriv, modKey, false, time.Now().Add(-time.Hour))
+
+	if !mod.VerifyModeratorCert(valid) {
+		t.Fatal("exported VerifyModeratorCert, geçerli sertifikayı reddetmemeli — internal/profile buna güveniyor")
+	}
+	if mod.VerifyModeratorCert(expired) {
+		t.Fatal("exported VerifyModeratorCert, süresi dolmuş sertifikayı kabul etmemeli")
+	}
+}
+
 func TestVerifyCert_Permanent(t *testing.T) {
 	founderPub, founderPriv := genKey(t)
 	mod := newTestMod(t, founderPub)
@@ -185,72 +198,40 @@ func TestVerifyCert_Revoked(t *testing.T) {
 
 	modPub, _ := genKey(t)
 	modKey := hex.EncodeToString(modPub)
-	expires := time.Now().Add(24 * time.Hour)
-	cert := signCert(founderPriv, modKey, false, expires)
+	issuedAt := time.Now().Add(-time.Minute)
+	expires := time.Now().Add(24 * time.Hour) // hâlâ günlerce geçerliliği kalan, SÜRESİ DOLMAMIŞ bir sertifika
+	cert := signCertIssuedAt(founderPriv, modKey, false, issuedAt, expires)
 
-	// revokedAt > cert.ExpiresAt → cert iptal öncesi verilmiş sayılır, geçersiz.
+	// revokedAt, cert'in IssuedAt'inden SONRA → bu sertifika iptalin
+	// kapsamında, henüz doğal olarak süresi dolmamış olsa bile hemen
+	// reddedilmeli (asıl amaç budur: hâlâ aktif bir moderatörü anında
+	// yetkisiz bırakabilmek).
 	mod.mu.Lock()
-	mod.revoked[modKey] = expires.Add(time.Second)
+	mod.revoked[modKey] = time.Now()
 	mod.mu.Unlock()
 
 	if mod.verifyCert(cert) {
-		t.Fatal("iptal edilmiş moderatör sertifikası reddedilmeli")
+		t.Fatal("iptal edilmiş moderatör sertifikası, süresi dolmamış olsa bile reddedilmeli")
 	}
 }
 
-// ─── verifyApproval (yeni freshness kontrolü) ─────────────────────────────────
-
-func TestVerifyApproval_ValidFounder(t *testing.T) {
+func TestVerifyCert_ReGrantedAfterRevokeIsValid(t *testing.T) {
 	founderPub, founderPriv := genKey(t)
 	mod := newTestMod(t, founderPub)
 
-	msg := signApproval(founderPriv, "aabbccdd11223344", time.Now(), nil)
-	if !mod.verifyApproval(&msg) {
-		t.Fatal("kurucu imzalı geçerli onay doğrulanmalı")
-	}
-}
-
-func TestVerifyApproval_TooOld(t *testing.T) {
-	founderPub, founderPriv := genKey(t)
-	mod := newTestMod(t, founderPub)
-
-	issuedAt := time.Now().Add(-25 * time.Hour)
-	msg := signApproval(founderPriv, "aabbccdd11223344", issuedAt, nil)
-	if mod.verifyApproval(&msg) {
-		t.Fatal("24 saatten eski onay mesajı reddedilmeli")
-	}
-}
-
-func TestVerifyApproval_Replay(t *testing.T) {
-	founderPub, founderPriv := genKey(t)
-	mod := newTestMod(t, founderPub)
-	mod.seenApprovals = newSeenSet(seenCacheSize)
-
-	msg := signApproval(founderPriv, "aabbccdd11223344", time.Now(), nil)
-
-	var approved int
-	mod.SetOnApprove(func(string) { approved++ })
-
-	mod.handleApproveMsg(&msg)
-	mod.handleApproveMsg(&msg) // tekrar
-
-	if approved != 1 {
-		t.Fatalf("tekrar saldırısı: onay %d kez işlendi, 1 bekleniyor", approved)
-	}
-}
-
-func TestVerifyApproval_ValidModerator(t *testing.T) {
-	founderPub, founderPriv := genKey(t)
-	mod := newTestMod(t, founderPub)
-
-	modPub, modPriv := genKey(t)
+	modPub, _ := genKey(t)
 	modKey := hex.EncodeToString(modPub)
-	expires := time.Now().Add(24 * time.Hour)
-	cert := signCert(founderPriv, modKey, false, expires)
 
-	msg := signApproval(modPriv, "aabbccdd11223344", time.Now(), &cert)
-	if !mod.verifyApproval(&msg) {
-		t.Fatal("moderatör imzalı geçerli onay doğrulanmalı")
+	revokedAt := time.Now()
+	mod.mu.Lock()
+	mod.revoked[modKey] = revokedAt
+	mod.mu.Unlock()
+
+	// IssuedAt, revokedAt'tan SONRA → founder aynı kişiyi yeniden
+	// moderatör yapmış demektir; eski iptal bunu etkilememeli.
+	newCert := signCertIssuedAt(founderPriv, modKey, false, revokedAt.Add(time.Second), time.Now().Add(24*time.Hour))
+	if !mod.verifyCert(newCert) {
+		t.Fatal("bir iptalden SONRA yeniden verilen sertifika geçerli sayılmalı")
 	}
 }
 
@@ -272,7 +253,7 @@ func TestIsBanned_ActiveBan(t *testing.T) {
 
 	pid := peer.ID("12D3KooWBanned")
 	mod.mu.Lock()
-	mod.bans[pid] = time.Now().Add(time.Hour)
+	mod.bans[pid] = &banRecord{ExpiresAt: time.Now().Add(time.Hour)}
 	mod.mu.Unlock()
 
 	if !mod.IsBanned(pid) {
@@ -286,7 +267,7 @@ func TestIsBanned_ExpiredBan(t *testing.T) {
 
 	pid := peer.ID("12D3KooWExpired")
 	mod.mu.Lock()
-	mod.bans[pid] = time.Now().Add(-time.Second)
+	mod.bans[pid] = &banRecord{ExpiresAt: time.Now().Add(-time.Second)}
 	mod.mu.Unlock()
 
 	if mod.IsBanned(pid) {
@@ -296,15 +277,185 @@ func TestIsBanned_ExpiredBan(t *testing.T) {
 
 func TestIsBanned_DisabledModerator(t *testing.T) {
 	mod := &Moderator{
-		founder:       make(ed25519.PublicKey, ed25519.PublicKeySize),
-		bans:          make(map[peer.ID]time.Time),
-		seenApprovals: newSeenSet(seenCacheSize),
+		founder: make(ed25519.PublicKey, ed25519.PublicKeySize),
+		bans:    make(map[peer.ID]*banRecord),
 	}
 	pid := peer.ID("12D3KooWBanned")
-	mod.bans[pid] = time.Now().Add(time.Hour)
+	mod.bans[pid] = &banRecord{ExpiresAt: time.Now().Add(time.Hour)}
 
 	if mod.IsBanned(pid) {
 		t.Fatal("moderasyon devre dışıyken IsBanned daima false döndürmeli")
+	}
+}
+
+// ─── PeerBanInfo / AuthorBanInfo ─────────────────────────────────────────────
+
+func TestPeerBanInfo_NotBanned(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+
+	if _, ok := mod.PeerBanInfo(peer.ID("12D3KooWNotBanned")); ok {
+		t.Fatal("banlı olmayan bir peer için ok=false dönmeli")
+	}
+}
+
+func TestPeerBanInfo_PermanentBan(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+	pid := peer.ID("12D3KooWBanned")
+
+	mod.mu.Lock()
+	mod.bans[pid] = &banRecord{Permanent: true, ModeratorKey: "modkey", Reason: "spam"}
+	mod.mu.Unlock()
+
+	info, ok := mod.PeerBanInfo(pid)
+	if !ok {
+		t.Fatal("kalıcı banlı bir peer için ok=true dönmeli")
+	}
+	if !info.Permanent {
+		t.Fatal("Permanent=true dönmeli")
+	}
+	if info.Reason != "spam" {
+		t.Fatalf("Reason = %q, want %q", info.Reason, "spam")
+	}
+}
+
+func TestPeerBanInfo_TemporaryBanReturnsExpiresAt(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+	pid := peer.ID("12D3KooWBanned")
+	expires := time.Now().Add(2 * time.Hour)
+
+	mod.mu.Lock()
+	mod.bans[pid] = &banRecord{ExpiresAt: expires, Reason: "hakaret"}
+	mod.mu.Unlock()
+
+	info, ok := mod.PeerBanInfo(pid)
+	if !ok {
+		t.Fatal("aktif geçici banlı bir peer için ok=true dönmeli")
+	}
+	if info.Permanent {
+		t.Fatal("Permanent=false olmalıydı")
+	}
+	if !info.ExpiresAt.Equal(expires) {
+		t.Fatalf("ExpiresAt = %v, want %v", info.ExpiresAt, expires)
+	}
+	if info.Reason != "hakaret" {
+		t.Fatalf("Reason = %q, want %q", info.Reason, "hakaret")
+	}
+}
+
+func TestPeerBanInfo_ExpiredBanReturnsNotOK(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+	pid := peer.ID("12D3KooWExpired")
+
+	mod.mu.Lock()
+	mod.bans[pid] = &banRecord{ExpiresAt: time.Now().Add(-time.Hour)}
+	mod.mu.Unlock()
+
+	if _, ok := mod.PeerBanInfo(pid); ok {
+		t.Fatal("süresi dolmuş bir ban için ok=false dönmeli")
+	}
+}
+
+func TestPeerBanInfo_DisabledModeratorReturnsNotOK(t *testing.T) {
+	mod := &Moderator{
+		founder: make(ed25519.PublicKey, ed25519.PublicKeySize),
+		bans:    make(map[peer.ID]*banRecord),
+	}
+	pid := peer.ID("12D3KooWBanned")
+	mod.bans[pid] = &banRecord{Permanent: true}
+
+	if _, ok := mod.PeerBanInfo(pid); ok {
+		t.Fatal("moderasyon devre dışıyken ok=false dönmeli")
+	}
+}
+
+func TestAuthorBanInfo_MatchesPeerBanInfoForDerivedPeerID(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+
+	pub, _ := genKey(t)
+	authorKey := hex.EncodeToString(pub)
+	pid, err := AuthorKeyToPeerID(authorKey)
+	if err != nil {
+		t.Fatalf("AuthorKeyToPeerID: %v", err)
+	}
+
+	if _, ok := mod.AuthorBanInfo(authorKey); ok {
+		t.Fatal("banlanmamış bir yazar için ok=false dönmeli")
+	}
+
+	mod.mu.Lock()
+	mod.bans[pid] = &banRecord{Permanent: true, Reason: "test"}
+	mod.mu.Unlock()
+
+	info, ok := mod.AuthorBanInfo(authorKey)
+	if !ok || !info.Permanent || info.Reason != "test" {
+		t.Fatalf("aynı ed25519 anahtardan türetilen peer.ID banlıyken doğru bilgi dönmeli, got info=%+v ok=%v", info, ok)
+	}
+}
+
+// ─── AuthorKeyToPeerID / IsAuthorBanned ─────────────────────────────────────
+
+func TestAuthorKeyToPeerID_InvalidHexReturnsError(t *testing.T) {
+	if _, err := AuthorKeyToPeerID("bu-hex-degil"); err == nil {
+		t.Fatal("geçersiz hex için hata dönmeliydi")
+	}
+}
+
+func TestAuthorKeyToPeerID_WrongLengthReturnsError(t *testing.T) {
+	if _, err := AuthorKeyToPeerID("aabbcc"); err == nil {
+		t.Fatal("32 bayttan kısa bir anahtar için hata dönmeliydi")
+	}
+}
+
+func TestAuthorKeyToPeerID_SameKeyProducesSamePeerID(t *testing.T) {
+	pub, _ := genKey(t)
+	authorKey := hex.EncodeToString(pub)
+	pid1, err := AuthorKeyToPeerID(authorKey)
+	if err != nil {
+		t.Fatalf("AuthorKeyToPeerID: %v", err)
+	}
+	pid2, err := AuthorKeyToPeerID(authorKey)
+	if err != nil {
+		t.Fatalf("AuthorKeyToPeerID: %v", err)
+	}
+	if pid1 != pid2 {
+		t.Fatal("aynı AuthorKey her zaman aynı peer.ID'yi üretmeli (deterministik olmalı)")
+	}
+}
+
+func TestIsAuthorBanned_MatchesIsBannedForDerivedPeerID(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+
+	pub, _ := genKey(t)
+	authorKey := hex.EncodeToString(pub)
+	pid, err := AuthorKeyToPeerID(authorKey)
+	if err != nil {
+		t.Fatalf("AuthorKeyToPeerID: %v", err)
+	}
+
+	if mod.IsAuthorBanned(authorKey) {
+		t.Fatal("banlanmamış bir yazar için IsAuthorBanned false dönmeli")
+	}
+
+	mod.mu.Lock()
+	mod.bans[pid] = &banRecord{ExpiresAt: time.Now().Add(time.Hour)}
+	mod.mu.Unlock()
+
+	if !mod.IsAuthorBanned(authorKey) {
+		t.Fatal("aynı ed25519 anahtardan türetilen peer.ID banlıyken IsAuthorBanned true dönmeli")
+	}
+}
+
+func TestIsAuthorBanned_InvalidAuthorKeyReturnsFalse(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+	if mod.IsAuthorBanned("gecersiz-hex") {
+		t.Fatal("geçersiz bir AuthorKey için IsAuthorBanned false dönmeli (panik değil)")
 	}
 }
 

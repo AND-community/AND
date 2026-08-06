@@ -2,8 +2,12 @@ package pluginapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -18,58 +22,40 @@ type mockID struct {
 	moderator bool
 }
 
-func (m *mockID) Name() string            { return m.name }
-func (m *mockID) PubKeyHex() string       { return m.pubKeyHex }
-func (m *mockID) PeerIDStr() string       { return m.peerID }
-func (m *mockID) IsFounder() bool         { return m.founder }
-func (m *mockID) IsModerator() bool       { return m.moderator }
+func (m *mockID) Name() string               { return m.name }
+func (m *mockID) PubKeyHex() string          { return m.pubKeyHex }
+func (m *mockID) PeerIDStr() string          { return m.peerID }
+func (m *mockID) IsFounder() bool            { return m.founder }
+func (m *mockID) IsModerator() bool          { return m.moderator }
 func (m *mockID) ConnectedPeers() []PeerInfo { return nil }
 
-type mockForum struct {
-	posts        []PendingPost
-	approved     []string
-	rejected     []string
-	authorKeys   []string
-	created      []CreatePostReq
-	approveErr   error
-	rejectErr    error
-	pendingErr   error
-	createErr    error
+type deletedPost struct {
+	postID string
+	reason string
 }
 
-func (m *mockForum) PendingPosts() ([]PendingPost, error) {
-	if m.pendingErr != nil {
-		return nil, m.pendingErr
-	}
-	return m.posts, nil
+type mockForum struct {
+	created   []CreatePostReq
+	createErr error
+	deleted   []deletedPost
+	deleteErr error
 }
-func (m *mockForum) ApprovePost(id string) error {
-	if m.approveErr != nil {
-		return m.approveErr
-	}
-	m.approved = append(m.approved, id)
-	return nil
-}
-func (m *mockForum) RejectPost(id string) error {
-	if m.rejectErr != nil {
-		return m.rejectErr
-	}
-	m.rejected = append(m.rejected, id)
-	return nil
-}
-func (m *mockForum) ApproveAuthor(key string) error {
-	m.authorKeys = append(m.authorKeys, key)
-	return nil
-}
-func (m *mockForum) CreatePost(_ context.Context, cat, title, body string, perm bool) error {
+
+func (m *mockForum) CreatePost(_ context.Context, cat, title, body string) error {
 	if m.createErr != nil {
 		return m.createErr
 	}
-	m.created = append(m.created, CreatePostReq{Category: cat, Title: title, Body: body, PermanentReq: perm})
+	m.created = append(m.created, CreatePostReq{Category: cat, Title: title, Body: body})
 	return nil
 }
-func (m *mockForum) AllPosts() ([]PostSummary, error)  { return nil, nil }
-func (m *mockForum) DeletePost(_ string) error          { return nil }
+func (m *mockForum) AllPosts() ([]PostSummary, error) { return nil, nil }
+func (m *mockForum) DeletePost(_ context.Context, postID, reason string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	m.deleted = append(m.deleted, deletedPost{postID: postID, reason: reason})
+	return nil
+}
 func (m *mockForum) GetPost(id string) (*PostDetail, error) {
 	return &PostDetail{ID: id, Replies: []ReplyInfo{}}, nil
 }
@@ -171,171 +157,21 @@ func TestGetRole_Regular(t *testing.T) {
 // testPostID is a valid 32-char hex post ID used in tests.
 const testPostID = "a1b2c3d4e5f60718a9b0c1d2e3f4a5b6"
 
-// testAuthorKey is a valid 64-char hex Ed25519 public key used in tests.
-const testAuthorKey = "a1b2c3d4e5f60718a9b0c1d2e3f4a5b6a1b2c3d4e5f60718a9b0c1d2e3f4a5b6"
-
 // founderID returns a mockID representing a founder (required for protected endpoints).
 func founderID() *mockID { return &mockID{founder: true, moderator: true} }
-
-func TestGetPending_Empty(t *testing.T) {
-	// Pending list requires moderator/founder role.
-	c := startTestServer(t, founderID(), &mockForum{}, nil)
-
-	posts, err := c.Pending()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(posts) != 0 {
-		t.Errorf("expected 0 posts, got %d", len(posts))
-	}
-}
-
-func TestGetPending_WithPosts(t *testing.T) {
-	f := &mockForum{
-		posts: []PendingPost{
-			{ID: "p1", Title: "Başlık 1", AuthorName: "ali", Category: "genel"},
-			{ID: "p2", Title: "Başlık 2", AuthorName: "veli", Category: "duyuru", PermanentReq: true},
-		},
-	}
-	c := startTestServer(t, founderID(), f, nil)
-
-	posts, err := c.Pending()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(posts) != 2 {
-		t.Fatalf("expected 2 posts, got %d", len(posts))
-	}
-	if posts[0].ID != "p1" || posts[1].ID != "p2" {
-		t.Errorf("unexpected posts: %+v", posts)
-	}
-	if !posts[1].PermanentReq {
-		t.Error("expected PermanentReq=true for p2")
-	}
-}
-
-func TestGetPending_Error(t *testing.T) {
-	// Use founder so the role check passes and the DB error is actually reached.
-	f := &mockForum{pendingErr: errors.New("db hatası")}
-	c := startTestServer(t, founderID(), f, nil)
-
-	_, err := c.Pending()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestGetPending_Forbidden(t *testing.T) {
-	// A regular user (no roles) must receive 403 from getPending.
-	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
-	_, err := c.Pending()
-	if err == nil {
-		t.Fatal("expected 403 error for non-moderator, got nil")
-	}
-}
-
-func TestApprovePost(t *testing.T) {
-	f := &mockForum{}
-	c := startTestServer(t, founderID(), f, nil)
-
-	if err := c.Approve(testPostID); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.approved) != 1 || f.approved[0] != testPostID {
-		t.Errorf("unexpected approved: %v", f.approved)
-	}
-}
-
-func TestApprovePost_Error(t *testing.T) {
-	// Forum returns an error; use founder so the role check passes first.
-	f := &mockForum{approveErr: errors.New("yetki yok")}
-	c := startTestServer(t, founderID(), f, nil)
-
-	if err := c.Approve(testPostID); err == nil {
-		t.Fatal("expected error")
-	}
-}
-
-func TestApprovePost_Forbidden(t *testing.T) {
-	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
-	if err := c.Approve(testPostID); err == nil {
-		t.Fatal("expected 403 for non-moderator")
-	}
-}
-
-func TestApprovePost_InvalidPostID(t *testing.T) {
-	// "post-abc" contains "-" which is not hex → must be rejected with 400.
-	c := startTestServer(t, founderID(), &mockForum{}, nil)
-	if err := c.Approve("post-abc"); err == nil {
-		t.Fatal("expected 400 for invalid PostID")
-	}
-}
-
-func TestRejectPost(t *testing.T) {
-	f := &mockForum{}
-	c := startTestServer(t, founderID(), f, nil)
-
-	if err := c.Reject(testPostID); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.rejected) != 1 || f.rejected[0] != testPostID {
-		t.Errorf("unexpected rejected: %v", f.rejected)
-	}
-}
-
-func TestRejectPost_Forbidden(t *testing.T) {
-	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
-	if err := c.Reject(testPostID); err == nil {
-		t.Fatal("expected 403 for non-moderator")
-	}
-}
-
-func TestRejectPost_InvalidPostID(t *testing.T) {
-	c := startTestServer(t, founderID(), &mockForum{}, nil)
-	if err := c.Reject("not-hex!"); err == nil {
-		t.Fatal("expected 400 for invalid PostID")
-	}
-}
-
-func TestApproveAuthor(t *testing.T) {
-	f := &mockForum{}
-	c := startTestServer(t, founderID(), f, nil)
-
-	if err := c.ApproveAuthor(testAuthorKey); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.authorKeys) != 1 || f.authorKeys[0] != testAuthorKey {
-		t.Errorf("unexpected authorKeys: %v", f.authorKeys)
-	}
-}
-
-func TestApproveAuthor_Forbidden(t *testing.T) {
-	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
-	if err := c.ApproveAuthor(testAuthorKey); err == nil {
-		t.Fatal("expected 403 for non-moderator")
-	}
-}
-
-func TestApproveAuthor_InvalidKey(t *testing.T) {
-	// "pubkey-abc" is not 64 hex chars → must be rejected with 400.
-	c := startTestServer(t, founderID(), &mockForum{}, nil)
-	if err := c.ApproveAuthor("pubkey-abc"); err == nil {
-		t.Fatal("expected 400 for invalid AuthorKey")
-	}
-}
 
 func TestCreatePost(t *testing.T) {
 	f := &mockForum{}
 	c := startTestServer(t, &mockID{}, f, nil)
 
-	if err := c.CreatePost("genel", "Test Başlık", "Test içerik", true); err != nil {
+	if err := c.CreatePost("genel", "Test Başlık", "Test içerik"); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.created) != 1 {
 		t.Fatalf("expected 1 created post, got %d", len(f.created))
 	}
 	p := f.created[0]
-	if p.Category != "genel" || p.Title != "Test Başlık" || !p.PermanentReq {
+	if p.Category != "genel" || p.Title != "Test Başlık" {
 		t.Errorf("unexpected post: %+v", p)
 	}
 }
@@ -344,8 +180,79 @@ func TestCreatePost_Error(t *testing.T) {
 	f := &mockForum{createErr: errors.New("kategori bulunamadı")}
 	c := startTestServer(t, &mockID{}, f, nil)
 
-	if err := c.CreatePost("yok", "x", "y", false); err == nil {
+	if err := c.CreatePost("yok", "x", "y"); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+// ─── DeletePost: yalnızca kurucu/moderatör ────────────────────────────────────
+
+func TestDeletePost_RegularUserRejected(t *testing.T) {
+	f := &mockForum{}
+	c := startTestServer(t, &mockID{}, f, nil) // ne founder ne moderator
+
+	if err := c.DeletePost(testPostID); err == nil {
+		t.Fatal("sıradan bir kullanıcının silme isteği kabul edilmemeliydi")
+	}
+	if len(f.deleted) != 0 {
+		t.Fatalf("backend'e hiç ulaşmamalıydı, got %+v", f.deleted)
+	}
+}
+
+func TestDeletePost_FounderAllowed(t *testing.T) {
+	f := &mockForum{}
+	c := startTestServer(t, founderID(), f, nil)
+
+	if err := c.DeletePost(testPostID); err != nil {
+		t.Fatalf("kurucu silebilmeli: %v", err)
+	}
+	if len(f.deleted) != 1 || f.deleted[0].postID != testPostID {
+		t.Fatalf("beklenmeyen silme kaydı: %+v", f.deleted)
+	}
+}
+
+func TestDeletePost_ModeratorAllowed(t *testing.T) {
+	f := &mockForum{}
+	c := startTestServer(t, &mockID{moderator: true}, f, nil)
+
+	if err := c.DeletePost(testPostID); err != nil {
+		t.Fatalf("moderatör silebilmeli: %v", err)
+	}
+	if len(f.deleted) != 1 {
+		t.Fatalf("beklenmeyen silme kaydı: %+v", f.deleted)
+	}
+}
+
+func TestDeletePost_ReasonPassesThrough(t *testing.T) {
+	f := &mockForum{}
+	c := startTestServer(t, founderID(), f, nil)
+
+	if err := c.post("/api/v1/forum/delete", DeletePostReq{PostID: testPostID, Reason: "spam"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.deleted) != 1 || f.deleted[0].reason != "spam" {
+		t.Fatalf("sebep backend'e iletilmeliydi, got %+v", f.deleted)
+	}
+}
+
+func TestDeletePost_InvalidPostIDRejected(t *testing.T) {
+	f := &mockForum{}
+	c := startTestServer(t, founderID(), f, nil)
+
+	if err := c.post("/api/v1/forum/delete", DeletePostReq{PostID: "../../etc/passwd"}); err == nil {
+		t.Fatal("geçersiz post_id biçimi reddedilmeliydi")
+	}
+	if len(f.deleted) != 0 {
+		t.Fatalf("backend'e hiç ulaşmamalıydı, got %+v", f.deleted)
+	}
+}
+
+func TestDeletePost_BackendErrorSurfaces(t *testing.T) {
+	f := &mockForum{deleteErr: errors.New("silme reddedildi")}
+	c := startTestServer(t, founderID(), f, nil)
+
+	if err := c.DeletePost(testPostID); err == nil {
+		t.Fatal("backend hatası istemciye ulaşmalıydı")
 	}
 }
 
@@ -432,9 +339,9 @@ func (m *mockFile) SendFile(_ context.Context, peerID, _, localPath string) erro
 	m.sent = append(m.sent, struct{ peerID, localPath string }{peerID, localPath})
 	return nil
 }
-func (m *mockFile) SubscribeConsent() chan FileConsentReq      { return make(chan FileConsentReq, 4) }
-func (m *mockFile) UnsubscribeConsent(_ chan FileConsentReq)   {}
-func (m *mockFile) RespondConsent(_ string, _ bool)            {}
+func (m *mockFile) SubscribeConsent() chan FileConsentReq    { return make(chan FileConsentReq, 4) }
+func (m *mockFile) UnsubscribeConsent(_ chan FileConsentReq) {}
+func (m *mockFile) RespondConsent(_ string, _ bool)          {}
 
 func startTestServerWithFile(t *testing.T, id IdentityBackend, f ForumBackend, dm DMBackend, file FileBackend) *Client {
 	t.Helper()
@@ -541,6 +448,120 @@ func TestSendFile_BackendError(t *testing.T) {
 	err := c.SendFile("12D3KooWXxx", "test.txt")
 	if err == nil {
 		t.Fatal("expected error from backend")
+	}
+}
+
+// ─── pathWithinDir (postSendFile'ın AND_DATA_DIR dışa sızma koruması) ──────────
+
+func TestPathWithinDir(t *testing.T) {
+	dataDir := t.TempDir()
+	protected := filepath.Join(dataDir, "identity.dat")
+	if err := os.WriteFile(protected, []byte("gizli-anahtar"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(dataDir, "alt", "dosya.txt")
+	if err := os.MkdirAll(filepath.Dir(nested), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "rapor.pdf")
+	if err := os.WriteFile(outsideFile, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !pathWithinDir(protected, dataDir) {
+		t.Error("dataDir'in doğrudan içindeki bir dosya 'içeride' olarak algılanmalı")
+	}
+	if !pathWithinDir(nested, dataDir) {
+		t.Error("dataDir altındaki bir alt dizindeki dosya da 'içeride' olarak algılanmalı")
+	}
+	if !pathWithinDir(dataDir, dataDir) {
+		t.Error("dataDir'in kendisi 'içeride' olarak algılanmalı")
+	}
+	if pathWithinDir(outsideFile, dataDir) {
+		t.Error("dataDir dışındaki bir dosya 'dışarıda' olarak algılanmalı")
+	}
+
+	// Göreli yol ataklarına karşı: filepath.Abs olmadan filepath.Clean tek
+	// başına göreli bir yolu (ör. "identity.dat") mutlak dataDir ile hiç
+	// eşleştiremezdi — bu regresyon testi tam olarak bunu doğrular.
+	relOK := func() bool {
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(dataDir); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = os.Chdir(wd) }()
+		return pathWithinDir("identity.dat", dataDir)
+	}()
+	if !relOK {
+		t.Error("çalışma dizini dataDir olduğunda göreli bir yol da 'içeride' olarak algılanmalı")
+	}
+
+	// Sembolik bağ testi: dataDir DIŞINDA duran, ama dataDir İÇİNDEKİ bir
+	// dosyaya işaret eden bir sembolik bağ — pathWithinDir bunu da
+	// "içeride" olarak tespit etmelidir, aksi halde bir sembolik bağ
+	// aracılığıyla korumanın tamamı atlatılabilir.
+	link := filepath.Join(outside, "link-to-identity")
+	if err := os.Symlink(protected, link); err != nil {
+		t.Skipf("bu ortamda sembolik bağ oluşturulamadı (izin?): %v", err)
+	}
+	if !pathWithinDir(link, dataDir) {
+		t.Error("dataDir içindeki bir dosyaya işaret eden sembolik bağ, metinsel olarak dışarıda olsa bile 'içeride' olarak algılanmalı")
+	}
+}
+
+// ─── buildMux / allowExternal filtrelemesi ─────────────────────────────────────
+
+// TestBuildMuxExternalFiltering, allowExternal:false işaretli bir route'un
+// externalOnly=true ile inşa edilen mux'ta GERÇEKTEN yok sayıldığını,
+// externalOnly=false ile inşa edilen mux'ta ise normal şekilde
+// çalıştığını doğrudan HTTP istekleriyle kanıtlar. Bu test olmadan
+// allowExternal mekanizması yalnızca "aspirasyonel" kalır — bir route'u
+// yanlışlıkla true bırakan (ya da buildMux'un filtre koşulunu ters çeviren)
+// bir gelecek değişiklik hiçbir testte başarısız olmazdı.
+func TestBuildMuxExternalFiltering(t *testing.T) {
+	var internalCalled, sharedCalled bool
+	routes := []route{
+		{"/internal-only", func(http.ResponseWriter, *http.Request) { internalCalled = true }, false},
+		{"/shared", func(http.ResponseWriter, *http.Request) { sharedCalled = true }, true},
+	}
+
+	externalMux := buildMuxFromRoutes(routes, true)
+
+	rec := httptest.NewRecorder()
+	externalMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal-only", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("allowExternal:false route harici mux'ta 404 dönmeli, %d döndü", rec.Code)
+	}
+	if internalCalled {
+		t.Error("allowExternal:false route'un handler'ı harici mux üzerinden ÇAĞRILMAMALIYDI")
+	}
+
+	rec = httptest.NewRecorder()
+	externalMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/shared", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("allowExternal:true route harici mux'ta çalışmalı, %d döndü", rec.Code)
+	}
+	if !sharedCalled {
+		t.Error("allowExternal:true route'un handler'ı harici mux üzerinden çağrılmalıydı")
+	}
+
+	internalCalled = false
+	internalMux := buildMuxFromRoutes(routes, false)
+	rec = httptest.NewRecorder()
+	internalMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal-only", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("allowExternal:false route dahili (token'lı) mux'ta normal çalışmalı, %d döndü", rec.Code)
+	}
+	if !internalCalled {
+		t.Error("allowExternal:false route'un handler'ı dahili mux üzerinden çağrılmalıydı")
 	}
 }
 
@@ -761,6 +782,88 @@ func TestNewClientFromEnv_MissingVar(t *testing.T) {
 	_, err := NewClientFromEnv()
 	if err == nil {
 		t.Fatal("expected error when AND_API_ADDR is not set")
+	}
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+func TestGetTheme_DefaultWhenNoFile(t *testing.T) {
+	id := &mockID{name: "alice", peerID: "12D3KooWTest"}
+	c := startTestServer(t, id, &mockForum{}, nil)
+
+	got, err := c.GetTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != defaultTheme {
+		t.Errorf("GetTheme: got %+v, want default %+v", got, defaultTheme)
+	}
+}
+
+func TestGetTheme_ReadsPersistedFile(t *testing.T) {
+	id := &mockID{name: "alice", peerID: "12D3KooWTest"}
+	dataDir := t.TempDir()
+	want := ThemeReq{ThemeName: "Pembiş", Accent: "205", SelBG: "162", SelFG: "255", Muted: "182", Name: "218", Badge: "199"}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ThemeFile), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	srv := NewServer(id, &mockForum{}, nil, nil, nil, dataDir, nil)
+	addr, token, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+
+	got, err := c.GetTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Errorf("GetTheme: got %+v, want %+v", got, want)
+	}
+}
+
+func TestSetTheme_ForwardsToChannel(t *testing.T) {
+	id := &mockID{name: "alice", peerID: "12D3KooWTest"}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	themeCh := make(chan ThemeReq, 1)
+	srv := NewServer(id, &mockForum{}, nil, nil, nil, "", themeCh)
+	addr, token, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+
+	req := ThemeReq{ThemeName: "Pembiş", Accent: "205"}
+	if err := c.SetTheme(req); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-themeCh:
+		if got != req {
+			t.Errorf("themeCh: got %+v, want %+v", got, req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("themeCh did not receive the request")
 	}
 }
 

@@ -14,11 +14,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
@@ -42,7 +44,7 @@ import (
 // Peak memory = one chunk buffer (512 KB) regardless of file size.
 
 const (
-	chunkBytes   = 512 * 1024      // 512 KB per chunk — low memory, fine-grained resume
+	chunkBytes   = 512 * 1024       // 512 KB per chunk — low memory, fine-grained resume
 	chunkTimeout = 60 * time.Second // per-operation deadline; extended before each read/write
 
 	msgINIT   uint8 = 0x01
@@ -53,13 +55,30 @@ const (
 )
 
 type Broker struct {
-	node     *network.Node
-	saveDir  string
-	rateKBPS uint64 // 0 = unlimited; set via AND_FILE_RATE_KBPS
+	node        *network.Node
+	saveDir     string
+	rateKBPS    uint64 // 0 = unlimited; set via AND_FILE_RATE_KBPS
 	mu          sync.Mutex
 	subs        []chan pluginapi.FileMsg
 	consentSubs []chan pluginapi.FileConsentReq
 	consentPend map[string]chan bool // transferID → response channel
+	mod         atomic.Pointer[moderation.Moderator]
+}
+
+// SetModerator bağlar (veya nil ile çözer) bir *moderation.Moderator'ı bu
+// Broker'a — bağlıysa handleStream, banlı bir peer'dan gelen dosya
+// transferi isteklerini bağlantı gater'ından (InterceptSecured) bağımsız
+// olarak da reddeder (bkz. dmmgr.Broker.SetModerator'ın aynı gerekçeli doc
+// yorumu) — üstelik kullanıcıya hiç onay isteği göstermeden, ban öncesi
+// kurulmuş bir bağlantı üzerinden bile. Ayarlanmazsa davranış eskisiyle
+// aynıdır.
+func (b *Broker) SetModerator(mod *moderation.Moderator) {
+	b.mod.Store(mod)
+}
+
+func (b *Broker) authorBanned(pid peer.ID) bool {
+	mod := b.mod.Load()
+	return mod != nil && mod.IsBanned(pid)
 }
 
 // recvState persists receive progress across reconnects.
@@ -274,6 +293,10 @@ func (b *Broker) SendFile(ctx context.Context, peerIDStr, senderName, localPath 
 func (b *Broker) handleStream(s libp2pnet.Stream) {
 	defer s.Close()
 
+	if b.authorBanned(s.Conn().RemotePeer()) {
+		return
+	}
+
 	// ── INIT ──────────────────────────────────────────────────────────────
 	touch(s)
 	tid, filename, totalSize, cs, totalChunks, at, err := readINIT(s)
@@ -300,34 +323,39 @@ func (b *Broker) handleStream(s libp2pnet.Stream) {
 	}
 
 	// ── Kullanıcı onayı ──────────────────────────────────────────────────────
-	// Eklenti subscribe ediyorsa onay isteği gönder ve yanıt bekle (30 sn).
+	// Onay isteği gönderilir ve yanıt beklenir (30 sn). Onayı gösterecek
+	// hiçbir eklenti dinlemiyorsa (hasSubs=false) dosya ASLA sessizce kabul
+	// edilmez — kimse onaylayamayacağı için transfer reddedilir; "dinleyen
+	// yoksa otomatik kabul" davranışı onaysız yazmaya izin veren bir güvenlik
+	// açığıydı.
 	b.mu.Lock()
 	hasSubs := len(b.consentSubs) > 0
 	b.mu.Unlock()
-	if hasSubs {
-		ch := make(chan bool, 1)
+	if !hasSubs {
+		return
+	}
+	ch := make(chan bool, 1)
+	b.mu.Lock()
+	b.consentPend[tid] = ch
+	b.mu.Unlock()
+
+	b.deliverConsent(pluginapi.FileConsentReq{
+		TransferID: tid,
+		SenderID:   senderName,
+		Filename:   name,
+		Size:       totalSize,
+	})
+
+	accepted := false
+	select {
+	case accepted = <-ch:
+	case <-time.After(30 * time.Second):
+	}
+	if !accepted {
 		b.mu.Lock()
-		b.consentPend[tid] = ch
+		delete(b.consentPend, tid)
 		b.mu.Unlock()
-
-		b.deliverConsent(pluginapi.FileConsentReq{
-			TransferID: tid,
-			SenderID:   senderName,
-			Filename:   name,
-			Size:       totalSize,
-		})
-
-		accepted := false
-		select {
-		case accepted = <-ch:
-		case <-time.After(30 * time.Second):
-		}
-		if !accepted {
-			b.mu.Lock()
-			delete(b.consentPend, tid)
-			b.mu.Unlock()
-			return
-		}
+		return
 	}
 
 	state, err := b.loadOrCreateState(tid, name, senderName, totalSize, cs, totalChunks, at)
@@ -523,10 +551,10 @@ func writeINIT(w io.Writer, tid, filename string, totalSize int64, cs, totalChun
 	buf.Write(tidB)
 	binary.Write(&buf, binary.BigEndian, uint16(len(nameB))) //nolint:errcheck
 	buf.Write(nameB)
-	binary.Write(&buf, binary.BigEndian, totalSize)          //nolint:errcheck
-	binary.Write(&buf, binary.BigEndian, cs)                 //nolint:errcheck
-	binary.Write(&buf, binary.BigEndian, totalChunks)        //nolint:errcheck
-	binary.Write(&buf, binary.BigEndian, at.UnixNano())      //nolint:errcheck
+	binary.Write(&buf, binary.BigEndian, totalSize)     //nolint:errcheck
+	binary.Write(&buf, binary.BigEndian, cs)            //nolint:errcheck
+	binary.Write(&buf, binary.BigEndian, totalChunks)   //nolint:errcheck
+	binary.Write(&buf, binary.BigEndian, at.UnixNano()) //nolint:errcheck
 	_, err := w.Write(buf.Bytes())
 	return err
 }

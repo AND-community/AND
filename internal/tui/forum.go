@@ -13,9 +13,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/internal/bbcode"
+	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/moderation"
+	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/pluginui"
+	"github.com/lucian95511/and/internal/profile"
 )
+
+// profilRecentChatLimit caps how many of an author's recent chat lines are
+// shown in their profile view (profilMetni) — a peek, not a full transcript.
+const profilRecentChatLimit = 5
 
 type forumEkran int
 
@@ -24,6 +34,7 @@ const (
 	fEkKonular
 	fEkKonu
 	fEkYanit
+	fEkProfil
 )
 
 type forumKonuGeldiMsg struct{ konu *forum.Post }
@@ -31,7 +42,6 @@ type forumYanitGeldiMsg struct{ yanit *forum.Reply }
 type forumYanitGonderildiMsg struct{}
 type forumHataMsg string
 type forumBildirimTemizleMsg struct{}
-type forumOnayMsg struct{ err error }
 type forumSilMsg struct{ err error }
 
 type forumModel struct {
@@ -39,19 +49,40 @@ type forumModel struct {
 	identity      *stdcrypto.Identity
 	dataDir       string
 	forum         *forum.Forum
-	approvalFn    func(string) error
+	profileStore  *profile.Store
+	chatStore     *chatlog.Store
 	canCreatePost bool
+
+	// mod/modTopic: banlama için moderasyon sistemine erişim, nil olabilir.
+	mod      *moderation.Moderator
+	modTopic *network.Topic
+
+	profilOnceki forumEkran // fEkProfil'e girmeden önceki ekran — esc ile oraya döner
+	profilAd     string
+	profilKey    string
+	// profilAc her çağrıldığında bir kez hesaplanır (bkz. resolveBanAuthority).
+	profilCanBan   bool
+	banIsFounder   bool
+	banCert        *moderation.ModeratorCert
+	profilIsBanned bool
+	// banConfirming/banDurationIdx/banReasonInput: fEkProfil içinde "b" ile
+	// açılan süre+sebep onay alt-durumu; unbanConfirming "u" ile açılan
+	// daha basit e/h onayı.
+	banConfirming   bool
+	banDurationIdx  int
+	banReasonInput  textinput.Model
+	unbanConfirming bool
 
 	ekran     forumEkran
 	genislik  int
 	yukseklik int
 
-	katIdx      int
+	katIdx       int
 	katScrollOff int
 
-	kategori     string
-	konular      []*forum.Post
-	konuIdx      int
+	kategori      string
+	konular       []*forum.Post
+	konuIdx       int
 	konuScrollOff int
 
 	aktifKonu *forum.Post
@@ -69,23 +100,31 @@ type forumModel struct {
 
 const fMaxYanit = 4096
 
-func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, dataDir string, approvalFn func(string) error, canCreatePost bool) forumModel {
+func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Identity, profileStore *profile.Store, chatStore *chatlog.Store, dataDir string, canCreatePost bool, mod *moderation.Moderator, modTopic *network.Topic) forumModel {
 	ya := textarea.New()
 	ya.Placeholder = "yanıtını buraya yaz…"
 	ya.SetHeight(6)
 	ya.CharLimit = fMaxYanit
 	ya.ShowLineNumbers = false
 
+	banIn := textinput.New()
+	banIn.Placeholder = "sebep…"
+	banIn.CharLimit = 256
+
 	return forumModel{
-		ctx:           ctx,
-		identity:      identity,
-		dataDir:       dataDir,
-		forum:         f,
-		approvalFn:    approvalFn,
-		canCreatePost: canCreatePost,
-		ekran:         fEkKategoriler,
-		yanitAlan:     ya,
-		konuVP:        viewport.New(0, 0),
+		ctx:            ctx,
+		identity:       identity,
+		dataDir:        dataDir,
+		forum:          f,
+		profileStore:   profileStore,
+		chatStore:      chatStore,
+		canCreatePost:  canCreatePost,
+		mod:            mod,
+		modTopic:       modTopic,
+		ekran:          fEkKategoriler,
+		yanitAlan:      ya,
+		banReasonInput: banIn,
+		konuVP:         viewport.New(0, 0),
 	}
 }
 
@@ -175,7 +214,18 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.konuVP.Width = vw
 		m.konuVP.Height = vh
 		m.yanitAlan.SetWidth(vw - 2)
-		m.forumKonuVPGuncelle()
+		m.banReasonInput.Width = vw - 2
+		// konuVP, konu gövdesi ile profil metni arasında paylaşılıyor (bkz.
+		// profilAc) — hangi ekran aktifse yalnızca onun içeriği yeniden
+		// oluşturulmalı, aksi halde profil ekranındayken konuVP'nin içeriği
+		// sessizce konu gövdesiyle değişebilir (başlık hâlâ "Profil: ..."
+		// derken).
+		switch m.ekran {
+		case fEkKonu:
+			m.forumKonuVPGuncelle()
+		case fEkProfil:
+			m.konuVP.SetContent(profilMetni(m.konuVP.Width, m.profileStore, m.forum, m.chatStore, m.mod, m.profilKey))
+		}
 		return m, nil
 
 	case forumBildirimTemizleMsg:
@@ -214,19 +264,6 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.errMsg = string(msg)
 		return m, forumBildirimTemizle()
 
-	case forumOnayMsg:
-		if msg.err != nil {
-			m.errMsg = "Onaylama hatası: " + msg.err.Error()
-		} else {
-			m.okMsg = "Konu onaylandı ✔"
-			if m.aktifKonu != nil {
-				k := *m.aktifKonu
-				k.Approved = true
-				m.aktifKonu = &k
-			}
-		}
-		return m, forumBildirimTemizle()
-
 	case forumSilMsg:
 		m.silOnay = false
 		if msg.err != nil {
@@ -258,6 +295,8 @@ func (m forumModel) forumTusIsle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.forumTusKonu(msg)
 	case fEkYanit:
 		return m.forumTusYanit(msg)
+	case fEkProfil:
+		return m.forumTusProfil(msg)
 	}
 	return m, nil
 }
@@ -358,6 +397,11 @@ func (m forumModel) forumTusKonular(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.konuIdx = len(m.konular) - 1
 			}
 		}
+	case "p":
+		if len(m.konular) > 0 {
+			k := m.konular[m.konuIdx]
+			m = m.profilAc(fEkKonular, k.AuthorKey, k.AuthorName)
+		}
 	case "n":
 		if m.konuAcEtkin() {
 			kat := m.kategori
@@ -401,6 +445,10 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.yanitAlan.Focus()
 		m.ekran = fEkYanit
 		return m, cmd
+	case "p":
+		if m.aktifKonu != nil {
+			m = m.profilAc(fEkKonu, m.aktifKonu.AuthorKey, m.aktifKonu.AuthorName)
+		}
 	case "up", "k":
 		m.konuVP.LineUp(1)
 	case "down", "j":
@@ -413,14 +461,6 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.konuVP.GotoTop()
 	case "G":
 		m.konuVP.GotoBottom()
-	case "a":
-		if m.approvalFn != nil && m.aktifKonu != nil && !m.aktifKonu.Approved {
-			postID := m.aktifKonu.ID
-			fn := m.approvalFn
-			return m, func() tea.Msg {
-				return forumOnayMsg{err: fn(postID)}
-			}
-		}
 	}
 	return m, nil
 }
@@ -439,6 +479,10 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = "Yanıt boş olamaz"
 			return m, forumBildirimTemizle()
 		}
+		if !bbcode.Dengeli(icerik) {
+			m.errMsg = "Kapanmamış [code] etiketi var, kontrol edin"
+			return m, forumBildirimTemizle()
+		}
 		m.yanitAlan.Blur()
 		m.gonderi = true
 		f, konuID := m.forum, m.aktifKonu.ID
@@ -448,10 +492,365 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return forumYanitGonderildiMsg{}
 		}
+	case "ctrl+k":
+		m.yanitAlan.InsertString("[code]\n\n[/code]")
+		m.yanitAlan.CursorUp()
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.yanitAlan, cmd = m.yanitAlan.Update(msg)
 	return m, cmd
+}
+
+func (m forumModel) forumTusProfil(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.banConfirming {
+		return m.forumTusBanOnay(msg)
+	}
+	if m.unbanConfirming {
+		return m.forumTusUnbanOnay(msg)
+	}
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc", "q":
+		m.ekran = m.profilOnceki
+		if m.ekran == fEkKonu {
+			m.forumKonuVPGuncelle() // konuVP'yi profil içeriğinden konu gövdesine geri döndür
+		}
+	case "b":
+		if m.profilCanBan {
+			m.banConfirming = true
+			m.banDurationIdx = 0
+			m.banReasonInput.SetValue("")
+			m.errMsg = ""
+			m.okMsg = ""
+			return m, m.banReasonInput.Focus()
+		}
+	case "u":
+		if m.profilCanBan && m.profilIsBanned {
+			m.unbanConfirming = true
+			m.errMsg = ""
+			m.okMsg = ""
+		}
+	case "up", "k":
+		m.konuVP.LineUp(1)
+	case "down", "j":
+		m.konuVP.LineDown(1)
+	case "pgup":
+		m.konuVP.HalfViewUp()
+	case "pgdown":
+		m.konuVP.HalfViewDown()
+	case "g":
+		m.konuVP.GotoTop()
+	case "G":
+		m.konuVP.GotoBottom()
+	}
+	return m, nil
+}
+
+// forumTusBanOnay, fEkProfil içinde "b" ile açılan süre+sebep onay
+// alt-durumunu (banConfirming) işler.
+func (m forumModel) forumTusBanOnay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc":
+		m.banConfirming = false
+		m.banReasonInput.Blur()
+		return m, nil
+	case "left", "up":
+		if m.banDurationIdx > 0 {
+			m.banDurationIdx--
+		}
+		return m, nil
+	case "right", "down":
+		if m.banDurationIdx < len(banDurationPresets)-1 {
+			m.banDurationIdx++
+		}
+		return m, nil
+	case "enter":
+		return m.issueBan()
+	}
+	var cmd tea.Cmd
+	m.banReasonInput, cmd = m.banReasonInput.Update(msg)
+	return m, cmd
+}
+
+// issueBan sends the ban confirmed via forumTusBanOnay.
+func (m forumModel) issueBan() (tea.Model, tea.Cmd) {
+	reason := strings.TrimSpace(m.banReasonInput.Value())
+	if reason == "" {
+		m.errMsg = "Sebep boş olamaz"
+		return m, forumBildirimTemizle()
+	}
+	preset := banDurationPresets[m.banDurationIdx]
+	if err := issueBanFor(m.ctx, m.mod, m.modTopic, m.identity, m.profilKey, m.banIsFounder, m.banCert, reason, preset); err != nil {
+		m.errMsg = "Banlama başarısız: " + err.Error()
+		return m, forumBildirimTemizle()
+	}
+	m.banConfirming = false
+	m.banReasonInput.Blur()
+	m.profilIsBanned = true
+	m.okMsg = fmt.Sprintf("%s banlandı (%s)", forumKisalt(pluginui.Safe(m.profilAd), 30), preset.label)
+	return m, forumBildirimTemizle()
+}
+
+// forumTusUnbanOnay, fEkProfil içinde "u" ile açılan basit e/h onayını
+// işler — süre/sebep gerekmediğinden banConfirming'den ayrı ve daha basit.
+func (m forumModel) forumTusUnbanOnay(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "esc", "h", "n":
+		m.unbanConfirming = false
+		return m, nil
+	case "e", "y", "enter":
+		return m.issueUnban()
+	}
+	return m, nil
+}
+
+// issueUnban, forumTusUnbanOnay'da onaylanan ban kaldırmayı gönderir.
+func (m forumModel) issueUnban() (tea.Model, tea.Cmd) {
+	if err := issueUnbanFor(m.ctx, m.mod, m.modTopic, m.identity, m.profilKey, m.banIsFounder, m.banCert); err != nil {
+		m.errMsg = "Ban kaldırma başarısız: " + err.Error()
+		m.unbanConfirming = false
+		return m, forumBildirimTemizle()
+	}
+	m.unbanConfirming = false
+	m.profilIsBanned = false
+	m.okMsg = fmt.Sprintf("%s adlı kullanıcının banı kaldırıldı", forumKisalt(pluginui.Safe(m.profilAd), 30))
+	return m, forumBildirimTemizle()
+}
+
+// profilAc, konuVP'yi authorKey'e ait profil içeriğiyle doldurup fEkProfil
+// ekranına geçer; esc önceki ekrana döner. Yerel kimliğin bu yazarı
+// banlama yetkisi profil açılırken bir kez hesaplanır (resolveBanAuthority).
+func (m forumModel) profilAc(onceki forumEkran, authorKey, authorName string) forumModel {
+	m.profilOnceki = onceki
+	m.profilKey = authorKey
+	m.profilAd = authorName
+	m.ekran = fEkProfil
+	m.banConfirming = false
+	m.unbanConfirming = false
+	myKey := hex.EncodeToString(m.identity.PublicKey())
+	m.profilCanBan, m.banIsFounder, m.banCert = resolveBanAuthority(m.mod, m.dataDir, myKey, authorKey)
+	m.profilIsBanned = false
+	if m.mod != nil {
+		_, m.profilIsBanned = m.mod.AuthorBanInfo(authorKey)
+	}
+	m.konuVP.SetContent(profilMetni(m.konuVP.Width, m.profileStore, m.forum, m.chatStore, m.mod, authorKey))
+	m.konuVP.GotoTop()
+	return m
+}
+
+// profilMetni, authorKey'e ait profil ekranının içeriğini oluşturur. Bio,
+// Durum, Link ve Etiketler ağdan geldiğinden pluginui.Safe() ile
+// sanitize edilmeden terminale yazılmaz. Paket seviyesinde paylaşılan bir
+// fonksiyon: hem forum (fEkProfil) hem sohbet (app.go'daki
+// screenChatProfile) aynısını çağırır, mantık iki yerde çatallanmaz.
+// banDurationPreset is one selectable option in the profile screen's ban
+// duration picker.
+type banDurationPreset struct {
+	label     string
+	duration  time.Duration // permanent ise kullanılmaz
+	permanent bool
+}
+
+var banDurationPresets = []banDurationPreset{
+	{label: "1 saat", duration: time.Hour},
+	{label: "1 gün", duration: 24 * time.Hour},
+	{label: "7 gün", duration: 7 * 24 * time.Hour},
+	{label: "30 gün", duration: 30 * 24 * time.Hour},
+	{label: "Ömür boyu", permanent: true},
+}
+
+// resolveBanAuthority reports whether the LOCAL identity (myKey) may ban
+// targetAuthorKey from a profile screen, and with what credential:
+// isFounder (signs directly, no cert needed) or cert (a moderator's own
+// granted certificate, found via moderation.FindModCert). You can never
+// ban yourself or the founder.
+//
+// mod may be nil (moderasyon topic'i açılamamışsa) — bu durumda bir
+// moderatör sertifikası hiçbir zaman kabul edilmez. mod!=nil olduğunda,
+// FindModCert'in bulduğu dosya ayrıca mod.VerifyModeratorCert ile
+// doğrulanır — FindModCert kendisi iptal (revoke) durumundan habersizdir.
+func resolveBanAuthority(mod *moderation.Moderator, dataDir, myKey, targetAuthorKey string) (canBan, isFounder bool, cert *moderation.ModeratorCert) {
+	if targetAuthorKey == "" || targetAuthorKey == myKey || profile.IsFounder(targetAuthorKey) {
+		return false, false, nil
+	}
+	if profile.IsFounder(myKey) {
+		return true, true, nil
+	}
+	c := moderation.FindModCert(dataDir, myKey)
+	if c != nil && mod != nil && mod.VerifyModeratorCert(*c) {
+		return true, false, c
+	}
+	return false, false, nil
+}
+
+// issueBanFor builds and issues (validates, applies locally, publishes) a
+// ban for targetAuthorKey on behalf of identity — either as founder
+// (cert==nil) or as a moderator (cert!=nil, as resolved by
+// resolveBanAuthority).
+func issueBanFor(ctx context.Context, mod *moderation.Moderator, topic *network.Topic, identity *stdcrypto.Identity,
+	targetAuthorKey string, isFounder bool, cert *moderation.ModeratorCert, reason string, preset banDurationPreset) error {
+	if mod == nil || topic == nil {
+		return fmt.Errorf("moderasyon sistemi kullanılamıyor")
+	}
+	pid, err := moderation.AuthorKeyToPeerID(targetAuthorKey)
+	if err != nil {
+		return fmt.Errorf("geçersiz hedef: %w", err)
+	}
+	var expires time.Time
+	if !preset.permanent {
+		expires = time.Now().UTC().Add(preset.duration)
+	}
+
+	var ban moderation.BanMsg
+	switch {
+	case isFounder:
+		ban = moderation.SignFounderBan(identity.PrivateKey(), pid.String(), reason, expires, preset.permanent)
+	case cert != nil:
+		ban = moderation.SignModeratorBan(identity.PrivateKey(), *cert, pid.String(), reason, expires, preset.permanent)
+	default:
+		return fmt.Errorf("moderatör yetkisi bulunamadı")
+	}
+
+	return mod.IssueBan(ctx, topic, ban)
+}
+
+// issueUnbanFor lifts an active ban on targetAuthorKey on behalf of
+// identity — either as founder (cert==nil) or as a moderator (cert!=nil).
+// Uses the same authority resolveBanAuthority computed for banning: any
+// identity that could ban this target can also unban them.
+func issueUnbanFor(ctx context.Context, mod *moderation.Moderator, topic *network.Topic, identity *stdcrypto.Identity,
+	targetAuthorKey string, isFounder bool, cert *moderation.ModeratorCert) error {
+	if mod == nil || topic == nil {
+		return fmt.Errorf("moderasyon sistemi kullanılamıyor")
+	}
+	pid, err := moderation.AuthorKeyToPeerID(targetAuthorKey)
+	if err != nil {
+		return fmt.Errorf("geçersiz hedef: %w", err)
+	}
+
+	var u moderation.UnbanMsg
+	switch {
+	case isFounder:
+		u = moderation.SignFounderUnban(identity.PrivateKey(), pid.String())
+	case cert != nil:
+		u = moderation.SignModeratorUnban(identity.PrivateKey(), *cert, pid.String())
+	default:
+		return fmt.Errorf("moderatör yetkisi bulunamadı")
+	}
+
+	return mod.IssueUnban(ctx, topic, u)
+}
+
+func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.Forum, chatStore *chatlog.Store, mod *moderation.Moderator, authorKey string) string {
+	vw := vpWidth
+	if vw < 10 {
+		vw = 60
+	}
+	wrapSt := lipgloss.NewStyle().Width(vw)
+	keyW := lipgloss.NewStyle().Foreground(colorMuted).Width(14)
+	valSt := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	// secSt, Ayarlar ekranının bölüm başlıklarıyla (Sistem/Kimlik/Profil —
+	// bkz. app.go'daki syncSettingsVP) birebir aynı stil: forumdaki profil
+	// görünümü ile Ayarlar'daki kendi-profil görünümü aynı temaya ait
+	// hissettirsin diye kasıtlı olarak paylaşılıyor.
+	secSt := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	row := func(k, v string) string { return keyW.Render(k) + valSt.Render(v) + "\n" }
+	divider := fStAyrac.Render(strings.Repeat("─", vw-4)) + "\n"
+
+	var b strings.Builder
+	b.WriteString(secSt.Render("Kimlik") + "\n")
+	if profileStore != nil {
+		b.WriteString(keyW.Render("Rol") + roleBadgeText(profileStore, authorKey) + "\n")
+	}
+	short := authorKey
+	if len(short) > 20 {
+		short = short[:10] + "…" + short[len(short)-6:]
+	}
+	b.WriteString(row("Public key", short))
+
+	if mod != nil {
+		if info, banned := mod.AuthorBanInfo(authorKey); banned {
+			b.WriteString("\n" + divider)
+			warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorError)
+			b.WriteString(warnSt.Render("⛔ Banlı") + "\n")
+			if info.Permanent {
+				b.WriteString(row("Süre", "Ömür boyu (kalıcı)"))
+			} else {
+				b.WriteString(row("Kalan süre", forumKalanSure(info.ExpiresAt)))
+				b.WriteString(row("Bitiş", turkceTarih(info.ExpiresAt.Local())))
+			}
+			if info.Reason != "" {
+				b.WriteString(row("Sebep", pluginui.Safe(info.Reason)))
+			}
+		}
+	}
+
+	if forumStore != nil {
+		postCount, replyCount, joinDate := forumStore.AuthorStats(authorKey)
+		b.WriteString(row("Aktivite", fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)))
+		if !joinDate.IsZero() {
+			b.WriteString(row("İlk görülme", turkceTarih(joinDate.Local())))
+		}
+	}
+
+	var bio, status, link, githubUser string
+	var tags []string
+	if profileStore != nil {
+		if p := profileStore.Get(authorKey); p != nil {
+			bio, status, link, tags = pluginui.Safe(p.Bio), pluginui.Safe(p.Status), pluginui.Safe(p.Link), p.Tags
+			githubUser = pluginui.Safe(p.GitHubUser)
+		}
+	}
+
+	if status != "" || len(tags) > 0 || link != "" || githubUser != "" {
+		b.WriteString("\n" + divider)
+		b.WriteString(secSt.Render("Profil") + "\n")
+		if status != "" {
+			b.WriteString(row("Durum", status))
+		}
+		if len(tags) > 0 {
+			safeTags := make([]string, len(tags))
+			for i, t := range tags {
+				safeTags[i] = pluginui.Safe(t)
+			}
+			b.WriteString(row("Etiketler", strings.Join(safeTags, ", ")))
+		}
+		if link != "" {
+			b.WriteString(row("Link", link))
+		}
+		if githubUser != "" {
+			okSt := lipgloss.NewStyle().Foreground(colorOK)
+			b.WriteString(keyW.Render("GitHub") + okSt.Render("@"+githubUser+" (doğrulandı)") + "\n")
+		}
+	}
+
+	b.WriteString("\n" + divider)
+	b.WriteString(secSt.Render("Hakkında") + "\n")
+	if bio == "" {
+		b.WriteString(fStSoluk.Render("Henüz bir açıklama paylaşılmamış."))
+	} else {
+		b.WriteString(wrapSt.Render(bio))
+	}
+
+	if chatStore != nil {
+		recent := chatStore.ByAuthor(authorKey, profilRecentChatLimit)
+		if len(recent) > 0 {
+			b.WriteString("\n\n" + divider)
+			b.WriteString(secSt.Render("Son Sohbet Mesajları") + "\n")
+			for _, cm := range recent {
+				ts := cm.SentAt.Local().Format("15:04")
+				line := fmt.Sprintf("[%s] %s", ts, pluginui.Safe(cm.Text))
+				b.WriteString(wrapSt.Render(fStSoluk.Render(line)) + "\n")
+			}
+		}
+	}
+	return b.String()
 }
 
 func (m *forumModel) forumKonuVPGuncelle() {
@@ -464,7 +863,7 @@ func (m *forumModel) forumKonuVPGuncelle() {
 	}
 	var b strings.Builder
 
-	b.WriteString(m.aktifKonu.Body)
+	b.WriteString(bbcode.Render(m.aktifKonu.Body, vw))
 
 	b.WriteString("\n\n")
 	ayrac := strings.Repeat("─", vw-4)
@@ -481,7 +880,7 @@ func (m *forumModel) forumKonuVPGuncelle() {
 			b.WriteString("  ")
 			b.WriteString(fStSoluk.Render(forumNeZaman(y.CreatedAt)))
 			b.WriteString("\n")
-			b.WriteString(y.Body)
+			b.WriteString(bbcode.Render(y.Body, vw))
 			b.WriteString("\n\n")
 		}
 	} else {
@@ -503,6 +902,8 @@ func (m forumModel) View() string {
 		return m.forumGorunumKonu()
 	case fEkYanit:
 		return m.forumGorunumYanit()
+	case fEkProfil:
+		return m.forumGorunumProfil()
 	}
 	return ""
 }
@@ -538,29 +939,6 @@ func (m forumModel) forumBildirimSatiri() string {
 	return ""
 }
 
-var katAciklama = map[string]string{
-	"Python":          "dil, kütüphane ve proje paylaşımı",
-	"C / C++":         "sistem programlama, bellek yönetimi",
-	"Rust":            "bellek güvenli sistem programlama",
-	"Go":              "eşzamanlı ve ağ uygulamaları",
-	"JavaScript":      "tarayıcı, Node.js, ekosistem",
-	"Java / Kotlin":   "JVM, Android, kurumsal",
-	"Yazılım":         "mimari, araçlar, genel geliştirme",
-	"Web":             "frontend, backend, API tasarımı",
-	"Mobil":           "iOS, Android, cross-platform",
-	"Yapay Zeka":      "ML, derin öğrenme, LLM, veri",
-	"Veritabanı":      "SQL, NoSQL, sorgu optimizasyonu",
-	"DevOps":          "CI/CD, Docker, Kubernetes, bulut",
-	"Linux":           "dağıtımlar, kabuk, çekirdek",
-	"Bilişim":         "ağ, sistem yönetimi, bulut",
-	"Siber Güvenlik":  "güvenlik, CTF, açık araştırma",
-	"Donanım":         "elektronik, gömülü sistemler",
-	"Oyun Geliştirme": "motor, grafik, oyun tasarımı",
-	"Açık Kaynak":     "katkı, lisans, topluluk",
-	"Kariyer":         "iş, mülakat, öğrenme yolları",
-	"Genel":           "serbest konu ve duyurular",
-}
-
 func katPad(s string, w int) string {
 	vis := len([]rune(s))
 	pad := w - vis
@@ -585,7 +963,7 @@ func (m forumModel) forumGorunumKategoriler() string {
 		}
 	}
 
-	const nameW = 17
+	const nameW = 27
 
 	gorubilirKat := m.gorubilirKatSayisi()
 	katBaslangic := m.katScrollOff
@@ -622,9 +1000,6 @@ func (m forumModel) forumGorunumKategoriler() string {
 				sayi,
 			))
 			b.WriteString(satir + "\n")
-			if acik, ok := katAciklama[kat]; ok {
-				b.WriteString(fStSoluk.Render("       "+acik) + "\n")
-			}
 		} else {
 			satir := fStOgeSatir.Render(fmt.Sprintf("    %s  %s  %s",
 				fStSoluk.Render(katPad(kat, nameW)),
@@ -702,19 +1077,13 @@ func (m forumModel) forumGorunumKonular() string {
 				yanitStr = fmt.Sprintf("%d yanıt", yanit)
 			}
 			baslik := forumKisalt(k.Title, 46)
-			var durum string
-			if k.Approved {
-				durum = " ✔"
-			} else if k.PermanentRequested && m.approvalFn != nil {
-				durum = " ★"
-			}
 			meta := fmt.Sprintf("  %s · %s · %s", k.AuthorName, forumNeZaman(k.CreatedAt), yanitStr)
 
 			if secili {
-				b.WriteString(fStSeciliSatir.Render("  "+baslik+durum) + "\n")
+				b.WriteString(fStSeciliSatir.Render("  "+baslik) + "\n")
 				b.WriteString(fStSeciliMeta.Render(meta) + "\n")
 			} else {
-				b.WriteString(fStOgeSatir.Render("  "+baslik+durum) + "\n")
+				b.WriteString(fStOgeSatir.Render("  "+baslik) + "\n")
 				b.WriteString(fStSoluk.Render(meta) + "\n")
 			}
 			b.WriteString("\n")
@@ -729,7 +1098,7 @@ func (m forumModel) forumGorunumKonular() string {
 		b.WriteString(bd + "\n")
 	}
 
-	helpText := "↑/↓  hareket    enter  aç    r  yenile    esc  geri"
+	helpText := "↑/↓  hareket    enter  aç    r  yenile    p  profil    esc  geri"
 	if m.konuAcEtkin() {
 		helpText += "    n  yeni konu"
 	}
@@ -749,9 +1118,7 @@ func (m forumModel) forumGorunumKonu() string {
 	b.WriteString(fStYanitBaslik.Render(k.AuthorName) +
 		"  " + fStSoluk.Render(k.Category+" · "+forumNeZaman(k.CreatedAt)))
 
-	if k.Approved {
-		b.WriteString("  " + lipgloss.NewStyle().Background(colorOK).Foreground(lipgloss.Color("0")).Bold(true).Render(" ✔ Kalıcı "))
-	} else if !k.ExpiresAt.IsZero() {
+	if !k.ExpiresAt.IsZero() {
 		kalan := time.Until(k.ExpiresAt)
 		if kalan <= 0 {
 			b.WriteString("  " + lipgloss.NewStyle().Background(colorError).Foreground(lipgloss.Color("255")).Bold(true).Render(" ⏱ Süre doldu "))
@@ -765,9 +1132,6 @@ func (m forumModel) forumGorunumKonu() string {
 				kalanStr = fmt.Sprintf(" ⏱ %d sa kaldı ", saat)
 			}
 			b.WriteString("  " + lipgloss.NewStyle().Background(colorWarning).Foreground(lipgloss.Color("0")).Bold(true).Render(kalanStr))
-		}
-		if k.PermanentRequested && m.approvalFn != nil {
-			b.WriteString("  " + fStRozet.Render(" Kalıcılık talebi var "))
 		}
 	}
 	b.WriteString("\n\n")
@@ -787,10 +1151,7 @@ func (m forumModel) forumGorunumKonu() string {
 		b.WriteString(bd + "\n")
 	}
 
-	helpText := "↑/↓  kaydır    pgup/pgdn  sayfa    g/G  başa/sona    r  yanıtla    esc  geri"
-	if m.approvalFn != nil && !k.Approved {
-		helpText += "    a  onayla"
-	}
+	helpText := "↑/↓  kaydır    pgup/pgdn  sayfa    g/G  başa/sona    r  yanıtla    p  profil    esc  geri"
 	if m.identity != nil && k.AuthorKey == hex.EncodeToString(m.identity.PublicKey()) {
 		helpText += "    x  sil"
 	}
@@ -814,12 +1175,80 @@ func (m forumModel) forumGorunumYanit() string {
 	b.WriteString("\n")
 	b.WriteString(m.yanitAlan.View())
 	b.WriteString("\n")
+	b.WriteString(fStSoluk.Render("ctrl+k ile kod bloğu ekle  ·  ör: [code=python] ... [/code]") + "\n")
 
 	if bd := m.forumBildirimSatiri(); bd != "" {
 		b.WriteString(bd + "\n")
 	}
-	b.WriteString(fStYardim.Render("ctrl+s  gönder    esc  iptal"))
+	b.WriteString(fStYardim.Render("ctrl+s  gönder    ctrl+k  kod bloğu    esc  iptal"))
 	return fStKutu.Render(b.String())
+}
+
+func (m forumModel) forumGorunumProfil() string {
+	var b strings.Builder
+	b.WriteString(m.forumHeader("Profil: "+forumKisalt(pluginui.Safe(m.profilAd), 40), forumKullaniciAdi(m.identity)))
+	b.WriteString("\n\n")
+
+	b.WriteString(m.konuVP.View())
+	b.WriteString("\n")
+
+	if !m.konuVP.AtBottom() {
+		b.WriteString(fStSoluk.Render("  ↓ daha fazla…"))
+		b.WriteString("\n")
+	}
+
+	if m.banConfirming {
+		b.WriteString(banOnayGorunumu(m.profilAd, m.banDurationIdx, m.banReasonInput))
+	}
+	if m.unbanConfirming {
+		b.WriteString(unbanOnayGorunumu(m.profilAd))
+	}
+
+	if bd := m.forumBildirimSatiri(); bd != "" {
+		b.WriteString(bd + "\n")
+	}
+	help := "↑/↓  kaydır    esc  geri"
+	switch {
+	case m.banConfirming:
+		help = "←/→  süre seç    enter  onayla    esc  vazgeç"
+	case m.unbanConfirming:
+		help = "e  onayla    esc  vazgeç"
+	case m.profilCanBan && m.profilIsBanned:
+		help = "↑/↓  kaydır    b  banla    u  banı kaldır    esc  geri"
+	case m.profilCanBan:
+		help = "↑/↓  kaydır    b  banla    esc  geri"
+	}
+	b.WriteString(fStYardim.Render(help))
+	return fStKutu.Render(b.String())
+}
+
+// banOnayGorunumu, "b" ile açılan süre+sebep onay alt-durumunun ortak
+// görünümü — hem forum hem sohbet profil ekranı bunu kullanır.
+func banOnayGorunumu(hedefAd string, durationIdx int, reasonInput textinput.Model) string {
+	var b strings.Builder
+	b.WriteString("\n" + fStAyrac.Render(strings.Repeat("─", 40)) + "\n")
+	warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
+	b.WriteString(warnSt.Render("Banla: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n")
+	for i, p := range banDurationPresets {
+		if i == durationIdx {
+			b.WriteString(fStSeciliSatir.Render(" " + p.label + " "))
+		} else {
+			b.WriteString(" " + p.label + " ")
+		}
+	}
+	b.WriteString("\n")
+	b.WriteString(reasonInput.View() + "\n")
+	return b.String()
+}
+
+// unbanOnayGorunumu, "u" ile açılan ban-kaldırma onayının ortak görünümü.
+func unbanOnayGorunumu(hedefAd string) string {
+	var b strings.Builder
+	b.WriteString("\n" + fStAyrac.Render(strings.Repeat("─", 40)) + "\n")
+	warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
+	b.WriteString(warnSt.Render("Banı kaldır: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n")
+	b.WriteString(fStSoluk.Render("Emin misin? (e: evet, esc: vazgeç)") + "\n")
+	return b.String()
 }
 
 func forumKullaniciAdi(id *stdcrypto.Identity) string {
@@ -874,8 +1303,41 @@ func forumNeZaman(t time.Time) string {
 	case d < 7*24*time.Hour:
 		return fmt.Sprintf("%d gün önce", int(d.Hours()/24))
 	default:
-		return t.Format("02 Jan 2006")
+		return turkceTarih(t)
 	}
+}
+
+// forumKalanSure, t'ye (gelecekteki bir zamana, ör. bir banın bitiş
+// tarihine) kalan süreyi Türkçe biçimlendirir — forumNeZaman'ın "geçmişe
+// doğru" biçimlendirmesinin tersi.
+func forumKalanSure(t time.Time) string {
+	d := time.Until(t)
+	switch {
+	case d <= 0:
+		return "süresi doldu"
+	case d < time.Minute:
+		return "1 dakikadan az"
+	case d < time.Hour:
+		return fmt.Sprintf("%d dakika", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%d saat", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%d gün", int(d.Hours()/24))
+	default:
+		return turkceTarih(t)
+	}
+}
+
+var turkceAylar = [...]string{
+	"Oca", "Şub", "Mar", "Nis", "May", "Haz",
+	"Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara",
+}
+
+// turkceTarih, t'yi "02 Tem 2026" biçiminde Türkçe ay kısaltmasıyla
+// biçimlendirir — time.Format'ın "Jan" düzeni yalnızca İngilizce ay adları
+// üretir, Go'nun time paketinde yerelleştirme desteği yok.
+func turkceTarih(t time.Time) string {
+	return fmt.Sprintf("%02d %s %d", t.Day(), turkceAylar[t.Month()-1], t.Year())
 }
 
 func forumKisalt(s string, maks int) string {
