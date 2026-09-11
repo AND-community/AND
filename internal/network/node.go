@@ -30,9 +30,9 @@ var DefaultListenAddrs = []string{
 }
 
 const (
-	connLow   = 60
-	connHigh  = 120
-	connGrace = time.Minute
+	connLow   = 20
+	connHigh  = 40
+	connGrace = 30 * time.Second
 )
 
 type lazyRelaySource struct {
@@ -101,7 +101,7 @@ func New(id *stdcrypto.Identity, gater lp2pconnmgr.ConnectionGater, listenAddrs 
 			autorelay.WithMinCandidates(2),
 			autorelay.WithNumRelays(2),
 			autorelay.WithMaxCandidates(8),
-			autorelay.WithBootDelay(20*time.Second),
+			autorelay.WithBootDelay(10*time.Second),
 			autorelay.WithBackoff(5*time.Minute),
 		),
 	)

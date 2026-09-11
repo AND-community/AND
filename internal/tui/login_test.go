@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 )
 
@@ -56,10 +57,22 @@ func TestLoginModel_RegisterThenSaveRoundTrip(t *testing.T) {
 		t.Fatalf("expected identity name %q, got %q", "alice", result.identity.Name())
 	}
 
-	got, _ = result.confirmMnemonic()
+	// stageMnemonic → stageVerify
+	got, _ = result.goToVerify()
+	result = got.(loginModel)
+	if result.stage != stageVerify {
+		t.Fatalf("expected stageVerify, got %v", result.stage)
+	}
+
+	// stageVerify → stageDone (doğru kelimeyi karakter karakter yaz, sonra enter)
+	for _, r := range []rune(result.verifyWordVal) {
+		got, _ = result.updateVerify(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		result = got.(loginModel)
+	}
+	got, _ = result.updateVerify(tea.KeyMsg{Type: tea.KeyEnter})
 	result = got.(loginModel)
 	if result.err != nil {
-		t.Fatalf("confirmMnemonic: %v", result.err)
+		t.Fatalf("updateVerify: %v", result.err)
 	}
 	if result.stage != stageDone {
 		t.Fatalf("expected stageDone, got %v", result.stage)

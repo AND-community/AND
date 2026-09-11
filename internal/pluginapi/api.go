@@ -3,17 +3,28 @@ package pluginapi
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
+	"strings"
 	"time"
 )
 
 const DMProtocol = "/and/dm/1.0.0"
+const FileProtocol = "/and/file/2.0.0"
+
+// MaxFileBytes is the maximum raw file size accepted for transfer (20 GB).
+const MaxFileBytes = 20 * 1024 * 1024 * 1024
 
 type Manifest struct {
 	Name        string `json:"name"`
@@ -21,6 +32,7 @@ type Manifest struct {
 	Version     string `json:"version"`
 	Description string `json:"description"`
 	Author      string `json:"author"`
+	Category    string `json:"category,omitempty"`
 }
 
 type IdentityInfo struct {
@@ -34,45 +46,269 @@ type RoleInfo struct {
 	IsModerator bool `json:"is_moderator"`
 }
 
-type PendingPost struct {
-	ID           string    `json:"id"`
-	Title        string    `json:"title"`
-	AuthorName   string    `json:"author_name"`
-	AuthorKey    string    `json:"author_key"`
-	Category     string    `json:"category"`
-	Body         string    `json:"body"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	PermanentReq bool      `json:"permanent_req"`
+type DeletePostReq struct {
+	PostID string `json:"post_id"`
+	Reason string `json:"reason,omitempty"`
 }
 
-type ApproveReq struct{ PostID string `json:"post_id"` }
-type RejectReq struct{ PostID string `json:"post_id"` }
-type ApproveAuthorReq struct{ AuthorKey string `json:"author_key"` }
-type CreatePostReq struct {
-	Category     string `json:"category"`
-	Title        string `json:"title"`
-	Body         string `json:"body"`
-	PermanentReq bool   `json:"permanent_req,omitempty"`
+type PostSummary struct {
+	ID         string `json:"id"`
+	Category   string `json:"category"`
+	Title      string `json:"title"`
+	AuthorName string `json:"author_name"`
+	AuthorKey  string `json:"author_key"`
 }
+type CreatePostReq struct {
+	Category string `json:"category"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+}
+
+// SitePageInfo is one page of the CALLER's OWN personal site — every site
+// endpoint is implicitly scoped to the calling identity (mirrors
+// internal/site.Store's own PublishPage/DeletePage/PagesByAuthor contract),
+// so unlike PostSummary there is no AuthorKey field: it would always equal
+// the caller's own key.
+type SitePageInfo struct {
+	Slug      string    `json:"slug"`
+	Title     string    `json:"title"`
+	Body      string    `json:"body"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// PublishSitePageReq is the request body for POST /api/v1/site/publish —
+// creates a new page (if Slug is unused) or wholesale-replaces an existing
+// one (if Slug already belongs to the caller); there is no partial update.
+type PublishSitePageReq struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// DeleteSitePageReq is the request body for POST /api/v1/site/delete.
+type DeleteSitePageReq struct {
+	Slug string `json:"slug"`
+}
+
 type SendDMReq struct {
 	PeerID  string `json:"peer_id"`
 	Message string `json:"message"`
 }
 
 type DMMsg struct {
+	// From is a display string: the sender's self-declared name, or (if
+	// they set one) that name combined with a truncated prefix of their
+	// verified peer ID — see internal/dmmgr's combineIdentity. It is meant
+	// for showing to a human, NOT for authentication: a plugin that needs
+	// to check "did this specific peer ID really send this" must use
+	// VerifiedPeerID instead.
+	From string `json:"from"`
+	// VerifiedPeerID is the sender's full libp2p peer ID as established by
+	// the authenticated connection the DM arrived on (cryptographically
+	// bound, unlike From's self-declared name). Plugins implementing any
+	// kind of "only accept this action from a specific known peer" check
+	// (e.g. group membership/roster control messages) must compare
+	// against this field, not against an identity claimed inside the
+	// message payload itself — otherwise any peer can impersonate any
+	// other by simply writing someone else's ID into the payload.
+	VerifiedPeerID string    `json:"verified_peer_id"`
+	Text           string    `json:"text"`
+	ReceivedAt     time.Time `json:"received_at"`
+}
+
+// SendFileReq is the request body for POST /api/v1/file/send.
+// The plugin supplies a local file path; AND reads and streams the file — no data in the request.
+type SendFileReq struct {
+	PeerID    string `json:"peer_id"`
+	LocalPath string `json:"local_path"`
+}
+
+// FileMsg is delivered to plugins when a file arrives from a remote peer.
+// AND saves the file to disk and reports the path; no file bytes are carried here.
+type FileMsg struct {
 	From       string    `json:"from"`
-	Text       string    `json:"text"`
+	Filename   string    `json:"filename"`
+	Size       int64     `json:"size"`
+	SavePath   string    `json:"save_path"`
 	ReceivedAt time.Time `json:"received_at"`
 }
 
-type errResp struct{ Error string `json:"error"` }
+// FileConsentReq is sent to plugins when a remote peer wants to send a file.
+// The plugin must call /api/v1/file/consent to accept or reject.
+type FileConsentReq struct {
+	TransferID string `json:"transfer_id"`
+	SenderID   string `json:"sender_id"` // peer ID
+	Filename   string `json:"filename"`
+	Size       int64  `json:"size"`
+}
+
+type ConsentResp struct {
+	TransferID string `json:"transfer_id"`
+	Accept     bool   `json:"accept"`
+}
+
+type errResp struct {
+	Error string `json:"error"`
+}
+
+// ThemeReq is the request body for POST /api/v1/theme.
+// Color values are terminal palette numbers ("63") or hex codes ("#ff6600").
+type ThemeReq struct {
+	ThemeName string `json:"theme_name,omitempty"`
+	Accent    string `json:"accent,omitempty"`
+	SelBG     string `json:"sel_bg,omitempty"`
+	SelFG     string `json:"sel_fg,omitempty"`
+	Muted     string `json:"muted,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Badge     string `json:"badge,omitempty"`
+}
+
+// PeerInfo represents a connected libp2p peer.
+type PeerInfo struct {
+	PeerID string   `json:"peer_id"`
+	Addrs  []string `json:"addrs"`
+}
+
+// ChatMsg is a general chat message received from the shared channel.
+type ChatMsg struct {
+	// ID, when non-empty, is a stable reference for this message (matches
+	// internal/chatlog.Message.ID) — set on messages returned by AllChat,
+	// omitted on the live PollChat stream (which predates it and has no
+	// equivalent stable identity to offer).
+	ID     string    `json:"id,omitempty"`
+	From   string    `json:"from"`
+	Text   string    `json:"text"`
+	SentAt time.Time `json:"sent_at"`
+}
+
+// SendChatReq is the request body for POST /api/v1/chat/send.
+type SendChatReq struct {
+	Message string `json:"message"`
+}
+
+// ReplyInfo is a single reply to a forum post.
+type ReplyInfo struct {
+	ID         string    `json:"id"`
+	AuthorName string    `json:"author_name"`
+	AuthorKey  string    `json:"author_key"`
+	Body       string    `json:"body"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// PostDetail is a forum post with its full body and replies.
+type PostDetail struct {
+	ID         string      `json:"id"`
+	Category   string      `json:"category"`
+	AuthorName string      `json:"author_name"`
+	AuthorKey  string      `json:"author_key"`
+	Title      string      `json:"title"`
+	Body       string      `json:"body"`
+	CreatedAt  time.Time   `json:"created_at"`
+	Replies    []ReplyInfo `json:"replies"`
+}
+
+// CreateReplyReq is the request body for POST /api/v1/forum/reply.
+type CreateReplyReq struct {
+	PostID string `json:"post_id"`
+	Body   string `json:"body"`
+}
+
+// BanEntryInfo is one row of GET /api/v1/mod/bans — a currently-active ban.
+type BanEntryInfo struct {
+	PeerID       string    `json:"peer_id"`
+	AuthorKey    string    `json:"author_key,omitempty"`
+	DisplayName  string    `json:"display_name,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	Permanent    bool      `json:"permanent"`
+	ModeratorKey string    `json:"moderator_key"`
+	IsFounderMod bool      `json:"is_founder_mod"`
+	Reason       string    `json:"reason,omitempty"`
+}
+
+// UnbanReq is the request body for POST /api/v1/mod/unban.
+type UnbanReq struct {
+	AuthorKey string `json:"author_key"`
+}
+
+// HistoryEntryInfo is one row of GET /api/v1/mod/history — a past ban or
+// unban action, kept even after the ban itself expired/was lifted.
+type HistoryEntryInfo struct {
+	Action       string    `json:"action"` // "ban" | "unban"
+	PeerID       string    `json:"peer_id"`
+	Reason       string    `json:"reason,omitempty"`
+	ModeratorKey string    `json:"moderator_key"`
+	IsFounderMod bool      `json:"is_founder_mod"`
+	At           time.Time `json:"at"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	Permanent    bool      `json:"permanent,omitempty"`
+}
+
+// GrantedModInfo is one row of GET /api/v1/mod/grants — a moderator
+// certificate this node (as founder) has issued.
+type GrantedModInfo struct {
+	Key       string    `json:"key"`
+	GrantedAt time.Time `json:"granted_at"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	Permanent bool      `json:"permanent,omitempty"`
+	Revoked   bool      `json:"revoked,omitempty"`
+	RevokedAt time.Time `json:"revoked_at,omitempty"`
+}
+
+// GrantReq is the request body for POST /api/v1/mod/grant.
+type GrantReq struct {
+	TargetKeyHex string `json:"target_key_hex"`
+	DurationSec  int64  `json:"duration_sec,omitempty"`
+	Permanent    bool   `json:"permanent,omitempty"`
+}
+
+// GrantResp is the response body for POST /api/v1/mod/grant.
+type GrantResp struct {
+	CertPath string `json:"cert_path,omitempty"`
+}
+
+// RevokeReq is the request body for POST /api/v1/mod/revoke.
+type RevokeReq struct {
+	TargetKeyHex string `json:"target_key_hex"`
+}
+
+// ModerationBackend exposes admin/moderator tooling to plugins (bkz.
+// Eklentiler/admin). Every endpoint built on this is gated by
+// enforceModeratorRole at minimum; Grant/Revoke (moderator atama/kaldırma,
+// yalnızca kurucuya özel) are additionally gated by enforceFounderRole.
+type ModerationBackend interface {
+	AllBans() ([]BanEntryInfo, error)
+	Unban(ctx context.Context, authorKey string) error
+	History() ([]HistoryEntryInfo, error)
+	GrantedMods() ([]GrantedModInfo, error)
+	// Grant returns the path the new certificate was written to (may be
+	// empty if dataDir isn't set) — the founder delivers this file to the
+	// target out-of-band (e.g. via Özel Chat).
+	Grant(ctx context.Context, targetKeyHex string, duration time.Duration, permanent bool) (certPath string, err error)
+	Revoke(ctx context.Context, targetKeyHex string) error
+}
 
 type ForumBackend interface {
-	PendingPosts() ([]PendingPost, error)
-	ApprovePost(postID string) error
-	RejectPost(postID string) error
-	ApproveAuthor(authorKey string) error
-	CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error
+	AllPosts() ([]PostSummary, error)
+	// DeletePost issues an authorized (network-wide, tombstoned) deletion
+	// of postID — the caller's moderator/founder authority is resolved
+	// by the backend itself; reason may be empty.
+	DeletePost(ctx context.Context, postID, reason string) error
+	CreatePost(ctx context.Context, category, title, body string) error
+	GetPost(id string) (*PostDetail, error)
+	CreateReply(ctx context.Context, postID, body string) error
+}
+
+// SiteBackend exposes the caller's OWN personal-site pages to plugins.
+// Every method is implicitly scoped to the calling node's identity — there
+// is no "target author" parameter anywhere, mirroring internal/site.Store's
+// own PublishPage/DeletePage/PagesByAuthor contract, so a plugin built on
+// this can only ever manage its own pages, never someone else's.
+type SiteBackend interface {
+	MyPages() ([]SitePageInfo, error)
+	// PublishPage creates slug (if unused) or wholesale-replaces it (if it
+	// already belongs to the caller) — no partial-update semantics.
+	PublishPage(ctx context.Context, slug, title, body string) error
+	DeletePage(ctx context.Context, slug string) error
 }
 
 type IdentityBackend interface {
@@ -81,6 +317,7 @@ type IdentityBackend interface {
 	PeerIDStr() string
 	IsFounder() bool
 	IsModerator() bool
+	ConnectedPeers() []PeerInfo
 }
 
 type DMBackend interface {
@@ -89,51 +326,268 @@ type DMBackend interface {
 	Unsubscribe(ch chan DMMsg)
 }
 
+type FileBackend interface {
+	SendFile(ctx context.Context, peerID, senderName, localPath string) error
+	Subscribe() chan FileMsg
+	Unsubscribe(ch chan FileMsg)
+	SubscribeConsent() chan FileConsentReq
+	UnsubscribeConsent(ch chan FileConsentReq)
+	RespondConsent(transferID string, accept bool)
+}
+
+type ChatBackend interface {
+	SendChat(ctx context.Context, senderName, message string) error
+	Subscribe() chan ChatMsg
+	Unsubscribe(ch chan ChatMsg)
+	// AllChat returns the full locally-known chat history (persisted,
+	// not just what's arrived since this process started) — unlike
+	// Subscribe, which only forwards new messages as they arrive live.
+	AllChat() []ChatMsg
+}
+
 var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 
-func validPostID(id string) bool    { return reHex.MatchString(id) }
-func validAuthorKey(key string) bool { return len(key) == 64 && reHex.MatchString(key) }
+func validPostID(id string) bool { return reHex.MatchString(id) }
+
+// reAuthorKey, bir author_key/target_key_hex alanının tam olarak 64 hex
+// karakter (32 baytlık bir ed25519 public key) olmasını zorunlu kılar.
+var reAuthorKey = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+
+// validAuthorKey, moderasyon uç noktalarına (mod/unban, mod/grant,
+// mod/revoke) gelen hex-encoded author key alanlarını API sınırında
+// doğrular. Bunsuz, biçimsiz bir değer (boş olmayan ama kısa/hex-olmayan)
+// resolveOwnModAuthority/AuthorKeyToPeerID'e kadar ilerler ve orada genel,
+// sarmalanmış bir hatayla reddedilir — bu da API'nin 400 sözleşmesini
+// tutarsız hale getirir (bkz. eski postApproveAuthor'daki eşdeğer kontrol).
+func validAuthorKey(key string) bool { return reAuthorKey.MatchString(key) }
 
 type Server struct {
-	addr string
-	srv  *http.Server
-	id   IdentityBackend
-	f    ForumBackend
-	dm   DMBackend
+	addr        string
+	token       string
+	dataDir     string
+	srv         *http.Server
+	externalLn  net.Listener
+	externalSrv *http.Server
+	id          IdentityBackend
+	f           ForumBackend
+	site        SiteBackend
+	dm          DMBackend
+	file        FileBackend
+	chat        ChatBackend
+	mb          ModerationBackend
+	themeCh     chan<- ThemeReq
+
+	// Yerel hız sınırlayıcılar — yalnızca pluginapi ÜZERİNDEN (eklenti ya
+	// da harici dinleyici) gelen çağrılara uygulanır, AND'ın kendi TUI'sini
+	// hiç etkilemez. Bkz. ratelimit.go'daki localActionLimiter'ın doc
+	// yorumu.
+	// Her biri AYRI bir bütçedir — kasıtlı olarak PAYLAŞTIRILMAZ: hatalı ya
+	// da kötü niyetli TEK bir eklentinin (ör. forum'u kötüye kullanan bir
+	// eklenti) kendi bütçesini tüketmesi, İLGİSİZ bir özelliği (ör. site
+	// sayfası yayınlamak isteyen BAŞKA bir eklenti) hiç etkilememelidir.
+	forumLimiter *localActionLimiter // forum/post, forum/reply
+	siteLimiter  *localActionLimiter // site/publish, site/delete
+	chatLimiter  *localActionLimiter // chat/send
+	dmLimiter    *localActionLimiter // dm/send
+	fileLimiter  *localActionLimiter // file/send
 }
 
-func NewServer(id IdentityBackend, f ForumBackend, dm DMBackend) *Server {
-	return &Server{id: id, f: f, dm: dm}
+// site may be nil (e.g. a minimal test server) — every site handler
+// nil-checks it first, matching the dm/file optional-backend convention.
+func NewServer(id IdentityBackend, f ForumBackend, site SiteBackend, dm DMBackend, file FileBackend, chat ChatBackend, mb ModerationBackend, dataDir string, themeCh chan<- ThemeReq) *Server {
+	return &Server{
+		id: id, f: f, site: site, dm: dm, file: file, chat: chat, mb: mb, dataDir: dataDir, themeCh: themeCh,
+		forumLimiter: newLocalActionLimiter(contentActionLimit, localActionsWindow),
+		siteLimiter:  newLocalActionLimiter(contentActionLimit, localActionsWindow),
+		chatLimiter:  newLocalActionLimiter(chatActionLimit, localActionsWindow),
+		dmLimiter:    newLocalActionLimiter(dmActionLimit, localActionsWindow),
+		fileLimiter:  newLocalActionLimiter(fileActionLimit, localActionsWindow),
+	}
 }
 
-func (s *Server) Start(ctx context.Context) (string, error) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return "", fmt.Errorf("pluginapi: listen: %w", err)
+// enableExternalAPI, AND_ENABLE_EXTERNAL_API=1 ortam değişkeniyle
+// etkinleştirilen, güvenilir harici araçlar (ör. bir editör eklentisi) için
+// ikinci bir dinleyici açar (bkz. listenExternal / externalpipe_*.go).
+//
+// Bu ikinci dinleyici AND_API_ADDR/AND_API_TOKEN mekanizmasından TAMAMEN
+// AYRIDIR ve bir bearer token KULLANMAZ: Windows'ta yalnızca pipe'ın
+// sahibine (owner) erişim izni veren bir security descriptor'lı named pipe,
+// diğer platformlarda ise 0600 izinli bir Unix domain socket olarak açılır.
+// Böylece erişim, diskte/bellekte kopyalanabilecek bir sırla değil,
+// doğrudan işletim sistemi tarafından ("yalnızca bu kullanıcı") zorlanır —
+// bu yüzden bu dinleyiciye gelen istekler authMiddleware'den GEÇMEZ, token
+// kontrolü yoktur (bkz. Start).
+//
+// Pipe/socket adı, AND_DATA_DIR'e göre türetilir ve sabittir (bir sır
+// değildir) — bunu bilen bağımsız bir süreç yalnızca BAĞLANMAYI dener,
+// bağlanabilmesi OS'in erişim denetimine bağlıdır.
+func enableExternalAPI() bool {
+	return os.Getenv("AND_ENABLE_EXTERNAL_API") == "1"
+}
+
+// route, tek bir HTTP endpoint'inin tanımıdır. allowExternal, bu endpoint'in
+// enableExternalAPI() etkinken token GEREKTİRMEYEN harici dinleyicide
+// (bkz. externalpipe_*.go) de sunulup sunulmayacağını belirler.
+//
+// allowExternal alanı KASITLI olarak "false" varsayılana sahiptir (Go'nun
+// bool zero value'su) — routeTable'a eklenen yeni bir route, bu alan açıkça
+// "true" yazılmadıkça yalnızca token'lı TCP dinleyicisinde sunulur. Böylece
+// "harici erişime açık mı?" sorusu her yeni endpoint için BİLİNÇLİ, tek
+// satırlık bir karar olmak zorundadır — yalnızca bir yorumu okuyup
+// hatırlamaya güvenilmez (bkz. buildMux, Start).
+type route struct {
+	pattern       string
+	handler       http.HandlerFunc
+	allowExternal bool
+}
+
+// routeTable, Server'ın tüm HTTP endpoint'lerini tanımlayan TEK yerdir.
+// Buradaki route'ların tamamı bugün allowExternal:true olarak işaretlidir
+// çünkü harici dinleyicinin tüm amacı, VS Code gibi güvenilir bir aracın
+// AND'ın normal eklenti API'siyle eşdeğer erişime sahip olmasıdır — ama
+// ileride yalnızca token'lı erişime açık kalması gereken bir endpoint
+// eklenirse (ör. kimlik anahtarı dışa aktarma), bu alanı yazmadan
+// bırakmak yeterlidir.
+func (s *Server) routeTable() []route {
+	return []route{
+		{"/api/v1/identity", onlyMethod(http.MethodGet, s.getIdentity), true},
+		{"/api/v1/role", onlyMethod(http.MethodGet, s.getRole), true},
+		{"/api/v1/peers", onlyMethod(http.MethodGet, s.getPeers), true},
+		{"/api/v1/forum/all-posts", onlyMethod(http.MethodGet, s.getAllPosts), true},
+		{"/api/v1/forum/post", s.handleForumPost, true},
+		{"/api/v1/forum/reply", onlyMethod(http.MethodPost, rateLimited(s.forumLimiter, s.postReply)), true},
+		{"/api/v1/forum/delete", onlyMethod(http.MethodPost, s.postDeletePost), true},
+		{"/api/v1/site/pages", onlyMethod(http.MethodGet, s.getSitePages), true},
+		{"/api/v1/site/publish", onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSitePublish)), true},
+		{"/api/v1/site/delete", onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSiteDelete)), true},
+		{"/api/v1/mod/bans", onlyMethod(http.MethodGet, s.getModBans), true},
+		{"/api/v1/mod/unban", onlyMethod(http.MethodPost, s.postModUnban), true},
+		{"/api/v1/mod/history", onlyMethod(http.MethodGet, s.getModHistory), true},
+		{"/api/v1/mod/grants", onlyMethod(http.MethodGet, s.getModGrants), true},
+		{"/api/v1/mod/grant", onlyMethod(http.MethodPost, s.postModGrant), true},
+		{"/api/v1/mod/revoke", onlyMethod(http.MethodPost, s.postModRevoke), true},
+		{"/api/v1/dm/send", onlyMethod(http.MethodPost, rateLimited(s.dmLimiter, s.postSendDM)), true},
+		{"/api/v1/dm/poll", onlyMethod(http.MethodGet, s.getDMPoll), true},
+		{"/api/v1/chat/send", onlyMethod(http.MethodPost, rateLimited(s.chatLimiter, s.postSendChat)), true},
+		{"/api/v1/chat/poll", onlyMethod(http.MethodGet, s.getChatPoll), true},
+		{"/api/v1/chat/all", onlyMethod(http.MethodGet, s.getChatAll), true},
+		{"/api/v1/file/send", onlyMethod(http.MethodPost, rateLimited(s.fileLimiter, s.postSendFile)), true},
+		{"/api/v1/file/poll", onlyMethod(http.MethodGet, s.getFilePoll), true},
+		{"/api/v1/file/consent-poll", onlyMethod(http.MethodGet, s.getConsentPoll), true},
+		{"/api/v1/file/consent", onlyMethod(http.MethodPost, s.postConsent), true},
+		{"/api/v1/theme", s.handleTheme, true},
+	}
+}
+
+// buildMux, routeTable()'dan bir *http.ServeMux inşa eder. externalOnly
+// true ise yalnızca allowExternal:true olan route'lar eklenir — bu,
+// harici dinleyicinin (token'sız) hangi endpoint'lere sahip olduğunu
+// routeTable() üzerinden STATİK ve DENETLENEBİLİR kılar.
+func (s *Server) buildMux(externalOnly bool) *http.ServeMux {
+	return buildMuxFromRoutes(s.routeTable(), externalOnly)
+}
+
+// buildMuxFromRoutes, buildMux'un asıl filtreleme mantığıdır — Server'dan
+// bağımsız, sabit bir route listesi üzerinde çalışır. Bu ayrım, filtreleme
+// davranışının (allowExternal:false bir route'un gerçekten externalOnly
+// mux'ta bulunmadığının) gerçek routeTable()'a ihtiyaç duymadan, sabit/test
+// amaçlı bir route listesiyle doğrulanabilmesini sağlar (bkz.
+// TestBuildMuxExternalFiltering).
+func buildMuxFromRoutes(routes []route, externalOnly bool) *http.ServeMux {
+	mux := http.NewServeMux()
+	for _, r := range routes {
+		if externalOnly && !r.allowExternal {
+			continue
+		}
+		mux.HandleFunc(r.pattern, r.handler)
+	}
+	return mux
+}
+
+func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
+	ln, listenErr := net.Listen("tcp", "127.0.0.1:0")
+	if listenErr != nil {
+		return "", "", fmt.Errorf("pluginapi: listen: %w", listenErr)
 	}
 	s.addr = ln.Addr().String()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/identity",            onlyMethod(http.MethodGet, s.getIdentity))
-	mux.HandleFunc("/api/v1/role",                onlyMethod(http.MethodGet, s.getRole))
-	mux.HandleFunc("/api/v1/forum/pending",       onlyMethod(http.MethodGet, s.getPending))
-	mux.HandleFunc("/api/v1/forum/approve",       onlyMethod(http.MethodPost, s.postApprove))
-	mux.HandleFunc("/api/v1/forum/approve-author", onlyMethod(http.MethodPost, s.postApproveAuthor))
-	mux.HandleFunc("/api/v1/forum/reject",        onlyMethod(http.MethodPost, s.postReject))
-	mux.HandleFunc("/api/v1/forum/post",          onlyMethod(http.MethodPost, s.postCreate))
-	mux.HandleFunc("/api/v1/dm/send",             onlyMethod(http.MethodPost, s.postSendDM))
-	mux.HandleFunc("/api/v1/dm/poll",             onlyMethod(http.MethodGet, s.getDMPoll))
+	raw := make([]byte, 32)
+	if _, randErr := rand.Read(raw); randErr != nil {
+		ln.Close() //nolint:errcheck
+		return "", "", fmt.Errorf("pluginapi: generate token: %w", randErr)
+	}
+	s.token = hex.EncodeToString(raw)
 
-	s.srv = &http.Server{Handler: mux}
+	s.srv = &http.Server{Handler: s.authMiddleware(s.buildMux(false))}
 	go s.srv.Serve(ln) //nolint:errcheck
+
+	if enableExternalAPI() && s.dataDir != "" {
+		if extLn, perr := listenExternal(s.dataDir); perr != nil {
+			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı dinleyicisi başlatılamadı:", perr)
+		} else {
+			s.externalLn = extLn
+			// authMiddleware YOK: bu dinleyiciye erişim zaten OS tarafından
+			// (yalnızca bu kullanıcı) kısıtlanmış durumda — bkz. enableExternalAPI.
+			// buildMux(true), yalnızca routeTable()'da allowExternal:true
+			// işaretli route'ları içerir.
+			s.externalSrv = &http.Server{Handler: s.buildMux(true)}
+			go s.externalSrv.Serve(extLn) //nolint:errcheck
+			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı etkin —", externalDescription(s.dataDir))
+		}
+	}
+
 	go func() {
 		<-ctx.Done()
 		s.srv.Close()
+		if s.externalSrv != nil {
+			s.externalSrv.Close()
+			cleanupExternal(s.dataDir)
+		}
 	}()
-	return s.addr, nil
+	return s.addr, s.token, nil
+}
+
+// tokenEqual, X-And-Token doğrulamasını sabit zamanlı yapar. İki değer önce
+// aynı boyuta (sha256) indirgenir — subtle.ConstantTimeCompare, farklı
+// uzunluktaki dilimlerde erken (uzunluk bazlı) dönüş yaptığından, doğrudan
+// ham token'lar üzerinde çağrılması küçük bir zamanlama sızıntısı bırakır.
+func tokenEqual(got, want string) bool {
+	gotSum := sha256.Sum256([]byte(got))
+	wantSum := sha256.Sum256([]byte(want))
+	return subtle.ConstantTimeCompare(gotSum[:], wantSum[:]) == 1
+}
+
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !tokenEqual(r.Header.Get("X-And-Token"), s.token) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(errResp{Error: "yetkisiz erişim"}) //nolint:errcheck
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Addr() string { return s.addr }
+
+// rateLimited, h'yi çağırmadan ÖNCE limiter'ı kontrol eden bir sarmalayıcı
+// döner — onlyMethod gibi routeTable() içinde birleştirilmek üzere
+// tasarlanmıştır. Hız sınırlamasını (önceden her handler'ın gövdesinde
+// elle tekrarlanan bir kontroldü) route tanımının kendisine taşımak,
+// routeTable()'a eklenecek yeni bir içerik-oluşturma uç noktasının hız
+// sınırını UNUTMASINI derleme zamanında engellemez ama en azından
+// eksikliği tek bakışta görünür/denetlenebilir kılar — method kısıtlaması
+// ve harici erişim gibi diğer route-seviyesi politikalarla aynı yerde.
+func rateLimited(limiter *localActionLimiter, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.allow() {
+			writeTooManyRequests(w, rateLimitErrMessage)
+			return
+		}
+		h(w, r)
+	}
+}
 
 func onlyMethod(method string, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +611,134 @@ func (s *Server) enforceModeratorRole(w http.ResponseWriter) bool {
 	return false
 }
 
+// enforceFounderRole gates moderator-management actions (grant/revoke) —
+// stricter than enforceModeratorRole, since only the founder may create or
+// withdraw another moderator's authority.
+func (s *Server) enforceFounderRole(w http.ResponseWriter) bool {
+	if s.id.IsFounder() {
+		return true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	json.NewEncoder(w).Encode(errResp{Error: "yetersiz yetki — yalnızca kurucu"}) //nolint:errcheck
+	return false
+}
+
+// nonNilSlice, nil bir dilimi boş (ama nil olmayan) bir dilime çevirir.
+// json.Marshal nil bir dilimi "null" olarak kodlar, boş bir dilimi ise
+// "[]" olarak — istemciler (ör. VS Code eklentisi) her zaman bir dizi
+// bekler; tüm liste döndüren endpoint'ler bu yüzden yanıtlarını buradan
+// geçirmelidir (bkz. getPeers, getAllPosts).
+func nonNilSlice[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+func (s *Server) getPeers(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, nonNilSlice(s.id.ConnectedPeers()))
+}
+
+// handleForumPost routes GET (read post) and POST (create post) on /api/v1/forum/post.
+func (s *Server) handleForumPost(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getForumPost(w, r)
+	case http.MethodPost:
+		rateLimited(s.forumLimiter, s.postCreate)(w, r)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(errResp{Error: "yöntem izin verilmiyor"}) //nolint:errcheck
+	}
+}
+
+func (s *Server) getForumPost(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if !validPostID(id) {
+		writeBadRequest(w, "geçersiz veya eksik id parametresi")
+		return
+	}
+	detail, err := s.f.GetPost(id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if detail == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(errResp{Error: "konu bulunamadı"}) //nolint:errcheck
+		return
+	}
+	writeJSON(w, detail)
+}
+
+func (s *Server) postReply(w http.ResponseWriter, r *http.Request) {
+	var req CreateReplyReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validPostID(req.PostID) {
+		writeBadRequest(w, "geçersiz post_id biçimi")
+		return
+	}
+	if req.Body == "" {
+		writeBadRequest(w, "body boş olamaz")
+		return
+	}
+	if err := s.f.CreateReply(r.Context(), req.PostID, req.Body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) postSendChat(w http.ResponseWriter, r *http.Request) {
+	if s.chat == nil {
+		writeErr(w, fmt.Errorf("chat kullanılamıyor"))
+		return
+	}
+	var req SendChatReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Message == "" {
+		writeBadRequest(w, "message boş olamaz")
+		return
+	}
+	if err := s.chat.SendChat(r.Context(), s.id.Name(), req.Message); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getChatPoll(w http.ResponseWriter, r *http.Request) {
+	if s.chat == nil {
+		writeJSON(w, []ChatMsg{})
+		return
+	}
+	ch := s.chat.Subscribe()
+	defer s.chat.Unsubscribe(ch)
+	select {
+	case msg := <-ch:
+		writeJSON(w, []ChatMsg{msg})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []ChatMsg{})
+	case <-r.Context().Done():
+		writeJSON(w, []ChatMsg{})
+	}
+}
+
+func (s *Server) getChatAll(w http.ResponseWriter, _ *http.Request) {
+	if s.chat == nil {
+		writeJSON(w, []ChatMsg{})
+		return
+	}
+	writeJSON(w, s.chat.AllChat())
+}
+
 func (s *Server) getIdentity(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, IdentityInfo{
 		Name:   s.id.Name(),
@@ -169,23 +751,29 @@ func (s *Server) getRole(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, RoleInfo{IsFounder: s.id.IsFounder(), IsModerator: s.id.IsModerator()})
 }
 
-func (s *Server) getPending(w http.ResponseWriter, _ *http.Request) {
+// getAllPosts, moderatör rolüyle sınırlıdır: getForumPost'un aksine bu,
+// TÜM forum içeriğinin toplu bir dökümüdür (moderasyon araçları için) —
+// tek bir gönderiyi id ile okumak (getForumPost, ör. Eklentiler/ornek'in
+// normal kullanımı) forumun P2P'de zaten herkese açık yayınlanan içeriği
+// olduğu için bilerek rol kontrolü GEREKTİRMEZ; kısıtlanan şey "tek bir
+// bilinen gönderiyi oku" değil "tüm forumu toplu indir" yeteneğidir.
+func (s *Server) getAllPosts(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceModeratorRole(w) {
 		return
 	}
-	posts, err := s.f.PendingPosts()
+	posts, err := s.f.AllPosts()
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, posts)
+	writeJSON(w, nonNilSlice(posts))
 }
 
-func (s *Server) postApprove(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postDeletePost(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceModeratorRole(w) {
 		return
 	}
-	var req ApproveReq
+	var req DeletePostReq
 	if !decodeBody(w, r, &req) {
 		return
 	}
@@ -193,45 +781,184 @@ func (s *Server) postApprove(w http.ResponseWriter, r *http.Request) {
 		writeBadRequest(w, "geçersiz post_id biçimi")
 		return
 	}
-	if err := s.f.ApprovePost(req.PostID); err != nil {
+	if err := s.f.DeletePost(r.Context(), req.PostID, req.Reason); err != nil {
 		writeErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) postApproveAuthor(w http.ResponseWriter, r *http.Request) {
+// getSitePages/postSitePublish/postSiteDelete back the "site" plugin
+// (Eklentiler/site) — every call is implicitly scoped to the CALLING
+// node's own identity (bkz. SiteBackend'in doc yorumu), so unlike forum's
+// moderator-only getAllPosts/postDeletePost there is no role check here:
+// managing your own pages requires no more authority than posting to the
+// forum does.
+func (s *Server) getSitePages(w http.ResponseWriter, r *http.Request) {
+	if s.site == nil {
+		writeErr(w, fmt.Errorf("site özelliği kullanılamıyor"))
+		return
+	}
+	pages, err := s.site.MyPages()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, nonNilSlice(pages))
+}
+
+func (s *Server) postSitePublish(w http.ResponseWriter, r *http.Request) {
+	if s.site == nil {
+		writeErr(w, fmt.Errorf("site özelliği kullanılamıyor"))
+		return
+	}
+	var req PublishSitePageReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Slug == "" {
+		writeBadRequest(w, "slug boş olamaz")
+		return
+	}
+	if err := s.site.PublishPage(r.Context(), req.Slug, req.Title, req.Body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) postSiteDelete(w http.ResponseWriter, r *http.Request) {
+	if s.site == nil {
+		writeErr(w, fmt.Errorf("site özelliği kullanılamıyor"))
+		return
+	}
+	var req DeleteSitePageReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.Slug == "" {
+		writeBadRequest(w, "slug boş olamaz")
+		return
+	}
+	if err := s.site.DeletePage(r.Context(), req.Slug); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getModBans(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceModeratorRole(w) {
 		return
 	}
-	var req ApproveAuthorReq
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	bans, err := s.mb.AllBans()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, nonNilSlice(bans))
+}
+
+func (s *Server) postModUnban(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceModeratorRole(w) {
+		return
+	}
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	var req UnbanReq
 	if !decodeBody(w, r, &req) {
 		return
 	}
 	if !validAuthorKey(req.AuthorKey) {
-		writeBadRequest(w, "geçersiz author_key biçimi (64 karakter hex bekleniyor)")
+		writeBadRequest(w, "geçersiz author_key biçimi")
 		return
 	}
-	if err := s.f.ApproveAuthor(req.AuthorKey); err != nil {
+	if err := s.mb.Unban(r.Context(), req.AuthorKey); err != nil {
 		writeErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) postReject(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getModHistory(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceModeratorRole(w) {
 		return
 	}
-	var req RejectReq
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	h, err := s.mb.History()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, nonNilSlice(h))
+}
+
+func (s *Server) getModGrants(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceFounderRole(w) {
+		return
+	}
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	g, err := s.mb.GrantedMods()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, nonNilSlice(g))
+}
+
+func (s *Server) postModGrant(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceFounderRole(w) {
+		return
+	}
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	var req GrantReq
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if !validPostID(req.PostID) {
-		writeBadRequest(w, "geçersiz post_id biçimi")
+	if !validAuthorKey(req.TargetKeyHex) {
+		writeBadRequest(w, "geçersiz target_key_hex biçimi")
 		return
 	}
-	if err := s.f.RejectPost(req.PostID); err != nil {
+	certPath, err := s.mb.Grant(r.Context(), req.TargetKeyHex, time.Duration(req.DurationSec)*time.Second, req.Permanent)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, GrantResp{CertPath: certPath})
+}
+
+func (s *Server) postModRevoke(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceFounderRole(w) {
+		return
+	}
+	if s.mb == nil {
+		writeErr(w, fmt.Errorf("moderasyon kullanılamıyor"))
+		return
+	}
+	var req RevokeReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validAuthorKey(req.TargetKeyHex) {
+		writeBadRequest(w, "geçersiz target_key_hex biçimi")
+		return
+	}
+	if err := s.mb.Revoke(r.Context(), req.TargetKeyHex); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -243,7 +970,7 @@ func (s *Server) postCreate(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := s.f.CreatePost(r.Context(), req.Category, req.Title, req.Body, req.PermanentReq); err != nil {
+	if err := s.f.CreatePost(r.Context(), req.Category, req.Title, req.Body); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -283,6 +1010,250 @@ func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// pathWithinDir, target'ın dir'in içinde (ya da dir'in kendisi) olup
+// olmadığını denetler.
+//
+// target ÖNCE mutlak yola çözülür (filepath.Abs, süreç çalışma dizinine
+// göre) — aksi halde göreli bir yol (ör. "identity.dat" ya da
+// "../and/identity.dat") filepath.Clean'den sonra bile dataDir'in mutlak
+// yoluyla asla eşleşmez/prefix olmaz ve bu korumayı tamamen atlatır.
+//
+// Windows ve macOS'ta varsayılan dosya sistemleri büyük/küçük harfe
+// duyarsızdır (case-insensitive) — bu yüzden bu platformlarda karşılaştırma
+// harf duyarsız yapılır; aksi halde "C:\Users\bob\AppData\Roaming\and\
+// identity.dat" ile aynı dosyaya işaret eden farklı harf biçimli bir yol
+// (ör. "c:\users\bob\...\identity.dat") bu korumayı atlatabilir.
+func pathWithinDir(target, dir string) bool {
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		absTarget = filepath.Clean(target)
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		absDir = filepath.Clean(dir)
+	}
+
+	// Sembolik bağları çöz: target metinsel olarak dataDir dışında görünse
+	// bile, gerçekte dataDir içindeki bir dosyaya işaret eden bir sembolik
+	// bağ olabilir (ör. dataDir dışına yerleştirilmiş, identity.dat'a
+	// işaret eden bir link). EvalSymlinks başarısız olursa (ör. dosya henüz
+	// yoksa ya da bir sembolik bağ değilse) mutlak yolu olduğu gibi
+	// kullanmaya devam ederiz.
+	if resolved, rerr := filepath.EvalSymlinks(absTarget); rerr == nil {
+		absTarget = resolved
+	}
+	if resolved, rerr := filepath.EvalSymlinks(absDir); rerr == nil {
+		absDir = resolved
+	}
+
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		absTarget = strings.ToLower(absTarget)
+		absDir = strings.ToLower(absDir)
+	}
+	return absTarget == absDir || strings.HasPrefix(absTarget, absDir+string(os.PathSeparator))
+}
+
+// sensitiveHomeSubdirs, kullanıcı ana dizini içinde olsa bile
+// forbiddenSendPath'in her zaman reddettiği alt dizinlerdir — SSH/GPG/bulut
+// kimlik bilgileri gibi, "kullanıcının kendi dosyası" görünümü altında P2P
+// ağa sessizce sızdırılabilecek en yüksek değerli hedefler.
+var sensitiveHomeSubdirs = []string{".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"}
+
+// forbiddenSendPath, localPath'in /api/v1/file/send ile gönderilmesine izin
+// verilmeyen bir konumda olması durumunda boş olmayan bir sebep döner.
+//
+// Önceden yalnızca AND'ın kendi veri dizini (dataDir) engelleniyordu — bu,
+// işletim sisteminin AND sürecine okuma izni verdiği HERHANGİ BİR dosyanın
+// (SSH anahtarları, başka kullanıcıların dosyaları, sistem dosyaları) hiçbir
+// kullanıcı onayı olmadan bir eklenti (ya da AND_ENABLE_EXTERNAL_API
+// açıkken aynı makinedeki herhangi bir yerel süreç) tarafından ağa
+// gönderilebileceği anlamına geliyordu. Bu tam bir çözüm DEĞİLDİR — asıl
+// kalıcı çözüm gönderimi TUI'de görünür bir kullanıcı onayına bağlamaktır
+// (ozel_chat'in kendi dosya seçici diyaloğunun zaten yaptığı gibi) — ama API
+// sunucu tarafında hiçbir sınır yoktu; bu en azından kullanıcının ana dizini
+// DIŞINDAKİ (sistem dosyaları, başka kullanıcıların verileri) ve ana dizin
+// İÇİNDEKİ bilinen kimlik bilgisi konumlarını devre dışı bırakır.
+func forbiddenSendPath(localPath string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		// Güvenli-kapalı (fail-closed): ana dizin belirlenemiyorsa bu
+		// fonksiyonun var olma amacı olan sınırlama uygulanamaz demektir —
+		// "" (kısıtlama yok) dönmek her şeye izin vermek anlamına gelir.
+		// Bunun yerine gönderimi tamamen reddet.
+		return "kullanıcı ana dizini belirlenemedi, dosya gönderimi reddedildi"
+	}
+	if !pathWithinDir(localPath, home) {
+		return "yalnızca kullanıcı ana dizini içindeki dosyalar gönderilebilir"
+	}
+	for _, sub := range sensitiveHomeSubdirs {
+		if pathWithinDir(localPath, filepath.Join(home, sub)) {
+			return fmt.Sprintf("%q dizini içindeki dosyalar gönderilemez", sub)
+		}
+	}
+	return ""
+}
+
+func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeErr(w, fmt.Errorf("dosya aktarımı kullanılamıyor"))
+		return
+	}
+	var req SendFileReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.PeerID == "" {
+		writeBadRequest(w, "peer_id boş olamaz")
+		return
+	}
+	if req.LocalPath == "" {
+		writeBadRequest(w, "local_path boş olamaz")
+		return
+	}
+	if s.dataDir != "" && pathWithinDir(req.LocalPath, s.dataDir) {
+		writeBadRequest(w, "güvenlik kısıtlaması: AND veri dizininden dosya gönderilemez")
+		return
+	}
+	if reason := forbiddenSendPath(req.LocalPath); reason != "" {
+		fmt.Fprintf(os.Stderr, "[AND] engellendi: dosya gönderimi reddedildi (%s): %s -> peer %s\n", reason, req.LocalPath, req.PeerID)
+		writeBadRequest(w, "güvenlik kısıtlaması: "+reason)
+		return
+	}
+	// Her gönderim, kullanıcının görebileceği bir iz bıraksın diye stderr'e
+	// yazılır — plugin API'sinin bu uç noktası bugün hiçbir onay diyaloğu
+	// göstermiyor (bkz. forbiddenSendPath'in doc yorumu).
+	fmt.Fprintf(os.Stderr, "[AND] dosya gönderiliyor: %s -> peer %s\n", req.LocalPath, req.PeerID)
+	if err := s.file.SendFile(r.Context(), req.PeerID, s.id.Name(), req.LocalPath); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) getFilePoll(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeJSON(w, []FileMsg{})
+		return
+	}
+	ch := s.file.Subscribe()
+	defer s.file.Unsubscribe(ch)
+	select {
+	case msg := <-ch:
+		writeJSON(w, []FileMsg{msg})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []FileMsg{})
+	case <-r.Context().Done():
+		writeJSON(w, []FileMsg{})
+	}
+}
+
+func (s *Server) getConsentPoll(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeJSON(w, []FileConsentReq{})
+		return
+	}
+	ch := s.file.SubscribeConsent()
+	defer s.file.UnsubscribeConsent(ch)
+	select {
+	case req := <-ch:
+		writeJSON(w, []FileConsentReq{req})
+	case <-time.After(5 * time.Second):
+		writeJSON(w, []FileConsentReq{})
+	case <-r.Context().Done():
+		writeJSON(w, []FileConsentReq{})
+	}
+}
+
+func (s *Server) postConsent(w http.ResponseWriter, r *http.Request) {
+	if s.file == nil {
+		writeBadRequest(w, "dosya backend yok")
+		return
+	}
+	var req ConsentResp
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.TransferID == "" {
+		writeBadRequest(w, "transfer_id boş olamaz")
+		return
+	}
+	s.file.RespondConsent(req.TransferID, req.Accept)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleTheme routes GET (read the active theme) and POST (set the active
+// theme) on /api/v1/theme.
+func (s *Server) handleTheme(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.getTheme(w, r)
+	case http.MethodPost:
+		s.postTheme(w, r)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(errResp{Error: "yöntem izin verilmiyor"}) //nolint:errcheck
+	}
+}
+
+func (s *Server) postTheme(w http.ResponseWriter, r *http.Request) {
+	var req ThemeReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if s.themeCh != nil {
+		select {
+		case s.themeCh <- req:
+		default:
+			// Kanal dolu (tüketici henüz önceki isteği işlemedi) — themeCh
+			// yalnızca gönderme yönlü (chan<-) olduğundan burada eski
+			// değeri atıp yenisini koyamayız. Sessizce 204 dönmek yerine
+			// isteğin uygulanmadığını açıkça bildir; aksi halde çağıran
+			// tema değişikliğinin başarılı olduğunu sanır.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(errResp{Error: "tema isteği düşürüldü, lütfen tekrar deneyin"}) //nolint:errcheck
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ThemeFile is the JSON file (under AND_DATA_DIR) that internal/tui persists
+// the active theme to whenever it's changed (see internal/tui.SaveTheme).
+// pluginapi reads it directly for GET /api/v1/theme instead of importing
+// internal/tui, which would create an import cycle (tui already imports
+// pluginapi for ThemeReq).
+const ThemeFile = "theme.json"
+
+// defaultTheme mirrors AND's built-in default colors (internal/tui/styles.go)
+// so plugins that ask for the active theme before any custom theme has ever
+// been set still get a theme that matches what the user actually sees.
+var defaultTheme = ThemeReq{
+	ThemeName: "Turkuaz",
+	Accent:    "63",
+	SelBG:     "57",
+	SelFG:     "255",
+	Muted:     "241",
+	Name:      "86",
+	Badge:     "33",
+}
+
+// getTheme returns the theme AND's main TUI currently has active, so
+// plugins can match their own color scheme to it.
+func (s *Server) getTheme(w http.ResponseWriter, _ *http.Request) {
+	if s.dataDir != "" {
+		if data, err := os.ReadFile(filepath.Join(s.dataDir, ThemeFile)); err == nil {
+			var req ThemeReq
+			if json.Unmarshal(data, &req) == nil {
+				writeJSON(w, req)
+				return
+			}
+		}
+	}
+	writeJSON(w, defaultTheme)
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v) //nolint:errcheck
@@ -301,7 +1272,11 @@ func writeBadRequest(w http.ResponseWriter, msg string) {
 }
 
 func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(v); err != nil {
+	return decodeBodyN(w, r, v, 1<<16)
+}
+
+func decodeBodyN(w http.ResponseWriter, r *http.Request, v any, maxBytes int64) bool {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBytes)).Decode(v); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(errResp{Error: err.Error()}) //nolint:errcheck
@@ -311,8 +1286,10 @@ func decodeBody(w http.ResponseWriter, r *http.Request, v any) bool {
 }
 
 type Client struct {
-	base string
-	hc   *http.Client
+	base   string
+	token  string
+	hc     *http.Client
+	hcFile *http.Client // dosya transferleri için timeout yok — transfer süresi öngörülemiyor
 }
 
 func NewClientFromEnv() (*Client, error) {
@@ -320,10 +1297,21 @@ func NewClientFromEnv() (*Client, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("AND_API_ADDR tanımlı değil — bu binary AND tarafından başlatılmalıdır")
 	}
+	token := os.Getenv("AND_API_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("AND_API_TOKEN tanımlı değil — bu binary AND tarafından başlatılmalıdır")
+	}
 	return &Client{
-		base: "http://" + addr,
-		hc:   &http.Client{Timeout: 35 * time.Second},
+		base:   "http://" + addr,
+		token:  token,
+		hc:     &http.Client{Timeout: 35 * time.Second},
+		hcFile: &http.Client{},
 	}, nil
+}
+
+func (c *Client) Peers() ([]PeerInfo, error) {
+	var v []PeerInfo
+	return v, c.get("/api/v1/peers", &v)
 }
 
 func (c *Client) Identity() (IdentityInfo, error) {
@@ -336,27 +1324,61 @@ func (c *Client) Role() (RoleInfo, error) {
 	return v, c.get("/api/v1/role", &v)
 }
 
-func (c *Client) Pending() ([]PendingPost, error) {
-	var v []PendingPost
-	return v, c.get("/api/v1/forum/pending", &v)
+func (c *Client) AllPosts() ([]PostSummary, error) {
+	var v []PostSummary
+	return v, c.get("/api/v1/forum/all-posts", &v)
 }
 
-func (c *Client) Approve(postID string) error {
-	return c.post("/api/v1/forum/approve", ApproveReq{PostID: postID})
+func (c *Client) DeletePost(postID string) error {
+	return c.post("/api/v1/forum/delete", DeletePostReq{PostID: postID})
 }
 
-func (c *Client) ApproveAuthor(authorKey string) error {
-	return c.post("/api/v1/forum/approve-author", ApproveAuthorReq{AuthorKey: authorKey})
-}
-
-func (c *Client) Reject(postID string) error {
-	return c.post("/api/v1/forum/reject", RejectReq{PostID: postID})
-}
-
-func (c *Client) CreatePost(category, title, body string, permanentReq bool) error {
+func (c *Client) CreatePost(category, title, body string) error {
 	return c.post("/api/v1/forum/post", CreatePostReq{
-		Category: category, Title: title, Body: body, PermanentReq: permanentReq,
+		Category: category, Title: title, Body: body,
 	})
+}
+
+func (c *Client) GetPost(id string) (*PostDetail, error) {
+	var v PostDetail
+	return &v, c.get("/api/v1/forum/post?id="+id, &v)
+}
+
+func (c *Client) CreateReply(postID, body string) error {
+	return c.post("/api/v1/forum/reply", CreateReplyReq{PostID: postID, Body: body})
+}
+
+// SitePages returns the CALLER's OWN personal-site pages (bkz. SiteBackend'in doc yorumu).
+func (c *Client) SitePages() ([]SitePageInfo, error) {
+	var v []SitePageInfo
+	return v, c.get("/api/v1/site/pages", &v)
+}
+
+// PublishSitePage creates slug (if unused) or wholesale-replaces it (if it
+// already belongs to the caller).
+func (c *Client) PublishSitePage(slug, title, body string) error {
+	return c.post("/api/v1/site/publish", PublishSitePageReq{Slug: slug, Title: title, Body: body})
+}
+
+func (c *Client) DeleteSitePage(slug string) error {
+	return c.post("/api/v1/site/delete", DeleteSitePageReq{Slug: slug})
+}
+
+func (c *Client) SendChat(message string) error {
+	return c.post("/api/v1/chat/send", SendChatReq{Message: message})
+}
+
+func (c *Client) PollChat() ([]ChatMsg, error) {
+	var v []ChatMsg
+	return v, c.get("/api/v1/chat/poll", &v)
+}
+
+// AllChat returns the full locally-known chat history — unlike PollChat
+// (which only returns new messages as they arrive live), this is a
+// point-in-time snapshot of everything persisted so far.
+func (c *Client) AllChat() ([]ChatMsg, error) {
+	var v []ChatMsg
+	return v, c.get("/api/v1/chat/all", &v)
 }
 
 func (c *Client) SendDM(peerID, message string) error {
@@ -368,12 +1390,87 @@ func (c *Client) PollDM() ([]DMMsg, error) {
 	return v, c.get("/api/v1/dm/poll", &v)
 }
 
+func (c *Client) SendFile(peerID, localPath string) error {
+	return c.postWith(c.hcFile, "/api/v1/file/send", SendFileReq{PeerID: peerID, LocalPath: localPath})
+}
+
+func (c *Client) PollFile() ([]FileMsg, error) {
+	var v []FileMsg
+	return v, c.get("/api/v1/file/poll", &v)
+}
+
+func (c *Client) PollConsent() ([]FileConsentReq, error) {
+	var v []FileConsentReq
+	return v, c.get("/api/v1/file/consent-poll", &v)
+}
+
+func (c *Client) RespondConsent(transferID string, accept bool) error {
+	return c.post("/api/v1/file/consent", ConsentResp{TransferID: transferID, Accept: accept})
+}
+
+// AllBans lists every currently-active ban — requires kurucu/moderatör
+// yetkisi (bkz. ModerationBackend).
+func (c *Client) AllBans() ([]BanEntryInfo, error) {
+	var v []BanEntryInfo
+	return v, c.get("/api/v1/mod/bans", &v)
+}
+
+// Unban lifts an active ban on authorKey.
+func (c *Client) Unban(authorKey string) error {
+	return c.post("/api/v1/mod/unban", UnbanReq{AuthorKey: authorKey})
+}
+
+// ModHistory returns the local moderation audit log, newest first.
+func (c *Client) ModHistory() ([]HistoryEntryInfo, error) {
+	var v []HistoryEntryInfo
+	return v, c.get("/api/v1/mod/history", &v)
+}
+
+// GrantedMods lists moderator certificates this node (as founder) has
+// issued — yalnızca kurucu kimlik için anlamlı sonuç döner.
+func (c *Client) GrantedMods() ([]GrantedModInfo, error) {
+	var v []GrantedModInfo
+	return v, c.get("/api/v1/mod/grants", &v)
+}
+
+// GrantModerator issues a new moderator certificate to targetKeyHex —
+// yalnızca kurucu kimlik çağırabilir. duration is ignored when permanent
+// is true.
+func (c *Client) GrantModerator(targetKeyHex string, duration time.Duration, permanent bool) (certPath string, err error) {
+	var resp GrantResp
+	req := GrantReq{TargetKeyHex: targetKeyHex, DurationSec: int64(duration.Seconds()), Permanent: permanent}
+	err = c.postJSON("/api/v1/mod/grant", req, &resp)
+	return resp.CertPath, err
+}
+
+// RevokeModerator withdraws targetKeyHex's moderator authority — yalnızca
+// kurucu kimlik çağırabilir.
+func (c *Client) RevokeModerator(targetKeyHex string) error {
+	return c.post("/api/v1/mod/revoke", RevokeReq{TargetKeyHex: targetKeyHex})
+}
+
+func (c *Client) SetTheme(req ThemeReq) error {
+	return c.post("/api/v1/theme", req)
+}
+
+// GetTheme returns the theme AND's main TUI currently has active. Plugins
+// can use this to match their own color scheme to the user's chosen theme.
+func (c *Client) GetTheme() (ThemeReq, error) {
+	var v ThemeReq
+	return v, c.get("/api/v1/theme", &v)
+}
+
 func DataDir() string { return os.Getenv("AND_DATA_DIR") }
 
 func Category() string { return os.Getenv("AND_CATEGORY") }
 
 func (c *Client) get(path string, out any) error {
-	resp, err := c.hc.Get(c.base + path)
+	req, err := http.NewRequest(http.MethodGet, c.base+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-And-Token", c.token)
+	resp, err := c.hc.Do(req)
 	if err != nil {
 		return err
 	}
@@ -387,11 +1484,21 @@ func (c *Client) get(path string, out any) error {
 }
 
 func (c *Client) post(path string, body any) error {
+	return c.postWith(c.hc, path, body)
+}
+
+func (c *Client) postWith(hc *http.Client, path string, body any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	resp, err := c.hc.Post(c.base+path, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, c.base+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-And-Token", c.token)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return err
 	}
@@ -402,4 +1509,31 @@ func (c *Client) post(path string, body any) error {
 	var e errResp
 	json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
 	return fmt.Errorf("api: %s", e.Error)
+}
+
+// postJSON is like post but decodes a JSON response body on success (200
+// OK) instead of expecting 204 No Content — for the few endpoints (ör.
+// GrantModerator) that return data.
+func (c *Client) postJSON(path string, body, out any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.base+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-And-Token", c.token)
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		var e errResp
+		json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
+		return fmt.Errorf("api: %s", e.Error)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
 }

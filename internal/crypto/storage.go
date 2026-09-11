@@ -26,10 +26,11 @@ const (
 	// unambiguous delimiter.
 	nameSep = 0x00
 
-	// Argon2id parameters. Tuned for an interactive local unlock (roughly
-	// tens of milliseconds on modern hardware) while still being far
-	// stronger than a bare password hash.
-	argon2Time    = 1
+	// Argon2id parameters — m=64MiB, t=3, p=4, matching RFC 9106's
+	// recommended low-memory profile (t=1 undershoots that guidance and
+	// gives an offline attacker against a stolen identity.dat roughly 3x
+	// more guesses per second for the same hardware budget).
+	argon2Time    = 3
 	argon2Memory  = 64 * 1024 // 64 MB
 	argon2Threads = 4
 	argon2KeyLen  = 32 // AES-256

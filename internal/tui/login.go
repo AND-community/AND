@@ -27,6 +27,7 @@ type loginStage int
 const (
 	stageForm loginStage = iota
 	stageMnemonic
+	stageVerify // kullanıcı sözcük girerek kodu not ettiğini kanıtlar
 	stageName
 	stageDone
 )
@@ -48,6 +49,10 @@ type loginModel struct {
 	err      error
 	mnemonic string
 
+	verifyInput   textinput.Model
+	verifyWordIdx int
+	verifyWordVal string
+
 	identity   *stdcrypto.Identity
 	passphrase string
 	cancelled  bool
@@ -55,7 +60,9 @@ type loginModel struct {
 	width, height int
 }
 
-func Login(path string) (*stdcrypto.Identity, error) {
+func Login(path, dataDir string) (*stdcrypto.Identity, error) {
+	loadAndApplyTheme(dataDir)
+
 	register := true
 	if _, err := os.Stat(path); err == nil {
 		register = false
@@ -130,9 +137,11 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateForm(msg)
 		case stageMnemonic:
 			if msg.String() == "enter" {
-				return m.confirmMnemonic()
+				return m.goToVerify()
 			}
 			return m, nil
+		case stageVerify:
+			return m.updateVerify(msg)
 		case stageName:
 			return m.updateName(msg)
 		}
@@ -238,19 +247,67 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m loginModel) confirmMnemonic() (tea.Model, tea.Cmd) {
-	if err := m.identity.SaveEncrypted(m.path, m.passphrase); err != nil {
-		m.err = fmt.Errorf("kimlik kaydedilemedi: %w", err)
-		return m, nil
+func (m loginModel) goToVerify() (tea.Model, tea.Cmd) {
+	words := strings.Fields(m.mnemonic)
+	idx := 5 // 6. kelime (0-tabanlı)
+	if len(words) <= idx {
+		idx = 0
 	}
-	m.stage = stageDone
-	return m, tea.Quit
+	target := words[idx]
+	vi := textinput.New()
+	vi.Placeholder = fmt.Sprintf("%d. kelimeyi yaz…", idx+1)
+	// CharLimit/Width sabit 20/26 değil, target'a göre: m.mnemonic
+	// (id.RecoveryCode()) boşluksuz tek bir "kelime" olduğundan (bkz.
+	// RecoveryCode'un "AAAA-BBBB-CCCC-DDDD" biçimi), words her zaman tek
+	// elemanlı olur ve target o kodun TAMAMI (35 karakter) olur — sabit bir
+	// 20 karakterlik sınır, kullanıcı doğru girse bile onu sessizce keserdi.
+	vi.CharLimit = len(target) + 16
+	vi.Width = len(target) + 4
+	if vi.Width < 26 {
+		vi.Width = 26
+	}
+	vi.Focus()
+	m.verifyInput = vi
+	m.verifyWordIdx = idx
+	m.verifyWordVal = target
+	m.err = nil
+	m.stage = stageVerify
+	return m, nil
+}
+
+func (m loginModel) updateVerify(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.err = nil
+		m.verifyInput.SetValue("")
+		m.stage = stageMnemonic
+		return m, nil
+	case "enter":
+		entered := strings.ToLower(strings.TrimSpace(m.verifyInput.Value()))
+		if entered != strings.ToLower(m.verifyWordVal) {
+			m.err = errors.New("yanlış kelime — kurtarma kodunu tekrar kontrol et")
+			m.verifyInput.SetValue("")
+			return m, nil
+		}
+		m.err = nil
+		if err := m.identity.SaveEncrypted(m.path, m.passphrase); err != nil {
+			m.err = fmt.Errorf("kimlik kaydedilemedi: %w", err)
+			return m, nil
+		}
+		m.stage = stageDone
+		return m, tea.Quit
+	}
+	var cmd tea.Cmd
+	m.verifyInput, cmd = m.verifyInput.Update(msg)
+	return m, cmd
 }
 
 func (m loginModel) View() string {
 	switch m.stage {
 	case stageMnemonic:
 		return m.viewMnemonic()
+	case stageVerify:
+		return m.viewVerify()
 	case stageName:
 		return m.viewName()
 	default:
@@ -291,14 +348,14 @@ func (m loginModel) center(content string) string {
 }
 
 func logoBlock() string {
-	logoSt  := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	verSt   := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
+	logoSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
+	verSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
 	badgeSt := lipgloss.NewStyle().
 		Background(colorSelBG).Foreground(colorSelFG).
 		Bold(true).Padding(0, 1)
 
-	badge := badgeSt.Render("ALPHA")
-	ver   := verSt.Render("v0.1.0")
+	badge := badgeSt.Render(ActiveThemeName)
+	ver := verSt.Render("v0.1.0")
 
 	return lipgloss.JoinVertical(lipgloss.Center,
 		logoSt.Render(andASCIIArt),
@@ -306,12 +363,6 @@ func logoBlock() string {
 		lipgloss.JoinHorizontal(lipgloss.Center, ver, "  ", badge),
 	)
 }
-
-var loginFormBoxSt = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(colorAccent).
-	Padding(1, 3).
-	Width(44)
 
 func (m loginModel) viewForm() string {
 	var b strings.Builder
@@ -396,6 +447,32 @@ func (m loginModel) viewMnemonic() string {
 		b.WriteString("\n\n")
 	}
 	b.WriteString(helpStyle.Render("kaydettikten sonra enter    esc  iptal"))
+
+	content := lipgloss.JoinVertical(lipgloss.Center,
+		logoBlock(),
+		"",
+		loginFormBoxSt.Render(b.String()),
+	)
+	return m.center(content)
+}
+
+func (m loginModel) viewVerify() string {
+	var b strings.Builder
+	b.WriteString(focusedLabelStyle.Render("Kurtarma Kodunu Doğrula"))
+	b.WriteString("\n")
+	b.WriteString(labelStyle.Render("Kodun gerçekten kaydedildiğinden emin olmak için"))
+	b.WriteString("\n")
+	b.WriteString(labelStyle.Render(fmt.Sprintf("kurtarma kodunun %d. kelimesini gir:", m.verifyWordIdx+1)))
+	b.WriteString("\n\n")
+	b.WriteString(focusedLabelStyle.Render(fmt.Sprintf("%d. Kelime", m.verifyWordIdx+1)))
+	b.WriteString("\n")
+	b.WriteString(m.verifyInput.View())
+	b.WriteString("\n\n")
+	if m.err != nil {
+		b.WriteString(errorStyle.Render("✗  " + m.err.Error()))
+		b.WriteString("\n\n")
+	}
+	b.WriteString(helpStyle.Render("enter  onayla    esc  geri dön"))
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
 		logoBlock(),

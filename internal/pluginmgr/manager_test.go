@@ -38,7 +38,7 @@ func TestPlugin_Launch_EnvVars(t *testing.T) {
 		Manifest: pluginapi.Manifest{Name: "test"},
 		ExePath:  "/bin/echo",
 	}
-	cmd := p.Launch("127.0.0.1:12345", "/tmp/data", "AND_CATEGORY=genel")
+	cmd := p.Launch("127.0.0.1:12345", "test-token-abc", "/tmp/data", "AND_CATEGORY=genel")
 
 	envMap := make(map[string]string)
 	for _, e := range cmd.Env {
@@ -51,6 +51,9 @@ func TestPlugin_Launch_EnvVars(t *testing.T) {
 	if got := envMap["AND_API_ADDR"]; got != "127.0.0.1:12345" {
 		t.Errorf("AND_API_ADDR: %q", got)
 	}
+	if got := envMap["AND_API_TOKEN"]; got != "test-token-abc" {
+		t.Errorf("AND_API_TOKEN: %q", got)
+	}
 	if got := envMap["AND_DATA_DIR"]; got != "/tmp/data" {
 		t.Errorf("AND_DATA_DIR: %q", got)
 	}
@@ -61,45 +64,31 @@ func TestPlugin_Launch_EnvVars(t *testing.T) {
 
 // ─── getManifest ──────────────────────────────────────────────────────────────
 
-// buildFakePlugin compiles a tiny Go program that prints a manifest on
-// --manifest and exits. Returns the path to the compiled binary.
-func buildFakePlugin(t *testing.T, manifest pluginapi.Manifest) string {
+// writeSidecarPlugin ana-dizin (discoverAndDir) tarzı bir eklenti için bir
+// and-plugin-<isim>[.exe] yer tutucu dosyası ve yanına bir and-plugin-<isim>.json
+// sidecar manifest dosyası yazar. getManifest artık HİÇBİR ZAMAN binary'yi
+// çalıştırmadığından (bkz. manager.go'daki güvenlik notu), yer tutucu dosya
+// gerçek bir binary olmak zorunda değildir — bu da testleri gerçek bir `go
+// build` alt sürecine ihtiyaç duymadan hızlandırır.
+func writeSidecarPlugin(t *testing.T, dir string, manifest pluginapi.Manifest) string {
 	t.Helper()
+
+	binName := "and-plugin-" + manifest.Name
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(dir, binName)
+	if err := os.WriteFile(binPath, []byte("yer-tutucu"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	src := fmt.Sprintf(`package main
-import (
-	"fmt"
-	"os"
-)
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--manifest" {
-		fmt.Println(%q)
-		return
-	}
-	os.Exit(1)
-}
-`, string(data))
-
-	dir := t.TempDir()
-	srcFile := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(srcFile, []byte(src), 0o644); err != nil {
+	jsonPath := strings.TrimSuffix(binPath, ".exe") + ".json"
+	if err := os.WriteFile(jsonPath, data, 0o644); err != nil {
 		t.Fatal(err)
-	}
-
-	binName := "and-plugin-testfake"
-	if runtime.GOOS == "windows" {
-		binName += ".exe"
-	}
-	binPath := filepath.Join(dir, binName)
-
-	cmd := exec.Command("go", "build", "-o", binPath, srcFile)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build fake plugin: %v\n%s", err, out)
 	}
 	return binPath
 }
@@ -111,7 +100,7 @@ func TestGetManifest_Valid(t *testing.T) {
 		Version: "1.0.0",
 		Author:  "Test",
 	}
-	bin := buildFakePlugin(t, want)
+	bin := writeSidecarPlugin(t, t.TempDir(), want)
 
 	got, err := getManifest(bin)
 	if err != nil {
@@ -135,6 +124,42 @@ func TestGetManifest_NotFound(t *testing.T) {
 	}
 }
 
+// Güvenlik regresyon testi: getManifest ÖNCEDEN, sidecar JSON yoksa
+// binary'yi "--manifest" argümanıyla ÇALIŞTIRIRDI — bu, and-plugin-*
+// adındaki HERHANGİ BİR dosyanın (kullanıcı onayı olmadan) AND'ın
+// yetkileriyle çalıştırılmasına yol açıyordu. Artık sidecar yoksa hata
+// dönmeli ve binary asla exec edilmemeli.
+func TestGetManifest_NoSidecar_NeverExecutesBinary(t *testing.T) {
+	dir := t.TempDir()
+	binName := "and-plugin-tehlikeli"
+	if runtime.GOOS == "windows" {
+		binName += ".exe"
+	}
+	binPath := filepath.Join(dir, binName)
+
+	marker := filepath.Join(dir, "calisti.marker")
+	src := fmt.Sprintf(`package main
+import "os"
+func main() {
+	os.WriteFile(%q, []byte("calisti"), 0o644)
+}
+`, marker)
+	srcFile := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(srcFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("go", "build", "-o", binPath, srcFile).CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+
+	if _, err := getManifest(binPath); err == nil {
+		t.Fatal("expected error when no sidecar manifest exists")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("getManifest must never execute the plugin binary")
+	}
+}
+
 // ─── Discover ─────────────────────────────────────────────────────────────────
 
 func TestDiscover_FindsPlugins(t *testing.T) {
@@ -143,39 +168,11 @@ func TestDiscover_FindsPlugins(t *testing.T) {
 		Label:   "Benim Eklentim",
 		Version: "3.0.0",
 	}
-	// Build the fake plugin into a temp dir named "and-plugin-myplugin[.exe]".
 	dir := t.TempDir()
-	binName := "and-plugin-myplugin"
-	if runtime.GOOS == "windows" {
-		binName += ".exe"
-	}
+	writeSidecarPlugin(t, dir, want)
 
-	data, _ := json.Marshal(want)
-	src := fmt.Sprintf(`package main
-import (
-	"fmt"
-	"os"
-)
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--manifest" {
-		fmt.Println(%q)
-		return
-	}
-	os.Exit(1)
-}
-`, string(data))
-
-	srcFile := filepath.Join(dir, "main.go")
-	_ = os.WriteFile(srcFile, []byte(src), 0o644)
-	binPath := filepath.Join(dir, binName)
-	cmd := exec.Command("go", "build", "-o", binPath, srcFile)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v\n%s", err, out)
-	}
-
-	// Run a child process that scans the temp dir (not the test's exe dir).
-	// We test Discover indirectly by calling discoverDir.
-	plugins := discoverDir(dir)
+	// We test Discover indirectly by calling discoverAndDir.
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 1 {
 		t.Fatalf("expected 1 plugin, got %d", len(plugins))
 	}
@@ -189,7 +186,7 @@ func main() {
 
 func TestDiscover_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	plugins := discoverDir(dir)
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 0 {
 		t.Errorf("expected 0 plugins, got %d", len(plugins))
 	}
@@ -201,7 +198,7 @@ func TestDiscover_SkipsNonPluginFiles(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "and-core"), []byte{}, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "README.txt"), []byte{}, 0o644)
 
-	plugins := discoverDir(dir)
+	plugins := discoverAndDir(dir)
 	if len(plugins) != 0 {
 		t.Errorf("expected 0 plugins, got %d", len(plugins))
 	}
@@ -234,6 +231,33 @@ func TestGetManifest_SidecarJSON(t *testing.T) {
 	}
 	if got.Name != want.Name || got.Label != want.Label || got.Version != want.Version {
 		t.Errorf("sidecar manifest mismatch: got %+v, want %+v", got, want)
+	}
+}
+
+// Güvenlik regresyon testi: bir manifest'in Label/Description alanındaki ESC/
+// ANSI kaçış dizileri, dosya varlığıyla bile (eklenti hiç çalıştırılmadan)
+// AND'ın kendi menüsünü manipüle edebilirdi (bkz. sanitizeManifest'in doc
+// yorumu) — artık ayıklanmalı.
+func TestGetManifest_SanitizesControlCharacters(t *testing.T) {
+	dir := t.TempDir()
+	want := pluginapi.Manifest{
+		Name:        "kirli",
+		Label:       "Zararsız\x1b[2J\x1b]0;Sahte Baslik\x07 Görünen",
+		Description: "Aciklama\x00ile\x1bkontrol\x7fkarakterleri",
+		Version:     "1.0.0",
+		Author:      "Test",
+	}
+	binPath := writeSidecarPlugin(t, dir, want)
+
+	got, err := getManifest(binPath)
+	if err != nil {
+		t.Fatalf("getManifest: %v", err)
+	}
+	if strings.ContainsAny(got.Label, "\x1b\x00\x07") {
+		t.Errorf("Label kontrol karakteri içeriyor: %q", got.Label)
+	}
+	if strings.ContainsAny(got.Description, "\x1b\x00\x7f") {
+		t.Errorf("Description kontrol karakteri içeriyor: %q", got.Description)
 	}
 }
 
@@ -312,41 +336,15 @@ func TestLoadState_MissingFile_ReturnsEmpty(t *testing.T) {
 func TestDiscoverWithState_AppliesDisabledList(t *testing.T) {
 	dir := t.TempDir()
 
-	// Build a real plugin binary.
 	want := pluginapi.Manifest{Name: "mywired", Label: "Wired", Version: "1.0.0"}
-	data, _ := json.Marshal(want)
-	src := fmt.Sprintf(`package main
-import (
-	"fmt"
-	"os"
-)
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--manifest" {
-		fmt.Println(%q)
-		return
-	}
-	os.Exit(1)
-}
-`, string(data))
-
-	binName := "and-plugin-mywired"
-	if runtime.GOOS == "windows" {
-		binName += ".exe"
-	}
-	srcFile := filepath.Join(dir, "main.go")
-	_ = os.WriteFile(srcFile, []byte(src), 0o644)
-	binPath := filepath.Join(dir, binName)
-	cmd := exec.Command("go", "build", "-o", binPath, srcFile)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v\n%s", err, out)
-	}
+	writeSidecarPlugin(t, dir, want)
 
 	// Save a state file that disables "mywired".
 	plugins := []Plugin{{Manifest: want, Enabled: false}}
 	_ = SaveState(plugins, dir)
 
 	// Discover + apply state.
-	discovered := discoverDir(dir)
+	discovered := discoverAndDir(dir)
 	applyState(discovered, loadState(dir))
 
 	if len(discovered) != 1 {

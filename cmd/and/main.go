@@ -11,19 +11,24 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/lucian95511/and/internal/chatlog"
+	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/dmmgr"
+	"github.com/lucian95511/and/internal/filemgr"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/internal/profile"
+	"github.com/lucian95511/and/internal/site"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/internal/updater"
 
-	lp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -45,19 +50,27 @@ func appDir() (string, error) {
 		return "", fmt.Errorf("create app dir: %w", err)
 	}
 
-	appDataID := filepath.Join(dir, "identity.dat")
-	if _, err := os.Stat(appDataID); os.IsNotExist(err) {
-		candidates := []string{}
-		if exe, err2 := os.Executable(); err2 == nil {
-			candidates = append(candidates, filepath.Join(filepath.Dir(exe), "identity.dat"))
-		}
-		if cwd, err2 := os.Getwd(); err2 == nil {
-			candidates = append(candidates, filepath.Join(cwd, "identity.dat"))
-		}
-		for _, c := range candidates {
-			if data, err2 := os.ReadFile(c); err2 == nil {
-				_ = os.WriteFile(appDataID, data, 0o600)
-				break
+	// Taşınabilir kurulum (ör. USB'den çalıştırma) için exe yanında/CWD'de
+	// duran bir identity.dat'i AND'ın gerçek yapılandırma dizinine kopyalar.
+	// Yalnızca AND_PORTABLE=1 açıkça ayarlandığında çalışır: varsayılan
+	// olarak AÇIK olması, kullanıcının çalıştırdığı klasöre "identity.dat"
+	// adlı bir dosya bırakan biri tarafından gerçek kimliğin sessizce ele
+	// geçirilebilmesi (kimlik taklidi) anlamına gelirdi.
+	if os.Getenv("AND_PORTABLE") == "1" {
+		appDataID := filepath.Join(dir, "identity.dat")
+		if _, err := os.Stat(appDataID); os.IsNotExist(err) {
+			candidates := []string{}
+			if exe, err2 := os.Executable(); err2 == nil {
+				candidates = append(candidates, filepath.Join(filepath.Dir(exe), "identity.dat"))
+			}
+			if cwd, err2 := os.Getwd(); err2 == nil {
+				candidates = append(candidates, filepath.Join(cwd, "identity.dat"))
+			}
+			for _, c := range candidates {
+				if data, err2 := os.ReadFile(c); err2 == nil {
+					_ = os.WriteFile(appDataID, data, 0o600)
+					break
+				}
 			}
 		}
 	}
@@ -66,43 +79,11 @@ func appDir() (string, error) {
 }
 
 func deriveFounderPeerID(pubHex string) peer.ID {
-	raw, err := hex.DecodeString(pubHex)
-	if err != nil || len(raw) != 32 {
-		return peer.ID("")
-	}
-	lp2pPub, err := lp2pcrypto.UnmarshalEd25519PublicKey(raw)
-	if err != nil {
-		return peer.ID("")
-	}
-	pid, err := peer.IDFromPublicKey(lp2pPub)
+	pid, err := moderation.AuthorKeyToPeerID(pubHex)
 	if err != nil {
 		return peer.ID("")
 	}
 	return pid
-}
-
-func publishSavedBans(ctx context.Context, topic *network.Topic, dataDir string) {
-	select {
-	case <-ctx.Done():
-		return
-	case <-time.After(5 * time.Second):
-	}
-
-	bansDir := filepath.Join(dataDir, "bans")
-	entries, err := os.ReadDir(bansDir)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(bansDir, e.Name()))
-		if err != nil {
-			continue
-		}
-		_ = topic.Publish(ctx, data)
-	}
 }
 
 func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
@@ -139,59 +120,6 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 	return peers
 }
 
-func buildApprovalFn(
-	ctx context.Context,
-	dir string,
-	id interface {
-		PublicKey() ed25519.PublicKey
-		PrivateKey() ed25519.PrivateKey
-	},
-	isFounder bool,
-	localApprove func(postID string),
-	modTopic *network.Topic,
-) func(postID string) error {
-	if modTopic == nil {
-		return nil
-	}
-	myPubHex := hex.EncodeToString(id.PublicKey())
-	bansDir := filepath.Join(dir, "bans")
-
-	makePublish := func(certPtr *moderation.ModeratorCert) func(string) error {
-		privKey := id.PrivateKey()
-		return func(postID string) error {
-			now := time.Now().UTC()
-			payload := fmt.Sprintf("approve|%s|%d", postID, now.Unix())
-			sig := ed25519.Sign(privKey, []byte(payload))
-			msg := moderation.ApprovalMsg{PostID: postID, IssuedAt: now, Cert: certPtr, Sig: hex.EncodeToString(sig)}
-			envelope := moderation.Envelope{Type: "approve", Approve: &msg}
-			data, err := json.Marshal(envelope)
-			if err != nil {
-				return err
-			}
-			if err := modTopic.Publish(ctx, data); err != nil {
-				return err
-			}
-			localApprove(postID)
-			_ = os.MkdirAll(bansDir, 0o700)
-			short := postID
-			if len(short) > 8 {
-				short = short[:8]
-			}
-			fd, _ := json.MarshalIndent(envelope, "", "  ")
-			_ = os.WriteFile(filepath.Join(bansDir, "approve_"+short+".json"), fd, 0o600)
-			return nil
-		}
-	}
-
-	if isFounder {
-		return makePublish(nil)
-	}
-	if cert := moderation.FindModCert(dir, myPubHex); cert != nil {
-		return makePublish(cert)
-	}
-	return nil
-}
-
 func run() error {
 	dir, err := appDir()
 	if err != nil {
@@ -199,7 +127,7 @@ func run() error {
 	}
 	identityFile := filepath.Join(dir, "identity.dat")
 
-	id, err := tui.Login(identityFile)
+	id, err := tui.Login(identityFile, dir)
 	if err != nil {
 		return err
 	}
@@ -260,20 +188,79 @@ func run() error {
 	} else {
 		mod.Start(ctx, modTopic)
 		defer modTopic.Close()
-		go publishSavedBans(ctx, modTopic, dir)
+		go func() {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(5 * time.Second):
+			}
+			mod.PublishSavedBans(ctx, modTopic, dir)
+		}()
 	}
 
-	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"), mod)
+	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"))
 	if err != nil {
 		return fmt.Errorf("init forum: %w", err)
 	}
-
-	mod.SetOnApprove(forumStore.ApprovePost)
-	mod.SetOnTrustedAuthor(forumStore.ApprovePostsByAuthor)
+	forumStore.SetModerator(mod)
 
 	go forumStore.Run(ctx)
 
 	forumStore.RegisterSync(node.Host)
+
+	chatStore, err := chatlog.New(id, chatTopic, forumStore.DB(), dir)
+	if err != nil {
+		return fmt.Errorf("init chatlog: %w", err)
+	}
+	chatStore.SetModerator(mod)
+	go chatStore.Run(ctx)
+	chatStore.RegisterSync(node.Host)
+
+	profileTopic, err := network.JoinTopic(ps, node.Host, profile.ProfileTopic)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "profile topic:", err)
+		profileTopic = nil
+	} else {
+		defer profileTopic.Close()
+	}
+	profileStore, err := profile.New(id, profileTopic, forumStore.DB(), mod)
+	if err != nil {
+		return fmt.Errorf("init profile: %w", err)
+	}
+	go profileStore.Run(ctx)
+
+	// Kendi profilimizi (varsa) her başlangıçta bir kez yeniden yayınla —
+	// profil güncellemelerinin forum konuları gibi bir sync protokolü yoktur,
+	// bu yüzden yeni bağlanan bir peer'ın bunu görebilmesi ancak canlı bir
+	// gossip yayınıyla mümkündür (bkz. publishSavedBans'teki aynı desen).
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+		myKey := hex.EncodeToString(id.PublicKey())
+		if existing := profileStore.Get(myKey); existing != nil {
+			_ = profileStore.PublishOwn(ctx, profile.OwnUpdate{
+				Bio: existing.Bio, Status: existing.Status, Tags: existing.Tags, Link: existing.Link,
+				GitHubUser: existing.GitHubUser,
+			})
+		}
+	}()
+
+	siteTopic, err := network.JoinTopic(ps, node.Host, site.SiteTopic)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "site topic:", err)
+		siteTopic = nil
+	} else {
+		defer siteTopic.Close()
+	}
+	siteStore, err := site.New(id, siteTopic, forumStore.DB())
+	if err != nil {
+		return fmt.Errorf("init site: %w", err)
+	}
+	go siteStore.Run(ctx)
+	siteStore.RegisterSync(node.Host)
 
 	go func() {
 		synced := make(map[peer.ID]bool)
@@ -288,9 +275,11 @@ func run() error {
 					select {
 					case <-ctx.Done():
 						return
-					case <-time.After(2 * time.Second):
+					case <-time.After(1 * time.Second):
 					}
 					_ = forumStore.SyncWithPeer(ctx, node.Host, pid)
+					_ = chatStore.SyncWithPeer(ctx, node.Host, pid)
+					_ = siteStore.SyncWithPeer(ctx, node.Host, pid)
 				}(peerID)
 			case <-ctx.Done():
 				return
@@ -299,34 +288,75 @@ func run() error {
 	}()
 
 	dmBroker := dmmgr.New(node)
+	dmBroker.SetModerator(mod)
+	dosyalarDir := filepath.Join(dir, "dosyalar")
+	_ = os.MkdirAll(dosyalarDir, 0o700)
+	fileBroker := filemgr.New(node, dosyalarDir)
+	fileBroker.SetModerator(mod)
 
-	approvalFn := buildApprovalFn(ctx, dir, id, isFounder, forumStore.ApprovePost, modTopic)
+	// Ayrı bir chat topic aboneliği oluştur: plugin API ile TUI aynı
+	// subscription'ı paylaşmaz. network.ChatTopic zaten yukarıda (chatTopic)
+	// join edilmiş durumda — aynı adı ikinci kez JoinTopic ile join etmeye
+	// çalışmak go-libp2p-pubsub'da her zaman "topic already exists" hatası
+	// döner; bunun yerine aynı join edilmiş topic üzerinde BAĞIMSIZ bir
+	// ikinci abonelik açıyoruz (bkz. Topic.NewSubscriber'ın doc yorumu).
+	pluginChatTopic, err := chatTopic.NewSubscriber(node.Host)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "plugin chat topic:", err)
+		pluginChatTopic = nil
+	} else {
+		defer pluginChatTopic.Close()
+	}
 
 	idBackend := &identityAdapter{
 		id:        id,
 		node:      node,
 		isFounder: isFounder,
 		dir:       dir,
+		mod:       mod,
 	}
 	fBackend := &forumAdapter{
-		store:      forumStore,
-		approvalFn: approvalFn,
+		store:     forumStore,
+		dir:       dir,
+		mod:       mod,
+		isFounder: isFounder,
+		myPubHex:  myPubHex,
+	}
+	siteBackend := &siteAdapter{store: siteStore, id: id}
+	mBackend := &modAdapter{
+		mod:       mod,
+		modTopic:  modTopic,
+		chat:      chatStore,
+		identity:  id,
+		dir:       dir,
+		isFounder: isFounder,
+		myPubHex:  myPubHex,
 	}
 
-	apiSrv := pluginapi.NewServer(idBackend, fBackend, dmBroker)
-	apiAddr, err := apiSrv.Start(ctx)
+	var chatBackend pluginapi.ChatBackend
+	if pluginChatTopic != nil {
+		chatBackend = newChatAdapter(ctx, pluginChatTopic, chatStore, id.Name())
+	}
+
+	themeCh := make(chan pluginapi.ThemeReq, 1)
+	apiSrv := pluginapi.NewServer(idBackend, fBackend, siteBackend, dmBroker, fileBroker, chatBackend, mBackend, dir, themeCh)
+	apiAddr, apiToken, err := apiSrv.Start(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
 		apiAddr = ""
+		apiToken = ""
 	}
 
 	plugins := pluginmgr.DiscoverWithState(dir)
 
 	updateCh := make(chan tui.UpdateReadyMsg, 1)
 	restartCh := make(chan struct{}, 1)
-	go autoUpdate(ctx, updateCh, restartCh)
+	// AND_AUTO_UPDATE=0 ile kapatılabilir; varsayılan (tanımsız/başka değer) açıktır.
+	if os.Getenv("AND_AUTO_UPDATE") != "0" {
+		go autoUpdate(ctx, updateCh, restartCh)
+	}
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, approvalFn, forumStore, dir, chatTopic, updateCh); err != nil {
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
 		return err
 	}
 
@@ -368,13 +398,14 @@ func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restart
 }
 
 type identityAdapter struct {
-	id        interface {
+	id interface {
 		Name() string
 		PublicKey() ed25519.PublicKey
 	}
 	node      *network.Node
 	isFounder bool
 	dir       string
+	mod       *moderation.Moderator
 }
 
 func (a *identityAdapter) Name() string      { return a.id.Name() }
@@ -386,56 +417,326 @@ func (a *identityAdapter) PeerIDStr() string {
 	return a.node.Host.ID().String()
 }
 func (a *identityAdapter) IsFounder() bool { return a.isFounder }
+
+// IsModerator reports whether this identity has founder or currently-valid
+// (bkz. resolveOwnModAuthority'nin iptal kontrolü) moderator authority.
 func (a *identityAdapter) IsModerator() bool {
-	if a.isFounder {
-		return true
+	canAct, _ := resolveOwnModAuthority(a.dir, a.mod, a.isFounder, hex.EncodeToString(a.id.PublicKey()))
+	return canAct
+}
+func (a *identityAdapter) ConnectedPeers() []pluginapi.PeerInfo {
+	if a.node == nil {
+		return nil
 	}
-	myPubHex := hex.EncodeToString(a.id.PublicKey())
-	return moderation.FindModCert(a.dir, myPubHex) != nil
+	peers := a.node.Host.Network().Peers()
+	out := make([]pluginapi.PeerInfo, 0, len(peers))
+	for _, pid := range peers {
+		info := a.node.Host.Peerstore().PeerInfo(pid)
+		addrs := make([]string, len(info.Addrs))
+		for i, ma := range info.Addrs {
+			addrs[i] = ma.String()
+		}
+		out = append(out, pluginapi.PeerInfo{PeerID: pid.String(), Addrs: addrs})
+	}
+	return out
+}
+
+// resolveOwnModAuthority reports whether THIS node may act with founder or
+// moderator authority (delete a post, ban/unban, grant/revoke another
+// moderator) and, if the latter, the currently-valid (bkz.
+// VerifyModeratorCert, iptal durumu dahil) cert to sign with. Shared by
+// every adapter that needs to know "can I act as a moderator right now",
+// so the FindModCert-existence-only mistake (fixed once already in
+// identityAdapter.IsModerator) can't quietly reappear in a new call site.
+func resolveOwnModAuthority(dir string, mod *moderation.Moderator, isFounder bool, myPubHex string) (canAct bool, cert *moderation.ModeratorCert) {
+	return moderation.ResolveAuthority(dir, mod, isFounder, myPubHex)
 }
 
 type forumAdapter struct {
-	store      *forum.Forum
-	approvalFn func(string) error
+	store     *forum.Forum
+	dir       string
+	mod       *moderation.Moderator
+	isFounder bool
+	myPubHex  string
 }
 
-func (a *forumAdapter) PendingPosts() ([]pluginapi.PendingPost, error) {
-	posts, err := a.store.PendingPosts()
-	if err != nil {
-		return nil, err
+// DeletePost resolves the local identity's moderation authority and, if
+// any, issues a real network-wide, tombstoned deletion via IssueModDelete.
+// Kurucu/moderatör olmayan bir kimlik zaten buraya ulaşamaz (bkz.
+// pluginapi.Server.enforceModeratorRole), ama resolveOwnModAuthority'nin
+// iptal kontrolü olmadan iptal edilmiş bir moderatör hâlâ silme yapabilirdi.
+func (a *forumAdapter) DeletePost(ctx context.Context, postID, reason string) error {
+	canAct, cert := resolveOwnModAuthority(a.dir, a.mod, a.isFounder, a.myPubHex)
+	if !canAct {
+		return fmt.Errorf("forum: moderatör yetkisi bulunamadı")
 	}
-	out := make([]pluginapi.PendingPost, len(posts))
-	for i, p := range posts {
-		out[i] = pluginapi.PendingPost{
+	return a.store.IssueModDelete(ctx, postID, reason, a.isFounder, cert)
+}
+
+func (a *forumAdapter) AllPosts() ([]pluginapi.PostSummary, error) {
+	posts := a.store.AllInMemoryPosts()
+	out := make([]pluginapi.PostSummary, 0, len(posts))
+	for _, p := range posts {
+		out = append(out, pluginapi.PostSummary{
 			ID:         p.ID,
+			Category:   p.Category,
 			Title:      p.Title,
 			AuthorName: p.AuthorName,
 			AuthorKey:  p.AuthorKey,
-			Category:   p.Category,
-			Body:       p.Body,
-			ExpiresAt:  p.ExpiresAt,
-		}
+		})
 	}
 	return out, nil
 }
 
-func (a *forumAdapter) ApprovePost(postID string) error {
-	if a.approvalFn == nil {
-		return fmt.Errorf("onay yetkisi yok")
-	}
-	return a.approvalFn(postID)
-}
-
-func (a *forumAdapter) RejectPost(postID string) error {
-	return a.store.RejectPost(postID)
-}
-
-func (a *forumAdapter) ApproveAuthor(authorKey string) error {
-	a.store.ApprovePostsByAuthor(authorKey)
-	return nil
-}
-
-func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string, permanentReq bool) error {
-	_, err := a.store.CreatePost(ctx, category, title, body, permanentReq)
+func (a *forumAdapter) CreatePost(ctx context.Context, category, title, body string) error {
+	_, err := a.store.CreatePost(ctx, category, title, body)
 	return err
+}
+
+func (a *forumAdapter) GetPost(id string) (*pluginapi.PostDetail, error) {
+	p := a.store.PostByID(id)
+	if p == nil {
+		return nil, nil
+	}
+	replies := a.store.Replies(id)
+	replyInfos := make([]pluginapi.ReplyInfo, len(replies))
+	for i, r := range replies {
+		replyInfos[i] = pluginapi.ReplyInfo{
+			ID:         r.ID,
+			AuthorName: r.AuthorName,
+			AuthorKey:  r.AuthorKey,
+			Body:       r.Body,
+			CreatedAt:  r.CreatedAt,
+		}
+	}
+	return &pluginapi.PostDetail{
+		ID:         p.ID,
+		Category:   p.Category,
+		AuthorName: p.AuthorName,
+		AuthorKey:  p.AuthorKey,
+		Title:      p.Title,
+		Body:       p.Body,
+		CreatedAt:  p.CreatedAt,
+		Replies:    replyInfos,
+	}, nil
+}
+
+func (a *forumAdapter) CreateReply(ctx context.Context, postID, body string) error {
+	_, err := a.store.CreateReply(ctx, postID, body)
+	return err
+}
+
+// siteAdapter implements pluginapi.SiteBackend by calling into the real
+// site.Store — mirrors modAdapter's "thin delegation" pattern (bkz. onun
+// doc yorumu). Every method is implicitly scoped to a.id's own public
+// key, exactly as site.Store.PublishPage/DeletePage/PagesByAuthor already
+// are — there is no separate ownership check to add here.
+type siteAdapter struct {
+	store *site.Store
+	id    *stdcrypto.Identity
+}
+
+func (a *siteAdapter) MyPages() ([]pluginapi.SitePageInfo, error) {
+	myKey := hex.EncodeToString(a.id.PublicKey())
+	pages := a.store.PagesByAuthor(myKey)
+	out := make([]pluginapi.SitePageInfo, 0, len(pages))
+	for _, p := range pages {
+		out = append(out, pluginapi.SitePageInfo{
+			Slug: p.Slug, Title: p.Title, Body: p.Body, UpdatedAt: p.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a *siteAdapter) PublishPage(ctx context.Context, slug, title, body string) error {
+	return a.store.PublishPage(ctx, slug, title, body)
+}
+
+func (a *siteAdapter) DeletePage(ctx context.Context, slug string) error {
+	return a.store.DeletePage(ctx, slug)
+}
+
+// modAdapter implements pluginapi.ModerationBackend for the admin plugin's
+// Banlar/Geçmiş/Moderatörler sekmeleri — bkz. Eklentiler/admin. Signing
+// happens here (server-side, with the real private key); the plugin only
+// ever sees structured requests/responses over the local HTTP API, never
+// key material.
+type modAdapter struct {
+	mod       *moderation.Moderator
+	modTopic  *network.Topic
+	chat      *chatlog.Store
+	identity  *stdcrypto.Identity
+	dir       string
+	isFounder bool
+	myPubHex  string
+}
+
+func (a *modAdapter) AllBans() ([]pluginapi.BanEntryInfo, error) {
+	entries := a.mod.AllBans()
+	founderHex := moderation.FounderPubKeyHex
+	out := make([]pluginapi.BanEntryInfo, 0, len(entries))
+	for _, e := range entries {
+		info := pluginapi.BanEntryInfo{
+			PeerID: e.PeerID, AuthorKey: e.AuthorKey,
+			ExpiresAt: e.ExpiresAt, Permanent: e.Permanent,
+			ModeratorKey: e.ModeratorKey, Reason: e.Reason,
+			IsFounderMod: strings.EqualFold(e.ModeratorKey, founderHex),
+		}
+		if a.chat != nil && e.AuthorKey != "" {
+			if msgs := a.chat.ByAuthor(e.AuthorKey, 1); len(msgs) > 0 {
+				info.DisplayName = msgs[0].AuthorName
+			}
+		}
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+func (a *modAdapter) Unban(ctx context.Context, authorKey string) error {
+	canAct, cert := resolveOwnModAuthority(a.dir, a.mod, a.isFounder, a.myPubHex)
+	if !canAct {
+		return fmt.Errorf("moderasyon: yetkiniz yok")
+	}
+	return moderation.IssueUnbanFor(ctx, a.mod, a.modTopic, a.identity.PrivateKey(), authorKey, a.isFounder, cert)
+}
+
+func (a *modAdapter) History() ([]pluginapi.HistoryEntryInfo, error) {
+	entries := a.mod.History()
+	founderHex := moderation.FounderPubKeyHex
+	out := make([]pluginapi.HistoryEntryInfo, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, pluginapi.HistoryEntryInfo{
+			Action: string(e.Action), PeerID: e.PeerID, Reason: e.Reason,
+			ModeratorKey: e.ModeratorKey, IsFounderMod: strings.EqualFold(e.ModeratorKey, founderHex),
+			At: e.At, ExpiresAt: e.ExpiresAt, Permanent: e.Permanent,
+		})
+	}
+	return out, nil
+}
+
+func (a *modAdapter) GrantedMods() ([]pluginapi.GrantedModInfo, error) {
+	grants := a.mod.GrantedMods()
+	out := make([]pluginapi.GrantedModInfo, 0, len(grants))
+	for _, g := range grants {
+		out = append(out, pluginapi.GrantedModInfo{
+			Key: g.Key, GrantedAt: g.GrantedAt, ExpiresAt: g.ExpiresAt,
+			Permanent: g.Permanent, Revoked: g.Revoked, RevokedAt: g.RevokedAt,
+		})
+	}
+	return out, nil
+}
+
+func (a *modAdapter) Grant(ctx context.Context, targetKeyHex string, duration time.Duration, permanent bool) (string, error) {
+	if !a.isFounder {
+		return "", fmt.Errorf("moderasyon: yalnızca kurucu moderatör atayabilir")
+	}
+	var expires time.Time
+	if !permanent {
+		expires = time.Now().UTC().Add(duration)
+	}
+	_, certPath, err := a.mod.IssueGrant(a.identity.PrivateKey(), targetKeyHex, expires, permanent)
+	return certPath, err
+}
+
+func (a *modAdapter) Revoke(ctx context.Context, targetKeyHex string) error {
+	if !a.isFounder {
+		return fmt.Errorf("moderasyon: yalnızca kurucu moderatör yetkisini iptal edebilir")
+	}
+	rev := moderation.SignRevoke(a.identity.PrivateKey(), targetKeyHex)
+	return a.mod.IssueRevoke(ctx, a.modTopic, rev)
+}
+
+// chatAdapter fans out chat topic messages to plugin subscribers. It fans
+// out over its own gossipsub subscription (a separate one from the TUI's,
+// see the call site's comment) but delegates AllChat to the TUI's real
+// chatlog.Store, which is the only component that actually persists chat
+// history to disk — the adapter's own live fan-out has no memory of
+// anything before this process started.
+type chatAdapter struct {
+	ctx   context.Context
+	topic interface {
+		Publish(ctx context.Context, data []byte) error
+		Messages(ctx context.Context) <-chan []byte
+	}
+	store *chatlog.Store
+	name  string
+	mu    sync.Mutex
+	subs  []chan pluginapi.ChatMsg
+}
+
+func newChatAdapter(ctx context.Context, topic interface {
+	Publish(ctx context.Context, data []byte) error
+	Messages(ctx context.Context) <-chan []byte
+}, store *chatlog.Store, senderName string) *chatAdapter {
+	a := &chatAdapter{ctx: ctx, topic: topic, store: store, name: senderName}
+	go a.fanOut()
+	return a
+}
+
+func (a *chatAdapter) AllChat() []pluginapi.ChatMsg {
+	if a.store == nil {
+		return nil
+	}
+	all := a.store.All()
+	out := make([]pluginapi.ChatMsg, len(all))
+	for i, m := range all {
+		out[i] = pluginapi.ChatMsg{ID: m.ID, From: m.AuthorName, Text: m.Text, SentAt: m.SentAt}
+	}
+	return out
+}
+
+func (a *chatAdapter) fanOut() {
+	ch := a.topic.Messages(a.ctx)
+	for data := range ch {
+		var pkt struct {
+			N string    `json:"n"`
+			T string    `json:"t"`
+			A time.Time `json:"a"`
+		}
+		if json.Unmarshal(data, &pkt) != nil || pkt.T == "" {
+			continue
+		}
+		msg := pluginapi.ChatMsg{From: pkt.N, Text: pkt.T, SentAt: pkt.A}
+		a.mu.Lock()
+		for _, ch := range a.subs {
+			select {
+			case ch <- msg:
+			default:
+			}
+		}
+		a.mu.Unlock()
+	}
+}
+
+func (a *chatAdapter) Subscribe() chan pluginapi.ChatMsg {
+	ch := make(chan pluginapi.ChatMsg, 32)
+	a.mu.Lock()
+	a.subs = append(a.subs, ch)
+	a.mu.Unlock()
+	return ch
+}
+
+func (a *chatAdapter) Unsubscribe(ch chan pluginapi.ChatMsg) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, c := range a.subs {
+		if c == ch {
+			a.subs = append(a.subs[:i], a.subs[i+1:]...)
+			close(ch)
+			return
+		}
+	}
+}
+
+func (a *chatAdapter) SendChat(ctx context.Context, senderName, message string) error {
+	pkt := struct {
+		N string    `json:"n"`
+		T string    `json:"t"`
+		A time.Time `json:"a"`
+	}{N: senderName, T: message, A: time.Now().UTC()}
+	data, err := json.Marshal(pkt)
+	if err != nil {
+		return err
+	}
+	return a.topic.Publish(ctx, data)
 }

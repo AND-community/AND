@@ -67,10 +67,35 @@ func (f *Forum) handleSyncStream(s libp2pnet.Stream) {
 
 	// Gelen tombstone'ları uygula: peer'ın sildiği postları biz de silelim.
 	// Postlar önceden memory'de; tombstone doğrulaması author eşleşmesine bakabilir.
+	// Her tombstone JSON'ı önce kendi-silme (DeleteMsg), doğrulanamazsa
+	// moderatör/kurucu silmesi (ModDeleteMsg) olarak denenir — iki tipin
+	// imza payload biçimleri kesişmediğinden (bkz. deleteMsgPayload/
+	// ModDeletePayload/FounderDeletePayload) biri diğeri gibi yanlışlıkla
+	// kabul edilemez.
 	for _, tsJSON := range req.Tombstones {
 		var d DeleteMsg
 		if json.Unmarshal([]byte(tsJSON), &d) == nil && verifyDeleteMsg(&d) {
-			f.applyDelete(d.PostID, d.AuthorKey, []byte(tsJSON))
+			// Canlı "delete" mesaj yolundaki (handleMessage) muted/banned
+			// kontrolleriyle aynı: bir sync isteği, susturulmuş ya da
+			// ağdan banlı bir yazarın kendi-silme tombstone'unu canlı
+			// gossip yolunun reddedeceği bir mesajı sessizce uygulatmak
+			// için kullanılamamalı.
+			if f.rl.muted(d.AuthorKey) || f.authorBanned(d.AuthorKey) {
+				continue
+			}
+			// Canlı "delete" mesaj yolundaki (handleMessage) rlMaxDeletes/
+			// rlGlobalMaxDeletes kontrolüyle aynı: doğrulanmış her tombstone
+			// burada da hız sınırından geçmeli, yoksa bir peer sync yanıtı
+			// olarak sınırsız sayıda sahte kendi-silme mesajı gönderip aynı
+			// korumayı bypass edebilir.
+			if f.rl.allowDelete(d.AuthorKey) {
+				f.applyDelete(d.PostID, d.AuthorKey, []byte(tsJSON))
+			}
+			continue
+		}
+		var md ModDeleteMsg
+		if json.Unmarshal([]byte(tsJSON), &md) == nil {
+			f.applyModDelete(&md)
 		}
 	}
 
@@ -149,7 +174,13 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	// Postları önce ekle — ardından tombstone'lar gelecek.
 	// Sıralama önemli: author doğrulaması post memory'de olmasını gerektirir.
 	for _, p := range resp.Posts {
-		if verifyPost(p) && f.rl.allowPost(p.AuthorKey) {
+		if f.rl.muted(p.AuthorKey) {
+			continue
+		}
+		if f.authorBanned(p.AuthorKey) {
+			continue
+		}
+		if verifyPost(p) && f.rl.allowPost(p.AuthorKey, false) {
 			f.storePost(p)
 		}
 	}
@@ -159,7 +190,13 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 			if limit >= 200 {
 				break
 			}
-			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey) {
+			if f.rl.muted(r.AuthorKey) {
+				continue
+			}
+			if f.authorBanned(r.AuthorKey) {
+				continue
+			}
+			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey, false) {
 				f.storeReply(r)
 				limit++
 			}
@@ -169,8 +206,16 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	// Peer'ın tombstone'larını uygula (az önce eklediğimiz postlar dahil).
 	for _, tsJSON := range resp.Tombstones {
 		var d DeleteMsg
-		if json.Unmarshal([]byte(tsJSON), &d) == nil && verifyDeleteMsg(&d) {
-			f.applyDelete(d.PostID, d.AuthorKey, []byte(tsJSON))
+		if json.Unmarshal([]byte(tsJSON), &d) == nil && !f.rl.muted(d.AuthorKey) && !f.authorBanned(d.AuthorKey) && verifyDeleteMsg(&d) {
+			// bkz. handleSyncStream'deki aynı kontrolün yorumu.
+			if f.rl.allowDelete(d.AuthorKey) {
+				f.applyDelete(d.PostID, d.AuthorKey, []byte(tsJSON))
+			}
+			continue
+		}
+		var md ModDeleteMsg
+		if json.Unmarshal([]byte(tsJSON), &md) == nil {
+			f.applyModDelete(&md)
 		}
 	}
 
