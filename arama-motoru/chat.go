@@ -80,7 +80,7 @@ func chatMesajIsle(depo *Depo, data []byte) {
 	if err := depo.Ekle(AramaSonucu{
 		Tip: TipSohbet, KaynakID: id, Govde: m.Text, YazarAd: m.AuthorName, YazarKey: m.AuthorKey,
 		OlusturmaTS: m.SentAt,
-		Sig: m.Sig,
+		Sig:         m.Sig,
 	}); err != nil {
 		gunlukHata("sohbet mesajı indekslenemedi:", id, err)
 	}
@@ -127,7 +127,7 @@ func chatIleSenkronizeOl(ctx context.Context, h libp2phost.Host, peerID peer.ID,
 		_ = depo.Ekle(AramaSonucu{
 			Tip: TipSohbet, KaynakID: m.ID, Govde: m.Text, YazarAd: m.AuthorName, YazarKey: m.AuthorKey,
 			OlusturmaTS: m.SentAt,
-			Sig: m.Sig,
+			Sig:         m.Sig,
 		})
 	}
 	return nil

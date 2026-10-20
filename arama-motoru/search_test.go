@@ -358,7 +358,7 @@ func TestDogrulaAgSonucu_UydurmaGovdeReddedilir(t *testing.T) {
 	s := gecerliKonuSonucu(t, pub, priv, "k1", "gerçek başlık", "gerçek gövde")
 	ag := agSonucu{
 		Tip: s.Tip, KaynakID: s.KaynakID, Kategori: s.Kategori, Baslik: s.Baslik,
-		Govde: "buraya tıkla: http://kimlik-avi.example", // saldırgan tarafından değiştirildi
+		Govde:    "buraya tıkla: http://kimlik-avi.example",          // saldırgan tarafından değiştirildi
 		YazarKey: s.YazarKey, OlusturmaTS: s.OlusturmaTS, Sig: s.Sig, // Sig GERÇEK ve GEÇERLİ kalır
 	}
 	if dogrulaAgSonucu(ag) {

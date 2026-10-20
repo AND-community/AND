@@ -120,7 +120,7 @@ func forumMesajIsle(depo *Depo, data []byte) {
 			Tip: TipKonu, KaynakID: z.Post.ID, Kategori: z.Post.Category, Baslik: z.Post.Title,
 			Govde: z.Post.Body, YazarAd: z.Post.AuthorName, YazarKey: z.Post.AuthorKey,
 			OlusturmaTS: z.Post.CreatedAt,
-			Sig: z.Post.Sig,
+			Sig:         z.Post.Sig,
 		}); err != nil {
 			gunlukHata("post indekslenemedi:", z.Post.ID, err)
 		}
@@ -136,7 +136,7 @@ func forumMesajIsle(depo *Depo, data []byte) {
 			Tip: TipYanit, KaynakID: z.Reply.ID, UstID: z.Reply.PostID,
 			Govde: z.Reply.Body, YazarAd: z.Reply.AuthorName, YazarKey: z.Reply.AuthorKey,
 			OlusturmaTS: z.Reply.CreatedAt,
-			Sig: z.Reply.Sig,
+			Sig:         z.Reply.Sig,
 		}); err != nil {
 			gunlukHata("yanıt indekslenemedi:", z.Reply.ID, err)
 		}

@@ -132,7 +132,7 @@ func siteMesajIsle(depo *Depo, data []byte) {
 			Tip: TipSite, KaynakID: siteKaynakID(z.Page.AuthorKey, z.Page.Slug),
 			Baslik: z.Page.Title, Govde: z.Page.Body, YazarKey: z.Page.AuthorKey,
 			OlusturmaTS: z.Page.UpdatedAt,
-			Sig: z.Page.Sig,
+			Sig:         z.Page.Sig,
 		}); err != nil {
 			gunlukHata("site sayfası indekslenemedi:", z.Page.AuthorKey, z.Page.Slug, err)
 		}
