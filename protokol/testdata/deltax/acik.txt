@@ -1,0 +1,3 @@
+DeltaX altın örnek paketi
+çğışöü ÇĞİŞÖÜ <>&
+Go ile TypeScript aynı baytları görmeli.
