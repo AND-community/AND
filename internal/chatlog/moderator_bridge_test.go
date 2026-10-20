@@ -88,6 +88,7 @@ func TestHandleMessage_ChatFromModeratorBannedAuthorRejected(t *testing.T) {
 	}
 
 	modB.Start(ctx, modTopicB)
+	t.Cleanup(modB.Stop) // geçici klasör silinmeden önce arka plan yazımları bitsin
 
 	authorPub, authorPriv := genKey(t)
 	authorKey := hex.EncodeToString(authorPub)
@@ -226,6 +227,7 @@ func TestSyncWithPeer_ChatFromModeratorBannedAuthorRejected(t *testing.T) {
 	}
 
 	modB.Start(ctx, modTopicB)
+	t.Cleanup(modB.Stop) // geçici klasör silinmeden önce arka plan yazımları bitsin
 
 	authorPub, authorPriv := genKey(t)
 	authorKey := hex.EncodeToString(authorPub)

@@ -98,6 +98,7 @@ func TestHandleMessage_PostFromModeratorBannedAuthorRejected(t *testing.T) {
 	}
 
 	modB.Start(ctx, modTopicB)
+	t.Cleanup(modB.Stop) // geçici klasör silinmeden önce arka plan yazımları bitsin
 
 	// Banlanacak yazar: bu anahtar hem "peer" hem "forum AuthorKey" olarak
 	// kullanılacak — gerçek AND kimlik modelinin aynısı.
@@ -238,6 +239,7 @@ func TestSyncWithPeer_PostFromModeratorBannedAuthorRejected(t *testing.T) {
 	}
 
 	modB.Start(ctx, modTopicB)
+	t.Cleanup(modB.Stop) // geçici klasör silinmeden önce arka plan yazımları bitsin
 
 	authorPub, authorPriv := genPostKey(t)
 	authorKey := hex.EncodeToString(authorPub)

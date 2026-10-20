@@ -330,6 +330,7 @@ func TestIssueBanFor_FounderPath_AppliesLocallyAndPublishes(t *testing.T) {
 
 	topicA, topicB, ctx := twoConnectedModTopics(t, "test/tui-issue-ban-founder")
 	modB.Start(ctx, topicB)
+	t.Cleanup(modB.Stop) // geçici klasör silinmeden önce arka plan yazımları bitsin
 
 	targetPub, _, err := ed25519.GenerateKey(nil)
 	if err != nil {
