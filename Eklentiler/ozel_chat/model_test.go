@@ -31,6 +31,42 @@ type sahteIstemci struct {
 	dosyalar   []string
 	yanitlar   []string
 	esler      []pluginapi.PeerInfo
+	// sirali: SendDMQueued ile gönderilenler; okunduYok: okundu bilgisi
+	// tutmayan eski bir AND; okundu: çekirdeğe bildirilen işaretler.
+	sirali    []string
+	okunduYok bool
+	okundu    map[string]time.Time
+}
+
+func (s *sahteIstemci) SendDMQueued(peerID, message string) error {
+	if err := s.SendDM(peerID, message); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sirali = append(s.sirali, peerID+":"+message)
+	return nil
+}
+func (s *sahteIstemci) DMReadMarks() (map[string]time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.okunduYok {
+		return nil, &pluginapi.APIError{Status: 404}
+	}
+	out := map[string]time.Time{}
+	for p, t := range s.okundu {
+		out[p] = t
+	}
+	return out, nil
+}
+func (s *sahteIstemci) MarkDMRead(peerID string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.okundu == nil {
+		s.okundu = map[string]time.Time{}
+	}
+	s.okundu[peerID] = at
+	return nil
 }
 
 func (s *sahteIstemci) DMHistory() ([]pluginapi.DMRecord, error) {
@@ -319,5 +355,73 @@ func TestView_EkraniKaplar(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestGonderim_GidenKutusuylaYapilir(t *testing.T) {
+	c := &sahteIstemci{}
+	m := testModeli(t, c).konusmaAc(alice)
+	m.yazi.SetValue("çevrimdışıyken de gitsin")
+	_, cmd := tusa(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	cmd()
+	if len(c.sirali) != 1 {
+		t.Fatalf("mesaj giden kutusunu destekleyen yoldan gönderilmeli: %v", c.sirali)
+	}
+}
+
+func TestOkundu_CekirdekleEsitlenir(t *testing.T) {
+	t0 := time.Now().Add(-time.Hour).UTC()
+	c := &sahteIstemci{
+		gecmis: []pluginapi.DMRecord{{PeerID: alice, Name: "aziz", Text: "selam", At: t0.Add(time.Minute)}},
+		okundu: map[string]time.Time{bob: t0},
+	}
+	m := testModeli(t, c)
+	m.okundu[alice] = t0 // yalnızca eski yerel dosyada olan işaret
+	mm, _ := m.Update(gecmisMsg{kayitlar: c.gecmis})
+	m = mm.(model)
+	mm, _ = m.Update(okunduMsg{isaretler: map[string]time.Time{bob: t0}})
+	m = mm.(model)
+	if !m.cekirdekOkundu || !m.okundu[bob].Equal(t0) {
+		t.Fatal("çekirdeğin okundu bilgisi alınmalı")
+	}
+	m = m.konusmaAc(alice)
+	mm, cmd := m.Update(tikMsg(time.Now()))
+	m = mm.(model)
+	for _, alt := range cmd().(tea.BatchMsg) {
+		if alt != nil {
+			alt()
+		}
+	}
+	if !c.okundu[alice].Equal(t0.Add(time.Minute)) {
+		t.Fatalf("açılan konuşma çekirdekte okundu işaretlenmeli (ana menü rozeti için): %v", c.okundu)
+	}
+	if len(m.bildirilecek) != 0 {
+		t.Fatal("bildirilen işaretler temizlenmeli")
+	}
+}
+
+func TestOkundu_EskiANDdaYalnizcaYerel(t *testing.T) {
+	c := &sahteIstemci{okunduYok: true, gecmis: []pluginapi.DMRecord{{PeerID: alice, Text: "selam", At: time.Now()}}}
+	m := testModeli(t, c)
+	o, err := c.DMReadMarks()
+	mm, _ := m.Update(okunduMsg{isaretler: o, err: err})
+	m = mm.(model)
+	mm, _ = m.Update(gecmisMsg{kayitlar: c.gecmis})
+	m = mm.(model).konusmaAc(alice)
+	if m.cekirdekOkundu || len(m.bildirilecek) != 0 || len(c.okundu) != 0 {
+		t.Fatal("okundu ucu olmayan AND'a işaret gönderilmemeli")
+	}
+}
+
+func TestAkis_BekleyenVeGonderilemeyenGosterilir(t *testing.T) {
+	m := testModeli(t, &sahteIstemci{})
+	m.gecmis = []pluginapi.DMRecord{
+		{PeerID: alice, Text: "bekleyen mesaj", At: time.Now(), Outgoing: true, Pending: true},
+		{PeerID: alice, Text: "giden olmayan", At: time.Now(), Outgoing: true, Failed: true},
+	}
+	m = m.konusmaAc(alice)
+	ekran := ansi.Strip(m.View())
+	if !strings.Contains(ekran, "bekliyor · alıcı bağlanınca gidecek") || !strings.Contains(ekran, "gönderilemedi") {
+		t.Fatalf("bekleyen ve gönderilemeyen mesaj işaretlenmeli:\n%s", ekran)
 	}
 }

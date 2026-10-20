@@ -204,6 +204,11 @@ func (m appModel) homeTree(w, h int) string {
 			segs = append(segs, ui.C(item, colorMuted), ui.M("  kapalı"))
 		} else {
 			segs = append(segs, ui.T(item))
+			if pl != nil && pl.Name() == "ozel_chat" {
+				if n := okunmamisDM(); n > 0 {
+					segs = append(segs, ui.C(fmt.Sprintf("  ● %d", n), colorAccent))
+				}
+			}
 		}
 		r = append(r, ui.Row(w, i == m.menuIndex, segs...))
 	}

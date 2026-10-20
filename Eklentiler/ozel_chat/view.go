@@ -121,7 +121,7 @@ func (m model) sagBolme(w, h int) string {
 func (m model) bosDurum(w int) string {
 	var b strings.Builder
 	b.WriteString(ui.S.Title.Render("Özel mesajlar") + "\n")
-	b.WriteString(ui.S.Muted.Render(ui.Wrap("Mesajlar sunucuya uğramadan doğrudan karşı tarafa gider. Bağlantı libp2p'nin Noise protokolüyle şifrelidir; uçtan uca şifreleme değildir. AND bu oturumun mesajlarını yalnızca bellekte tutar, diske yazmaz.", ui.Measure(w))) + "\n\n")
+	b.WriteString(ui.S.Muted.Render(ui.Wrap("Mesajlar sunucuya uğramadan doğrudan karşı tarafa gider; bağlantı iki uç arasında libp2p'nin Noise protokolüyle şifrelidir, aracı röleler yalnızca şifreli veri görür. Karşı taraf çevrimdışıysa mesaj bekler ve bağlanınca gider. AND geçmişi bu bilgisayarda, kimliğinden türetilen bir anahtarla şifreli saklar.", ui.Measure(w))) + "\n\n")
 	b.WriteString(ui.KV(16, "Senin Peer ID'n", ui.S.Bold.Render(m.ben.PeerID)) + "\n")
 	b.WriteString(ui.S.Muted.Render(ui.Wrap("Seninle konuşmak isteyen biri bu kimliği kullanır. Yeni bir konuşma için n'ye bas.", ui.Measure(w))))
 	return b.String()
@@ -186,6 +186,12 @@ func (m model) akisCiz(w, h int) string {
 		satirlar = append(satirlar, zaman+lipgloss.NewStyle().Bold(true).Foreground(renk).Render(kim)+"  "+parcalar[0])
 		for _, p := range parcalar[1:] {
 			satirlar = append(satirlar, strings.Repeat(" ", girinti)+p)
+		}
+		switch {
+		case ms.bekliyor:
+			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Muted.Render(ui.Truncate("bekliyor · alıcı bağlanınca gidecek", metinW)))
+		case ms.basarisiz:
+			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Error.Render(ui.Truncate("gönderilemedi · alıcı bir hafta bağlanmadı", metinW)))
 		}
 	}
 	if len(satirlar) == 0 {

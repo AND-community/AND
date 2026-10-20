@@ -41,12 +41,16 @@ kabul eder. Yanıtlanmayan istek 28 saniye sonra düşer ve AND tarafından redd
 
 ## Nasıl çalışır
 
-- **Geçmiş:** Mesajlar `GET /api/v1/dm/history`'den okunur ve her saniye yenilenir. AND, oturum
-  boyunca gelen ve giden mesajları (en fazla 500) bellekte tutar; Özel Chat kapalıyken gelen
-  mesajlar da açılınca okunmamış olarak görünür. Bu uç noktası olmayan eski bir AND'da eklenti
-  `GET /api/v1/dm/poll` ile canlı dinlemeye geçer: o zaman yalnızca ekran açıkken gelenler görünür.
-- **Okundu bilgisi:** Hangi konuşmayı en son ne zaman okuduğun eklentinin veri dizinindeki
-  `ozel_chat_okundu.json` dosyasına yazılır. Mesaj içeriği diske yazılmaz.
+- **Geçmiş:** Mesajlar `GET /api/v1/dm/history`'den okunur ve her saniye yenilenir. AND son 500
+  mesajı (gelen ve giden) bu bilgisayarda şifreli saklar; Özel Chat kapalıyken ya da AND yeniden
+  başlatıldıktan sonra da geçmiş yerindedir ve okunmamışlar işaretli görünür. Bu uç noktası
+  olmayan eski bir AND'da eklenti `GET /api/v1/dm/poll` ile canlı dinlemeye geçer: o zaman
+  yalnızca ekran açıkken gelenler görünür.
+- **Çevrimdışı alıcı:** Karşı taraf o an bağlı değilse mesaj AND'ın giden kutusunda bekler
+  ("bekliyor") ve o bağlandığında gider; bir hafta içinde bağlanmazsa "gönderilemedi" olur.
+- **Okundu bilgisi:** AND'da tutulur (`/api/v1/dm/read`); ana menüdeki Özel Chat rozeti de aynı
+  bilgiyle okunmamış mesaj sayısını gösterir. Eski bir AND'da eklentinin veri dizinindeki
+  `ozel_chat_okundu.json` kullanılır.
 - **Yeni konuşma:** Önerilen eşler yalnızca AND düğümleridir (`/api/v1/peers` yanıtında
   `"and": true`); bağlı eşlerin çoğu genel DHT düğümüdür ve özel mesaj alamaz. Peer ID elle
   girilirse biçimi (base58, `12D3KooW…` ya da `Qm…`) denetlenir.
@@ -56,9 +60,11 @@ kabul eder. Yanıtlanmayan istek 28 saniye sonra düşer ve AND tarafından redd
 
 ## Güvenlik
 
-Bağlantı libp2p'nin Noise protokolüyle şifrelidir; **uçtan uca şifreleme değildir**. Gönderenin
-Peer ID'si AND tarafından doğrulanır; ekrandaki ad karşı tarafın kendi bildirdiği addır ve
-kontrol karakterlerinden arındırılarak gösterilir. Ayrıntılar için [SECURITY.md](../../SECURITY.md).
+Mesaj gönderenden alıcıya doğrudan gider ve bağlantı iki uç arasında libp2p'nin Noise
+protokolüyle şifrelidir; bağlantı bir röle üzerinden kurulsa bile röle yalnızca şifreli veri
+görür. Gönderenin Peer ID'si bu el sıkışmada doğrulanır; ekrandaki ad karşı tarafın kendi
+bildirdiği addır ve kontrol karakterlerinden arındırılarak gösterilir. Eklenti AND'dan yalnızca
+`dm` ve `file` izinlerini ister. Ayrıntılar için [SECURITY.md](../../SECURITY.md).
 
 ---
 

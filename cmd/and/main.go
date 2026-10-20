@@ -305,6 +305,17 @@ func run() error {
 
 	dmBroker := dmmgr.New(node)
 	dmBroker.SetModerator(mod)
+	// DM geçmişi, giden kutusu ve okundu bilgisi kimlikten türetilen
+	// anahtarla şifreli olarak dm_gecmis.bin'de saklanır; AND_DM_GECMISI=0
+	// ile yalnızca bellekte tutulur (eski davranış).
+	if os.Getenv("AND_DM_GECMISI") != "0" {
+		if anahtar, err := dmmgr.GecmisAnahtari(id.PrivateKey()); err != nil {
+			log.Printf("dm geçmişi: %v", err)
+		} else if err := dmBroker.KaliciAc(filepath.Join(dir, "dm_gecmis.bin"), anahtar); err != nil {
+			log.Printf("dm geçmişi: %v", err)
+		}
+	}
+	tui.OkunmamisDM = dmBroker.OkunmamisSayisi
 	dosyalarDir := filepath.Join(dir, "dosyalar")
 	_ = os.MkdirAll(dosyalarDir, 0o700)
 	fileBroker := filemgr.New(node, dosyalarDir)

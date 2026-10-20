@@ -213,3 +213,29 @@ func TestIkiDugum_ForumGossipVeSonradanKatilanSenkron(t *testing.T) {
 		t.Fatalf("C senkronla konuyu almalı, %d konu", c.forum.TotalPosts())
 	}
 }
+
+func TestIkiDugum_GidenKutusu(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	a, c := yeniDugum(t, ctx, "ayse"), yeniDugum(t, ctx, "cem")
+
+	// C henüz bağlı değil: mesaj hata vermeden giden kutusuna girer.
+	gonderen := a.eklenti(t, pluginapi.IzinDM)
+	if err := gonderen.SendDMQueued(c.node.Host.ID().String(), "bağlanınca oku"); err != nil {
+		t.Fatalf("SendDMQueued: %v", err)
+	}
+	if g, _ := gonderen.DMHistory(); len(g) != 1 || !g[0].Pending {
+		t.Fatalf("mesaj bekliyor görünmeli: %+v", g)
+	}
+
+	bagla(t, ctx, a, c)
+	alici := c.eklenti(t, pluginapi.IzinDM)
+	bekle(t, 10*time.Second, "bekleyen mesaj C bağlanınca ulaşmalı", func() bool {
+		g, err := alici.DMHistory()
+		return err == nil && len(g) == 1 && g[0].Text == "bağlanınca oku"
+	})
+	bekle(t, 5*time.Second, "gönderilen mesaj artık bekliyor görünmemeli", func() bool {
+		g, err := gonderen.DMHistory()
+		return err == nil && len(g) == 1 && !g[0].Pending
+	})
+}

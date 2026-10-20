@@ -32,11 +32,19 @@ type Broker struct {
 	subs []chan pluginapi.DMMsg
 	mod  atomic.Pointer[moderation.Moderator]
 
-	// history, bu oturumdaki son historyLimit özel mesajdır (gelen ve giden).
-	// Deliver yalnızca o anda dinleyen eklentilere iletir; geçmiş olmadan
-	// Özel Chat kapalıyken gelen her DM sessizce kaybolurdu. Yalnızca
-	// bellekte tutulur — diske yazılmaz.
+	// history, son historyLimit özel mesajdır (gelen ve giden). Deliver
+	// yalnızca o anda dinleyen eklentilere iletir; geçmiş olmadan Özel Chat
+	// kapalıyken gelen her DM sessizce kaybolurdu. KaliciAc çağrıldıysa
+	// şifreli olarak diske de yazılır (bkz. kalici.go).
 	history []pluginapi.DMRecord
+
+	// Kalıcılık, giden kutusu ve okundu bilgisi (bkz. kalici.go).
+	kalici       string
+	anahtar      []byte
+	kayitMu      sync.Mutex
+	giden        []bekleyenDM
+	okundu       map[string]time.Time
+	gonderiliyor map[peer.ID]bool
 }
 
 // historyLimit, bellekte tutulan en fazla özel mesaj sayısıdır.
@@ -46,14 +54,19 @@ const historyLimit = 500
 // fazla uzunluğudur.
 const maxHistoryNameRunes = 64
 
-// record, m'yi geçmişe ekler; sınır aşılırsa en eskisi düşer.
+// record, m'yi geçmişe ekler (kimliği yoksa verir); sınır aşılırsa en eskisi
+// düşer. Kalıcılık açıksa durum diske yazılır.
 func (b *Broker) record(m pluginapi.DMRecord) {
+	if m.ID == "" {
+		m.ID = yeniID()
+	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.history = append(b.history, m)
 	if over := len(b.history) - historyLimit; over > 0 {
 		b.history = append(b.history[:0], b.history[over:]...)
 	}
+	b.mu.Unlock()
+	b.kaydet()
 }
 
 // History, bu oturumdaki özel mesajların bir kopyasını (en eskiden en
@@ -67,6 +80,11 @@ func (b *Broker) History() []pluginapi.DMRecord {
 func New(node *network.Node) *Broker {
 	b := &Broker{node: node}
 	node.Host.SetStreamHandler(pluginapi.DMProtocol, b.handleStream)
+	// Bir eş bağlandığında giden kutusunda ona bekleyen mesajlar gönderilir.
+	// ConnectedF ağ katmanının goroutine'inde çağrılır; baglandi bloklamaz.
+	node.Host.Network().Notify(&libp2pnet.NotifyBundle{
+		ConnectedF: func(_ libp2pnet.Network, c libp2pnet.Conn) { b.baglandi(c.RemotePeer()) },
+	})
 	return b
 }
 
@@ -121,21 +139,25 @@ func (b *Broker) SendDM(ctx context.Context, peerIDStr, senderName, message stri
 	if err != nil {
 		return fmt.Errorf("geçersiz peer ID: %w", err)
 	}
+	at := time.Now().UTC()
+	if err := b.gonder(ctx, pid, senderName, message, at); err != nil {
+		return err
+	}
+	if message != "" { // alıcı boş metni zaten yok sayar
+		b.record(pluginapi.DMRecord{PeerID: pid.String(), Text: message, At: at, Outgoing: true})
+	}
+	return nil
+}
+
+// gonder, tek bir DM paketini pid'e iletir.
+func (b *Broker) gonder(ctx context.Context, pid peer.ID, senderName, message string, at time.Time) error {
 	stream, err := b.node.Host.NewStream(ctx, pid, pluginapi.DMProtocol)
 	if err != nil {
 		return fmt.Errorf("peer'a bağlanılamadı: %w", err)
 	}
 	defer stream.Close()
 	stream.SetDeadline(time.Now().Add(30 * time.Second)) //nolint:errcheck
-
-	pkt := dmPacket{From: senderName, Text: message, At: time.Now().UTC()}
-	if err := json.NewEncoder(stream).Encode(pkt); err != nil {
-		return err
-	}
-	if message != "" { // alıcı boş metni zaten yok sayar
-		b.record(pluginapi.DMRecord{PeerID: pid.String(), Text: message, At: pkt.At, Outgoing: true})
-	}
-	return nil
+	return json.NewEncoder(stream).Encode(dmPacket{From: senderName, Text: message, At: at})
 }
 
 func (b *Broker) handleStream(s libp2pnet.Stream) {

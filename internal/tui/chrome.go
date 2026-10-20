@@ -26,6 +26,17 @@ func ANDSyncProtocols() []protocol.ID {
 // verir; ayarlanmamışsa (testler) nil'dir.
 var SyncStatus func() peersync.Status
 
+// OkunmamisDM, okunmamış özel mesaj sayısını verir (ana menüdeki rozet);
+// ayarlanmamışsa (testler) nil'dir.
+var OkunmamisDM func() int
+
+func okunmamisDM() int {
+	if OkunmamisDM == nil {
+		return 0
+	}
+	return OkunmamisDM()
+}
+
 // andEsSayisi, bağlı eşlerden AND protokolünü konuştuğu bilinenlerin sayısıdır.
 func (m appModel) andEsSayisi() int {
 	if m.node == nil {

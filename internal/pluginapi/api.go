@@ -102,6 +102,18 @@ type DeleteSitePageReq struct {
 type SendDMReq struct {
 	PeerID  string `json:"peer_id"`
 	Message string `json:"message"`
+	// QueueIfOffline, alıcıya şu an ulaşılamıyorsa mesajın hata yerine giden
+	// kutusuna alınmasını ister: alıcı bağlanınca gönderilir, geçmişte o
+	// zamana kadar Pending görünür. Alanı bilmeyen eski bir AND yok sayar
+	// (eski davranış: ulaşılamazsa hata).
+	QueueIfOffline bool `json:"queue_if_offline,omitempty"`
+}
+
+// DMReadReq, POST /api/v1/dm/read gövdesidir: PeerID ile konuşmanın At'a
+// kadar okunduğunu bildirir.
+type DMReadReq struct {
+	PeerID string    `json:"peer_id"`
+	At     time.Time `json:"at"`
 }
 
 type DMMsg struct {
@@ -139,6 +151,26 @@ type DMRecord struct {
 	Text     string    `json:"text"`
 	At       time.Time `json:"at"` // bu düğümün saatiyle alma/gönderme zamanı
 	Outgoing bool      `json:"outgoing,omitempty"`
+	// ID, kaydın kimliğidir (giden kutusundaki mesajın durumu bu kimlikle
+	// güncellenir). Eski bir AND göndermez.
+	ID string `json:"id,omitempty"`
+	// Pending, giden kutusunda alıcının bağlanmasını bekleyen mesajdır.
+	Pending bool `json:"pending,omitempty"`
+	// Failed, giden kutusunda süresi dolup gönderilemeyen mesajdır.
+	Failed bool `json:"failed,omitempty"`
+}
+
+// DMQueueBackend, alıcıya ulaşılamadığında mesajı giden kutusuna alabilen
+// bir DMBackend'dir (isteğe bağlı).
+type DMQueueBackend interface {
+	SendDMQueued(ctx context.Context, peerID, senderName, message string) error
+}
+
+// DMReadBackend, konuşma başına okundu bilgisini tutan bir DMBackend'dir
+// (isteğe bağlı). AND'ın ana menüsü ve eklentiler aynı bilgiyi görür.
+type DMReadBackend interface {
+	MarkRead(peerID string, at time.Time)
+	ReadMarks() map[string]time.Time
 }
 
 // DMHistoryBackend, DM geçmişini sunabilen bir DMBackend'dir (isteğe bağlı).
@@ -382,6 +414,11 @@ type ChatBackend interface {
 
 var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 
+// rePeerID, bir libp2p Peer ID'sinin biçimidir (base58: 0, O, I ve l yok).
+// Burada libp2p'yi içe aktarmak her eklentiye libp2p'yi de taşırdı; tam
+// doğrulamayı arka uç yapar.
+var rePeerID = regexp.MustCompile(`^[1-9A-HJ-NP-Za-km-z]{46,64}$`)
+
 func validPostID(id string) bool { return reHex.MatchString(id) }
 
 // reAuthorKey, bir author_key/target_key_hex alanının tam olarak 64 hex
@@ -516,6 +553,7 @@ func (s *Server) routeTable() []route {
 		{pattern: "/api/v1/dm/send", handler: onlyMethod(http.MethodPost, rateLimited(s.dmLimiter, s.postSendDM)), allowExternal: true, izin: IzinDM},
 		{pattern: "/api/v1/dm/poll", handler: onlyMethod(http.MethodGet, s.getDMPoll), allowExternal: true, izin: IzinDM},
 		{pattern: "/api/v1/dm/history", handler: onlyMethod(http.MethodGet, s.getDMHistory), allowExternal: true, izin: IzinDM},
+		{pattern: "/api/v1/dm/read", handler: s.handleDMRead, allowExternal: true, izin: IzinDM},
 		{pattern: "/api/v1/chat/send", handler: onlyMethod(http.MethodPost, rateLimited(s.chatLimiter, s.postSendChat)), allowExternal: true, izin: IzinSohbet},
 		{pattern: "/api/v1/chat/poll", handler: onlyMethod(http.MethodGet, s.getChatPoll), allowExternal: true, izin: IzinTemel},
 		{pattern: "/api/v1/chat/all", handler: onlyMethod(http.MethodGet, s.getChatAll), allowExternal: true, izin: IzinTemel},
@@ -1048,11 +1086,44 @@ func (s *Server) postSendDM(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := s.dm.SendDM(r.Context(), req.PeerID, s.id.Name(), req.Message); err != nil {
+	gonder := s.dm.SendDM
+	if q, ok := s.dm.(DMQueueBackend); ok && req.QueueIfOffline {
+		gonder = q.SendDMQueued
+	}
+	if err := gonder(r.Context(), req.PeerID, s.id.Name(), req.Message); err != nil {
 		writeErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleDMRead: GET okundu bilgisini (Peer ID → zaman) döner, POST bir
+// konuşmayı okundu işaretler. Arka uç okundu bilgisi tutmuyorsa 404 döner;
+// eklenti kendi kaydına düşer.
+func (s *Server) handleDMRead(w http.ResponseWriter, r *http.Request) {
+	rb, ok := s.dm.(DMReadBackend)
+	if !ok || rb == nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, rb.ReadMarks())
+	case http.MethodPost:
+		var req DMReadReq
+		if !decodeBody(w, r, &req) {
+			return
+		}
+		if !rePeerID.MatchString(req.PeerID) || req.At.IsZero() {
+			writeBadRequest(w, "geçerli peer_id ve at gerekli")
+			return
+		}
+		rb.MarkRead(req.PeerID, req.At)
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Allow", "GET, POST")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 // getDMHistory, bu oturumdaki özel mesajları (en eskiden en yeniye) döner.
@@ -1447,6 +1518,25 @@ func (c *Client) AllChat() ([]ChatMsg, error) {
 
 func (c *Client) SendDM(peerID, message string) error {
 	return c.post("/api/v1/dm/send", SendDMReq{PeerID: peerID, Message: message})
+}
+
+// SendDMQueued, SendDM gibidir ama alıcıya şu an ulaşılamıyorsa mesajı giden
+// kutusuna aldırır (bkz. SendDMReq.QueueIfOffline). Eski bir AND'da SendDM
+// gibi davranır.
+func (c *Client) SendDMQueued(peerID, message string) error {
+	return c.post("/api/v1/dm/send", SendDMReq{PeerID: peerID, Message: message, QueueIfOffline: true})
+}
+
+// DMReadMarks, konuşma başına okundu zamanlarını (Peer ID → zaman) döner.
+// Okundu bilgisi tutmayan eski bir AND'da IsNotFound(err) doğrudur.
+func (c *Client) DMReadMarks() (map[string]time.Time, error) {
+	var v map[string]time.Time
+	return v, c.get("/api/v1/dm/read", &v)
+}
+
+// MarkDMRead, peerID ile konuşmanın at'a kadar okunduğunu bildirir.
+func (c *Client) MarkDMRead(peerID string, at time.Time) error {
+	return c.post("/api/v1/dm/read", DMReadReq{PeerID: peerID, At: at})
 }
 
 // APIError, AND API'sinin 200 dışı bir yanıtıdır. Status, eklentinin eski bir

@@ -127,7 +127,7 @@ sorulur. Kimlik, eşler, forum ve site içeriği, genel sohbet ve tema okumak iz
 
 | İzin | Açtığı uç noktalar |
 |------|--------------------|
-| `dm` | `/api/v1/dm/send`, `/dm/poll`, `/dm/history` |
+| `dm` | `/api/v1/dm/send`, `/dm/poll`, `/dm/history`, `/dm/read` |
 | `file` | `/api/v1/file/send`, `/file/poll`, `/file/consent-poll`, `/file/consent` |
 | `chat` | `POST /api/v1/chat/send` |
 | `forum` | `POST /api/v1/forum/post`, `/forum/reply` |
@@ -281,9 +281,10 @@ esler, err := client.Peers()
 | `GET` | `/api/v1/forum/post?id=...` | Konu detayı (gövde + yanıtlar) |
 | `POST` | `/api/v1/forum/delete` | Konu sil `{"post_id":"..."}` (moderatör/kurucu) |
 | `POST` | `/api/v1/forum/post` | Yeni konu oluştur |
-| `POST` | `/api/v1/dm/send` | DM gönder `{"peer_id":"...","message":"..."}` |
+| `POST` | `/api/v1/dm/send` | DM gönder `{"peer_id":"...","message":"..."}`; `"queue_if_offline": true` ile alıcı çevrimdışıysa giden kutusuna alınır |
 | `GET` | `/api/v1/dm/poll` | Gelen DM bekle (5 sn. long poll) |
-| `GET` | `/api/v1/dm/history` | Bu oturumun gelen ve giden DM'leri (en fazla 500, yalnızca bellekte) |
+| `GET` | `/api/v1/dm/history` | Gelen ve giden son 500 DM (AND bunları şifreli saklar); giden kutusundakiler `pending`, gidemeyenler `failed` |
+| `GET` `POST` | `/api/v1/dm/read` | Konuşma başına okundu zamanları / `{"peer_id","at"}` ile okundu işaretle |
 | `GET` | `/api/v1/peers` | Bağlı eşler; `"and": true` olanlar AND düğümüdür (DM/dosya gönderilebilir) |
 | `GET` | `/api/v1/version` | Eklenti API sürümü `{"api": 2}`; yoksa AND eskidir (sürüm 1) |
 

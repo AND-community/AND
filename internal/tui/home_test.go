@@ -85,3 +85,25 @@ func TestBinlik(t *testing.T) {
 		}
 	}
 }
+
+// TestHomeTree_OkunmamisDMRozeti: Özel Chat menü öğesi, çekirdekteki
+// okunmamış özel mesaj sayısını gösterir.
+func TestHomeTree_OkunmamisDMRozeti(t *testing.T) {
+	id, err := stdcrypto.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plugins := []pluginmgr.Plugin{{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat"}, Enabled: true}}
+	m := newAppModel(context.Background(), id, nil, plugins, "", nil, nil, nil, "", nil, nil, nil)
+	eski := OkunmamisDM
+	t.Cleanup(func() { OkunmamisDM = eski })
+
+	OkunmamisDM = func() int { return 0 }
+	if strings.Contains(ansi.Strip(m.homeTree(60, 0)), "●") {
+		t.Fatal("okunmamış yokken rozet görünmemeli")
+	}
+	OkunmamisDM = func() int { return 3 }
+	if !strings.Contains(ansi.Strip(m.homeTree(60, 0)), "Özel Chat  ● 3") {
+		t.Fatalf("rozet Özel Chat satırında görünmeli:\n%s", ansi.Strip(m.homeTree(60, 0)))
+	}
+}

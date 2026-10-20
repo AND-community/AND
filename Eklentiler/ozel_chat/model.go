@@ -23,6 +23,9 @@ type istemci interface {
 	DMHistory() ([]pluginapi.DMRecord, error)
 	PollDM() ([]pluginapi.DMMsg, error)
 	SendDM(peerID, message string) error
+	SendDMQueued(peerID, message string) error
+	DMReadMarks() (map[string]time.Time, error)
+	MarkDMRead(peerID string, at time.Time) error
 	SendFile(peerID, localPath string) error
 	PollFile() ([]pluginapi.FileMsg, error)
 	PollConsent() ([]pluginapi.FileConsentReq, error)
@@ -87,12 +90,31 @@ type dosyaGonderildiMsg struct {
 	err      error
 }
 type tikMsg time.Time
+type okunduMsg struct {
+	isaretler map[string]time.Time
+	err       error
+}
 type yenidenDinleMsg string // "dm" | "onay" | "dosya"
 
 // ─── Komutlar ────────────────────────────────────────────────────────────────
 
 func gecmisCek(c istemci) tea.Cmd {
 	return func() tea.Msg { k, err := c.DMHistory(); return gecmisMsg{k, err} }
+}
+
+func okunduCek(c istemci) tea.Cmd {
+	return func() tea.Msg { o, err := c.DMReadMarks(); return okunduMsg{o, err} }
+}
+
+// okunduBildir, işaretleri çekirdeğe iletir; hata olursa bir dahaki okumada
+// yeniden denenir (yerel dosya zaten güncel).
+func okunduBildir(c istemci, isaretler map[string]time.Time) tea.Cmd {
+	return func() tea.Msg {
+		for p, t := range isaretler {
+			_ = c.MarkDMRead(p, t)
+		}
+		return nil
+	}
 }
 
 func dmDinle(c istemci) tea.Cmd {
@@ -126,6 +148,9 @@ type mesaj struct {
 	zaman time.Time
 	giden bool
 	olay  bool // dosya alındı/gönderildi gibi yerel bir olay satırı
+	// bekliyor: giden kutusunda alıcının bağlanmasını bekliyor; basarisiz:
+	// süresi dolup gönderilemedi (bkz. pluginapi.DMRecord).
+	bekliyor, basarisiz bool
 }
 
 type konusma struct {
@@ -151,7 +176,12 @@ type model struct {
 	olaylar  map[string][]mesaj
 	yeniler  map[string]time.Time // elle başlatılmış, henüz mesajı olmayan konuşmalar
 	okundu   map[string]time.Time
-	esler    []pluginapi.PeerInfo // bağlı AND düğümleri
+	// cekirdekOkundu: AND okundu bilgisini tutuyor (/api/v1/dm/read); ana
+	// menüdeki rozet aynı bilgiyi kullanır. bildirilecek, çekirdeğe henüz
+	// iletilmemiş okundu işaretleridir (bir sonraki tikte gönderilir).
+	cekirdekOkundu bool
+	bildirilecek   map[string]time.Time
+	esler          []pluginapi.PeerInfo // bağlı AND düğümleri
 
 	secili   string
 	listeIdx int
@@ -194,7 +224,7 @@ func yeniModel(c istemci, ben pluginapi.IdentityInfo, dataDir string) model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, gecmisCek(m.c), eslerCek(m.c), onayDinle(m.c), dosyaDinle(m.c), tik())
+	return tea.Batch(textinput.Blink, gecmisCek(m.c), okunduCek(m.c), eslerCek(m.c), onayDinle(m.c), dosyaDinle(m.c), tik())
 }
 
 // ─── Türetilen veri ──────────────────────────────────────────────────────────
@@ -218,7 +248,7 @@ func (m model) konusmalar() []konusma {
 		if !r.Outgoing && r.Name != "" {
 			k.ad = pluginui.Safe(r.Name)
 		}
-		k.mesajlar = append(k.mesajlar, mesaj{metin: pluginui.Safe(r.Text), zaman: r.At, giden: r.Outgoing})
+		k.mesajlar = append(k.mesajlar, mesaj{metin: pluginui.Safe(r.Text), zaman: r.At, giden: r.Outgoing, bekliyor: r.Pending, basarisiz: r.Failed})
 		if !r.Outgoing && r.At.After(m.okundu[r.PeerID]) {
 			k.okunmamis++
 		}
@@ -285,6 +315,12 @@ func (m *model) okunduIsaretle() {
 	if son.After(m.okundu[m.secili]) {
 		m.okundu[m.secili] = son
 		okunduKaydet(m.dataDir, m.okundu)
+		if m.cekirdekOkundu {
+			if m.bildirilecek == nil {
+				m.bildirilecek = map[string]time.Time{}
+			}
+			m.bildirilecek[m.secili] = son
+		}
 	}
 }
 
@@ -335,7 +371,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.tikNo%10 == 0 {
 			cmds = append(cmds, eslerCek(m.c))
 		}
+		if len(m.bildirilecek) > 0 {
+			cmds = append(cmds, okunduBildir(m.c, m.bildirilecek))
+			m.bildirilecek = nil
+		}
 		return m, tea.Batch(cmds...)
+
+	case okunduMsg:
+		if msg.err != nil {
+			return m, nil // eski AND: yalnızca yerel dosya
+		}
+		m.cekirdekOkundu = true
+		for p, t := range msg.isaretler {
+			if t.After(m.okundu[p]) {
+				m.okundu[p] = t
+			}
+		}
+		// Yalnızca yerel dosyada olan (eski sürümden kalan) işaretler çekirdeğe taşınır.
+		for p, t := range m.okundu {
+			if t.After(msg.isaretler[p]) {
+				if m.bildirilecek == nil {
+					m.bildirilecek = map[string]time.Time{}
+				}
+				m.bildirilecek[p] = t
+			}
+		}
+		m.okunduIsaretle()
+		return m, nil
 
 	case eslerMsg:
 		if msg.err == nil {
@@ -572,7 +634,7 @@ func (m model) tusYazi(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.kaydirma = 0
 		m.gonderiliyor++
 		c, peer := m.c, m.secili
-		return m, func() tea.Msg { return gonderildiMsg{peer: peer, metin: metin, err: c.SendDM(peer, metin)} }
+		return m, func() tea.Msg { return gonderildiMsg{peer: peer, metin: metin, err: c.SendDMQueued(peer, metin)} }
 	}
 	var cmd tea.Cmd
 	m.yazi, cmd = m.yazi.Update(k)
