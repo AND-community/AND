@@ -1,0 +1,357 @@
+{
+  "name": "and-vscode",
+  "displayName": "AND",
+  "description": "AND ekosistemiyle tam uyumlu VS Code entegrasyonu: DeltaX sürüm kontrolü (gruplar, projeler, commit/dal/birleştirme), AND açıkken canlı Forum/DM/Sohbet/Ağ paneli ve kişisel site sayfalarını editörde düzenleyip yayınlama.",
+  "version": "0.7.1",
+  "icon": "resources/icon.png",
+  "publisher": "Lucian95511",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AND-community/AND.git",
+    "directory": "and-vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/AND-community/AND/issues"
+  },
+  "homepage": "https://github.com/AND-community/AND/tree/main/and-vscode#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "and",
+    "deltax",
+    "vcs",
+    "p2p",
+    "source control",
+    "site"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onFileSystem:and-site-edit"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "DeltaX",
+      "properties": {
+        "deltax.dataDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "`AND_DATA_DIR` üzerine yazılacak yol. Boş bırakılırsa AND ana uygulamasının kullandığı varsayılan konum otomatik tespit edilir (ör. Windows'ta `%APPDATA%\\and`)."
+        },
+        "deltax.authorName": {
+          "type": "string",
+          "default": "",
+          "description": "VS Code'dan yapılan commit'lerde yazar olarak kullanılacak ad. Boş bırakılırsa işletim sistemi kullanıcı adı kullanılır. AND uygulamasındaki takma addan bağımsızdır."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[and-site]": {
+        "files.autoSave": "off",
+        "editor.wordWrap": "on"
+      }
+    },
+    "languages": [
+      {
+        "id": "and-site",
+        "aliases": [
+          "AND Site Sayfası",
+          "and-site"
+        ],
+        "extensions": [
+          ".andsite"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "and-site",
+        "scopeName": "text.and-site",
+        "path": "./syntaxes/and-site.tmLanguage.json"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "deltax",
+          "title": "DeltaX",
+          "icon": "resources/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "deltax": [
+        {
+          "id": "deltaxGroups",
+          "name": "Gruplar ve Projeler"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "deltaxGroups",
+        "contents": "Bu AND kimliği için henüz DeltaX grubu bulunamadı.\n[Yeni Grup](command:deltax.createGroup)\n[Yenile](command:deltax.refresh)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "deltax.refresh",
+        "title": "Yenile",
+        "category": "DeltaX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "deltax.openProject",
+        "title": "Projeyi Aç",
+        "category": "DeltaX",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "deltax.newProject",
+        "title": "Yeni Proje",
+        "category": "DeltaX",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "deltax.createGroup",
+        "title": "Yeni Grup",
+        "category": "DeltaX",
+        "icon": "$(add)"
+      },
+      {
+        "command": "deltax.inviteMember",
+        "title": "Üye Davet Et",
+        "category": "DeltaX",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "deltax.manageAdmins",
+        "title": "Yönetici Ata/Kaldır",
+        "category": "DeltaX"
+      },
+      {
+        "command": "deltax.leaveOrCloseGroup",
+        "title": "Gruptan Çık / Grubu Kapat",
+        "category": "DeltaX"
+      },
+      {
+        "command": "deltax.pushProject",
+        "title": "Gönder (Push)",
+        "category": "DeltaX",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "deltax.pullFromMember",
+        "title": "Çek İste (Pull)",
+        "category": "DeltaX",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "deltax.commit",
+        "title": "Kaydet (Commit)",
+        "category": "DeltaX",
+        "icon": "$(check)"
+      },
+      {
+        "command": "deltax.showLog",
+        "title": "Günlük (Log)",
+        "category": "DeltaX",
+        "icon": "$(history)"
+      },
+      {
+        "command": "deltax.switchBranch",
+        "title": "Dal Değiştir",
+        "category": "DeltaX",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "deltax.newBranch",
+        "title": "Yeni Dal Oluştur",
+        "category": "DeltaX"
+      },
+      {
+        "command": "deltax.merge",
+        "title": "Uzak Dalı Birleştir",
+        "category": "DeltaX",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "deltax.exportZip",
+        "title": "Projeyi Dışa Aktar (.zip)",
+        "category": "DeltaX",
+        "icon": "$(package)"
+      },
+      {
+        "command": "deltax.openIgnoreFile",
+        "title": ".projeagignore Dosyasını Aç/Oluştur",
+        "category": "DeltaX"
+      },
+      {
+        "command": "deltax.openChange",
+        "title": "Değişikliği Görüntüle",
+        "category": "DeltaX"
+      },
+      {
+        "command": "and.openLivePanel",
+        "title": "Canlı Panel (Forum / DM / Sohbet / Ağ)",
+        "category": "AND",
+        "icon": "$(radio-tower)"
+      },
+      {
+        "command": "and.shareSelectionToForum",
+        "title": "Seçili Kodu Forumda Paylaş",
+        "category": "AND",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "and.sendFileToPeer",
+        "title": "Dosyayı Bir Eşe Gönder",
+        "category": "AND",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "and.site.newPage",
+        "title": "Yeni Site Sayfası",
+        "category": "AND",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "and.site.openPage",
+        "title": "Site Sayfası Aç…",
+        "category": "AND",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "and.site.deletePage",
+        "title": "Site Sayfasını Sil…",
+        "category": "AND",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "and.site.copyShareCode",
+        "title": "Site Paylaşım Kodunu Kopyala",
+        "category": "AND",
+        "icon": "$(link)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "deltax.createGroup",
+          "when": "view == deltaxGroups",
+          "group": "navigation"
+        },
+        {
+          "command": "deltax.refresh",
+          "when": "view == deltaxGroups",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "deltax.openProject",
+          "when": "view == deltaxGroups && viewItem == deltaxProject",
+          "group": "inline"
+        },
+        {
+          "command": "deltax.pushProject",
+          "when": "view == deltaxGroups && viewItem == deltaxProject",
+          "group": "1_actions"
+        },
+        {
+          "command": "deltax.pullFromMember",
+          "when": "view == deltaxGroups && viewItem == deltaxProject",
+          "group": "1_actions"
+        },
+        {
+          "command": "deltax.exportZip",
+          "when": "view == deltaxGroups && viewItem == deltaxProject",
+          "group": "1_actions"
+        },
+        {
+          "command": "deltax.newProject",
+          "when": "view == deltaxGroups && viewItem == deltaxGroup",
+          "group": "inline"
+        },
+        {
+          "command": "deltax.inviteMember",
+          "when": "view == deltaxGroups && viewItem == deltaxGroup",
+          "group": "1_actions"
+        },
+        {
+          "command": "deltax.manageAdmins",
+          "when": "view == deltaxGroups && viewItem == deltaxGroup",
+          "group": "1_actions"
+        },
+        {
+          "command": "deltax.leaveOrCloseGroup",
+          "when": "view == deltaxGroups && viewItem == deltaxGroup",
+          "group": "2_danger"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "deltax.openChange",
+          "when": "scmProvider == deltax",
+          "group": "inline"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "and.shareSelectionToForum",
+          "group": "9_and"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "and.sendFileToPeer",
+          "when": "!explorerResourceIsFolder",
+          "group": "9_and"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "deltax.openChange",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "and.site.copyShareCode",
+          "when": "resourceScheme == and-site-edit",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test out-test/*.test.js out-test/live/*.test.js out-test/live/deltax/*.test.js out-test/live/site/*.test.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true,
+    "@vscode/vsce-sign@2.0.9": true,
+    "keytar@7.9.0": true
+  }
+}
