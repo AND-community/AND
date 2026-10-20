@@ -2,11 +2,10 @@ module and-arama-motoru
 
 go 1.26.4
 
-// go1.26.6, GO-2026-6090/GO-2026-5972/GO-2026-5856'yı (crypto/tls'te bir
-// handshake mesaj sınırı, encoding/asn1'de bir özyineleme derinliği sınırı
-// ve ECH gizlilik sızıntısı) düzeltir — govulncheck ile tespit edildi.
-// GOTOOLCHAIN=auto (varsayılan) bu sürümü gerekirse otomatik indirir.
-toolchain go1.26.6
+// go1.26.9, standart kütüphanede govulncheck'in bulduğu açıkları (net/http,
+// net/textproto, crypto/tls, encoding/asn1) kapatır. GOTOOLCHAIN=auto
+// (varsayılan) bu sürümü gerekirse otomatik indirir.
+toolchain go1.26.9
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
@@ -21,7 +20,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.48.0
 	modernc.org/sqlite v1.52.0
 )
 
@@ -141,15 +140,15 @@ require (
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/mod v0.35.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260409153401-be6f6cb8b1fa // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect

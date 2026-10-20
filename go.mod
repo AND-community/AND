@@ -2,6 +2,11 @@ module github.com/lucian95511/and
 
 go 1.26.4
 
+// go1.26.9, standart kütüphanede govulncheck'in bulduğu açıkları (net/http,
+// net/textproto, net/url, crypto/tls, encoding/asn1) kapatır. GOTOOLCHAIN=auto
+// (varsayılan) bu sürümü gerekirse otomatik indirir.
+toolchain go1.26.9
+
 require (
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/bubbles v1.0.0
@@ -15,9 +20,9 @@ require (
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/tyler-smith/go-bip39 v1.1.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/sys v0.46.0
-	golang.org/x/term v0.44.0
+	golang.org/x/crypto v0.57.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	modernc.org/sqlite v1.52.0
 )
 
@@ -98,7 +103,7 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
-	github.com/pion/dtls/v3 v3.1.2 // indirect
+	github.com/pion/dtls/v3 v3.1.4 // indirect
 	github.com/pion/ice/v4 v4.0.10 // indirect
 	github.com/pion/interceptor v0.1.40 // indirect
 	github.com/pion/logging v0.2.4 // indirect
@@ -120,8 +125,8 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.0 // indirect
-	github.com/quic-go/webtransport-go v0.10.0 // indirect
+	github.com/quic-go/quic-go v0.60.0 // indirect
+	github.com/quic-go/webtransport-go v0.11.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
@@ -138,13 +143,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
