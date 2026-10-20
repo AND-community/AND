@@ -17,44 +17,12 @@ import (
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
+	"github.com/lucian95511/and/protokol"
 )
 
-var Categories = []string{
-	"Python",
-	"C / C++",
-	"Rust",
-	"Go",
-	"JavaScript",
-	"Java / Kotlin",
-	"C# / .NET",
-	"PHP",
-	"Swift / Objective-C",
-	"Yazılım",
-	"Web",
-	"Mobil",
-	"Yapay Zeka",
-	"Veritabanı",
-	"DevOps",
-	"Bulut Bilişim",
-	"Linux",
-	"Bilişim",
-	"Ağ ve Sistem Yönetimi",
-	"Siber Güvenlik",
-	"Donanım",
-	"Gömülü Sistemler / IoT",
-	"Robotik",
-	"Blockchain / Web3",
-	"Algoritma ve Veri Yapıları",
-	"Test ve Kalite",
-	"UI / UX Tasarım",
-	"Oyun Geliştirme",
-	"Açık Kaynak",
-	"Kariyer",
-	"Freelance",
-	"Eğitim Kaynakları",
-	"Etkinlikler ve Duyurular",
-	"Genel",
-}
+// Categories, forum konularının kapalı kategori kümesidir. Tanım protokol
+// paketindedir: AND, eklentiler ve arama motoru aynı listeyi kullanır.
+var Categories = protokol.Kategoriler
 
 const postTTL = 5 * 24 * time.Hour
 
@@ -330,20 +298,11 @@ func (f *Forum) decrAuthorReply(authorKey string) {
 	}
 }
 
-var categorySet = func() map[string]struct{} {
-	m := make(map[string]struct{}, len(Categories))
-	for _, c := range Categories {
-		m[c] = struct{}{}
-	}
-	return m
-}()
-
 // ValidCategory reports whether cat is one of Categories. Exported so other
 // packages (e.g. profile, validating self-chosen interest tags) can reuse
 // the same closed set instead of duplicating or drifting from it.
 func ValidCategory(cat string) bool {
-	_, ok := categorySet[cat]
-	return ok
+	return protokol.GecerliKategori(cat)
 }
 
 func (f *Forum) handleMessage(data []byte) {

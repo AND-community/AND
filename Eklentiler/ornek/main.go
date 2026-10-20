@@ -219,7 +219,7 @@ type dmGonderildi struct{ err error }
 // ─── Model ────────────────────────────────────────────────────────────────────
 
 // kategoriListesi, AND forumundaki geçerli kategorileri listeler.
-// forum.Categories ile eşleşmeli.
+// protokol.Kategoriler ile eşleşmeli.
 var kategoriListesi = []string{
 	"genel", "duyuru", "teknik", "soru", "tartışma",
 	"proje", "haber", "eğlence", "destek", "diğer",
