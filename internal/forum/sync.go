@@ -168,6 +168,16 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	if err := json.NewDecoder(io.LimitReader(s, maxSyncResponseBytes)).Decode(&resp); err != nil {
 		return fmt.Errorf("sync: read response: %w", err)
 	}
+	f.senkronYanitiUygula(resp)
+	return nil
+}
+
+// senkronYanitiUygula, bir eşin senkron yanıtındaki konuları, yanıtları ve
+// silmeleri doğrulayıp uygular. Geçmiş içerik canlı hız sınırlarına değil,
+// yazıldığı saate göre sayan ayrı sınırlara tabidir (allowSyncedPost/
+// allowSyncedReply): aksi halde yeni katılan bir düğüm büyük bir geçmişi
+// saatlerce parça parça alır ve bu sırada ağdan gelen yeni konuları reddederdi.
+func (f *Forum) senkronYanitiUygula(resp syncResponse) {
 	// Yanıttaki post sayısını sınırla — kötü niyetli peer'a karşı savunma.
 	if len(resp.Posts) > maxSyncPosts {
 		resp.Posts = resp.Posts[:maxSyncPosts]
@@ -182,7 +192,7 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 		if f.authorBanned(p.AuthorKey) {
 			continue
 		}
-		if verifyPost(p) && f.rl.allowPost(p.AuthorKey, false) {
+		if verifyPost(p) && f.rl.allowSyncedPost(p.AuthorKey, p.CreatedAt) {
 			f.storePost(p)
 		}
 	}
@@ -198,7 +208,7 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 			if f.authorBanned(r.AuthorKey) {
 				continue
 			}
-			if r.PostID == postID && verifyReply(r) && f.rl.allowReply(r.AuthorKey, false) {
+			if r.PostID == postID && verifyReply(r) && f.rl.allowSyncedReply(r.AuthorKey, r.CreatedAt) {
 				f.storeReply(r)
 				limit++
 			}
@@ -220,6 +230,4 @@ func (f *Forum) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 			f.applyModDelete(&md)
 		}
 	}
-
-	return nil
 }

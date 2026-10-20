@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucian95511/and/internal/hizsiniri"
 	"github.com/lucian95511/and/internal/timewin"
 )
 
@@ -47,6 +48,13 @@ const (
 	// rlSaveInterval: dirty state ne sıklıkla diske yazılır.
 	// Her izin verilen mesajda ayrı goroutine yerine tek bir arka plan döngüsü kullanılır.
 	rlSaveInterval = 30 * time.Second
+
+	// Senkronla gelen geçmiş içerik canlı sayaçlara sayılmaz (bkz.
+	// hizsiniri.Gecmis): yazar başına sınır içeriğin yazıldığı saate göre
+	// rlMaxPosts/rlMaxReplies'tır; toplam, varış zamanına göre ayrı ve daha
+	// geniş bir saatlik bütçeyle sınırlanır (sahte kimliklerle yığılmaya karşı).
+	rlSyncGlobalMaxPosts   = 5000
+	rlSyncGlobalMaxReplies = 20000
 )
 
 // rlPostCooldown/rlReplyCooldown: art arda hızlı gönderime (patlama/burst
@@ -174,6 +182,26 @@ type rateLimiter struct {
 	globalDeletes []time.Time // tüm yazarlardan gelen silmeler — Sybil koruması
 	dirty         bool        // true → in-memory state is ahead of the on-disk state
 	dataDir       string
+
+	// Senkronla gelen geçmiş içeriğin sayaçları (canlı sayaçlardan ayrı).
+	senkronKonu  hizsiniri.Gecmis
+	senkronYanit hizsiniri.Gecmis
+}
+
+// allowSyncedPost, senkronla gelen bir konuyu yazıldığı saate göre sınar;
+// canlı sayaçlara (allowPost) dokunmaz, böylece büyük bir geçmiş senkronu ağdan
+// şimdi gelen konuları reddettirmez.
+func (rl *rateLimiter) allowSyncedPost(authorKey string, createdAt time.Time) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	return rl.senkronKonu.Izin(authorKey, createdAt, time.Now(), rlMaxPosts, rlSyncGlobalMaxPosts, postTTL)
+}
+
+// allowSyncedReply, allowSyncedPost'un yanıtlar için karşılığıdır.
+func (rl *rateLimiter) allowSyncedReply(authorKey string, createdAt time.Time) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	return rl.senkronYanit.Izin(authorKey, createdAt, time.Now(), rlMaxReplies, rlSyncGlobalMaxReplies, postTTL)
 }
 
 func newRateLimiter(dataDir string) *rateLimiter {

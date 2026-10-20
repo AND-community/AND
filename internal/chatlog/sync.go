@@ -110,14 +110,21 @@ func (s *Store) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 	if err := json.NewDecoder(io.LimitReader(st, maxSyncResponseBytes)).Decode(&resp); err != nil {
 		return fmt.Errorf("chatlog sync: read response: %w", err)
 	}
+	s.senkronYanitiUygula(resp)
+	return nil
+}
+
+// senkronYanitiUygula, bir eşin senkron yanıtındaki mesajları doğrulayıp
+// saklar. Geçmiş mesajlar handleMessage'daki (canlı GossipSub alımı) kadar
+// sıkı doğrulanır — senkronizasyon, imza/boyut/saat-kayması/hız-sınırı
+// kontrollerini atlayabileceğin ayrı bir güven sınırı DEĞİL — ama canlı
+// sayaçlara değil, yazıldığı saate göre sayan ayrı bir sınıra (allowSynced)
+// tabidir: aksi halde büyük bir geçmiş senkronu canlı sohbeti bir saat
+// reddettirirdi.
+func (s *Store) senkronYanitiUygula(resp syncResponse) {
 	if len(resp.Messages) > maxSyncMessages {
 		resp.Messages = resp.Messages[:maxSyncMessages]
 	}
-
-	// SyncWithPeer bir peer'ın gönderdiği geçmiş mesajları da tam olarak
-	// handleMessage'daki (canlı GossipSub alımı) kadar sıkı doğruluyor —
-	// senkronizasyon, imza/boyut/saat-kayması/hız-sınırı kontrollerini
-	// atlayabileceğin ayrı bir güven sınırı DEĞİL.
 	applied := false
 	for _, m := range resp.Messages {
 		if m == nil || len(m.Text) > MaxTextBytes || !m.Signed() {
@@ -132,7 +139,7 @@ func (s *Store) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 		if m.SentAt.After(time.Now().Add(maxClockSkew)) {
 			continue
 		}
-		if !verify(m) || !s.allow(m.AuthorKey, false) {
+		if !verify(m) || !s.allowSynced(m.AuthorKey, m.SentAt) {
 			continue
 		}
 		if m.ExpiresAt.IsZero() {
@@ -154,5 +161,4 @@ func (s *Store) SyncWithPeer(ctx context.Context, h libp2phost.Host, peerID peer
 		default:
 		}
 	}
-	return nil
 }

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/hizsiniri"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
@@ -174,6 +175,9 @@ type Store struct {
 	// not tied to one author.
 	authors     map[string]*authorBucket
 	globalTimes []time.Time
+	// senkronGecmis, senkronla gelen geçmiş mesajların sayacıdır; canlı
+	// sayaçlardan ayrıdır (bkz. allowSynced).
+	senkronGecmis hizsiniri.Gecmis
 
 	dirty   bool // true → in-memory rate state is ahead of the on-disk copy
 	dataDir string
@@ -237,6 +241,19 @@ func (s *Store) SetModerator(mod *moderation.Moderator) {
 func (s *Store) authorBanned(authorKey string) bool {
 	mod := s.mod.Load()
 	return mod != nil && mod.IsAuthorBanned(authorKey)
+}
+
+// rlSyncGlobalMax, senkronla son bir saatte kabul edilen en fazla geçmiş
+// mesajdır (tüm ağdan; sahte kimliklerle yığılmaya karşı).
+const rlSyncGlobalMax = 20000
+
+// allowSynced, senkronla gelen geçmiş bir mesajı yazıldığı saate göre sınar
+// (yazar başına rlMaxPerAuthor); canlı sayaçlara (allow) dokunmaz, böylece
+// büyük bir geçmiş senkronu ağdan şimdi gelen mesajları reddettirmez.
+func (s *Store) allowSynced(authorKey string, sentAt time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.senkronGecmis.Izin(authorKey, sentAt, time.Now(), rlMaxPerAuthor, rlSyncGlobalMax, MessageTTL)
 }
 
 // allow reports whether authorKey may have another message accepted right
