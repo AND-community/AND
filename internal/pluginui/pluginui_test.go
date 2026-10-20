@@ -1,6 +1,7 @@
 package pluginui
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -70,5 +71,28 @@ func TestSafe_StripsPrivateCSIWhole(t *testing.T) {
 	in := "önce\x1b[?1049hsonra\x1b[?25l"
 	if got := Safe(in); got != "öncesonra" {
 		t.Fatalf("Safe(%q) = %q, want %q", in, got, "öncesonra")
+	}
+}
+
+// TestSafe_HizliYolEsdeger: hızlı yol (temiz metin olduğu gibi döner) yavaş
+// yolla aynı sonucu verir; geçersiz UTF-8 de eskisi gibi düzeltilir.
+func TestSafe_HizliYolEsdeger(t *testing.T) {
+	yavas := func(s string) string {
+		s = reANSI.ReplaceAllString(s, "")
+		var b strings.Builder
+		for _, r := range s {
+			if !unsafeRune(r) {
+				b.WriteRune(r)
+			}
+		}
+		return b.String()
+	}
+	for _, s := range []string{
+		"", "düz metin", "satır\nsekme\tvar", "çğışöü ÇĞİŞÖÜ 日本語 🙂",
+		"\x1b[31mkırmızı\x1b[0m", "bozuk \xff utf8", "sonda ESC \x1b", "\u0085 C1",
+	} {
+		if got, want := Safe(s), yavas(s); got != want {
+			t.Errorf("Safe(%q) = %q, yavaş yol %q", s, got, want)
+		}
 	}
 }

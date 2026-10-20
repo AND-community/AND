@@ -752,35 +752,49 @@ func (d *Depo) AraGelismisSirali(sorgu string, tip SonucTip, yazarKey string, si
 	// kullanılır; snippet() ise kısa, bağlamlı bir alıntı döner (sonuç
 	// listesinde kullanılır). İkisi de aynı sentinel işaretleyicileri
 	// kullanır (bkz. view.go'daki vurgula).
+	filtre := ""
+	var filtreArgs []any
+	if tip != "" {
+		filtre += ` AND tip = ?`
+		filtreArgs = append(filtreArgs, string(tip))
+	}
+	if yazarKey != "" {
+		filtre += ` AND yazar_key = ?`
+		filtreArgs = append(filtreArgs, yazarKey)
+	}
+	// ORDER BY'daki ikincil "kaynak_id" anahtarı, eşit skorlu satırlarda
+	// belirsiz/kararsız sıralamayı (dolayısıyla sayfa sınırında kayıt
+	// kayması/tekrarı riskini) önler — SQLite eşit ORDER BY değerlerinde
+	// satır sırasını GARANTİ ETMEZ.
+	var sirala string
+	var siralaArgs []any
+	switch siralama {
+	case SiralamaYeni:
+		sirala = `olusturma_ts DESC, kaynak_id`
+	default: // SiralamaAlaka
+		sirala = `(bm25(arama_fts, ` + bm25SutunAgirliklari + `))
+			- ? * (1.0 / (1.0 + (julianday('now') - julianday(olusturma_ts)) / ?)), kaynak_id`
+		siralaArgs = []any{tazelikAgirligi, tazelikYariOmurGun}
+	}
+	// İki aşama: iç sorgu yalnızca sayfadaki satırların rowid'lerini seçer
+	// (sıralama için yalnızca bm25 hesaplanır); highlight() ve snippet()
+	// yalnızca bu satırlar için üretilir. Önceden ORDER BY ... LIMIT'ten önce
+	// eşleşen HER satır için tam gövde vurgulanıyordu: 10.000 kayıtta ~1.000
+	// eşleşen bir sorgu 38 ms sürüyordu. Dış sorgu aynı ifadeyle yeniden
+	// sıralar (aynı MATCH, aynı bm25 değerleri). +1: "sonraki sayfa var mı"
+	// testi için bir fazlası çekilir (bkz. AramaSayfasi.SonrakiVarMi).
 	sorguSQL := `SELECT tip, kaynak_id, ust_id, kategori, baslik,
 		highlight(arama_fts, 5, ?, ?), yazar_ad, yazar_key, olusturma_ts, sig,
 		snippet(arama_fts, 5, ?, ?, '…', 24)
-		FROM arama_fts WHERE arama_fts MATCH ?`
-	args := []any{SnippetOncesi, SnippetSonrasi, SnippetOncesi, SnippetSonrasi, ftsSorgu}
-	if tip != "" {
-		sorguSQL += ` AND tip = ?`
-		args = append(args, string(tip))
-	}
-	if yazarKey != "" {
-		sorguSQL += ` AND yazar_key = ?`
-		args = append(args, yazarKey)
-	}
-	// +1: "sonraki sayfa var mı" testi için bir fazlası çekilir (bkz.
-	// AramaSayfasi.SonrakiVarMi'nin doc yorumu). ORDER BY'daki ikincil
-	// "kaynak_id" anahtarı, eşit skorlu satırlarda belirsiz/kararsız
-	// sıralamayı (dolayısıyla sayfa sınırında kayıt kayması/tekrarı
-	// riskini) önler — SQLite eşit ORDER BY değerlerinde satır sırasını
-	// GARANTİ ETMEZ.
-	switch siralama {
-	case SiralamaYeni:
-		sorguSQL += ` ORDER BY olusturma_ts DESC, kaynak_id LIMIT ? OFFSET ?`
-		args = append(args, limit+1, offset)
-	default: // SiralamaAlaka
-		sorguSQL += ` ORDER BY (bm25(arama_fts, ` + bm25SutunAgirliklari + `))
-			- ? * (1.0 / (1.0 + (julianday('now') - julianday(olusturma_ts)) / ?)), kaynak_id
-			LIMIT ? OFFSET ?`
-		args = append(args, tazelikAgirligi, tazelikYariOmurGun, limit+1, offset)
-	}
+		FROM arama_fts WHERE arama_fts MATCH ? AND rowid IN (
+			SELECT rowid FROM arama_fts WHERE arama_fts MATCH ?` + filtre + `
+			ORDER BY ` + sirala + ` LIMIT ? OFFSET ?)
+		ORDER BY ` + sirala
+	args := []any{SnippetOncesi, SnippetSonrasi, SnippetOncesi, SnippetSonrasi, ftsSorgu, ftsSorgu}
+	args = append(args, filtreArgs...)
+	args = append(args, siralaArgs...)
+	args = append(args, limit+1, offset)
+	args = append(args, siralaArgs...)
 
 	rows, err := d.db.Query(sorguSQL, args...)
 	if err != nil {

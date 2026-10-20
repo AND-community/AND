@@ -8,6 +8,7 @@ package pluginui
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // [@-Z\\^_] deliberately lists @-Z, '\', '^', '_' as separate class members
@@ -31,8 +32,16 @@ var reANSI = regexp.MustCompile(
 // ele geçiremez ama metni yanıltıcı gösterebilir: "fatura\u202Efdp.exe"
 // ekranda "faturaexe.pdf" gibi görünür.
 func Safe(s string) string {
+	// Hızlı yol: metinlerin çoğu temizdir. Her ANSI dizisi ESC ile başlar ve
+	// ESC güvensiz bir karakterdir; güvensiz karakter yoksa ve UTF-8
+	// geçerliyse aşağıdaki işlem metni değiştirmez (geçersiz UTF-8'de
+	// bozuk baytlar U+FFFD'ye dönüşür, o yüzden o durum yavaş yoldan gider).
+	if utf8.ValidString(s) && !strings.ContainsFunc(s, unsafeRune) {
+		return s
+	}
 	s = reANSI.ReplaceAllString(s, "")
 	var b strings.Builder
+	b.Grow(len(s))
 	for _, r := range s {
 		if !unsafeRune(r) {
 			b.WriteRune(r)
