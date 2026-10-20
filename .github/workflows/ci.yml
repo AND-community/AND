@@ -74,41 +74,6 @@ jobs:
       - name: Yarış testiyle çalıştır
         run: go test -race -count=1 ./...
 
-  arama-motoru:
-    name: Arama motoru (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    defaults:
-      run:
-        working-directory: arama-motoru
-
-    steps:
-      - name: Kaynak kodu al
-        uses: actions/checkout@v4
-
-      - name: Go kur
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: arama-motoru/go.mod
-          cache: true
-          cache-dependency-path: arama-motoru/go.sum
-
-      - name: Derle
-        run: go build ./...
-
-      - name: Testleri çalıştır
-        run: go test ./...
-
-      - name: Statik analiz
-        run: go vet ./...
-
-      - name: Bilinen açık taraması
-        if: runner.os == 'Linux'
-        run: bash ../.github/scripts/govulncheck.sh
-
   and-vscode:
     name: and-vscode (typecheck/build/test)
     runs-on: ubuntu-latest

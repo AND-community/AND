@@ -582,14 +582,14 @@ listesi ve uç noktaları için [Eklentiler/ornek/README.md](Eklentiler/ornek/RE
 
 ## Ekosistem
 
-**AND Arama Motoru** (`arama-motoru/`, aynı depoda ama kendi Go modülüyle ayrı, bağımsız bir program), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın iç paketlerini kullanmaz, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan iki ayrı program. Konu adları ve protokol kimlikleri iki programın da kullandığı `protokol/` paketinden gelir; AND'ın gerçek koduyla üretilen örnek iletiler (`protokol/testdata/`) arama motorunun testlerinde doğrulanır, böylece ileti biçimi bir tarafta değişirse testler kırılır.
+**AND Arama Motoru** (AND'ın yanındaki `AND arama motoru/` klasöründe, kendi deposunda duran ayrı bir sistem), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın iç paketlerini kullanmaz, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan iki ayrı program. Konu adları ve protokol kimlikleri iki programın da kullandığı `protokol/` paketinden gelir (arama motoru onu yan klasördeki AND'dan alır); AND'ın gerçek koduyla üretilen örnek iletiler (`protokol/testdata/`) arama motorunun testlerinde doğrulanır, böylece ileti biçimi bir tarafta değişirse testler kırılır.
 
 Aynı aileden olduklarını gösteren ortak noktalar:
 - Aynı ANSI 256 renk paleti (accent/hata/başarı/soluk tonları — bkz. `internal/tui/styles.go`'daki `colorAccent` vb.) ve aynı "AND" blok-harf logosu.
 - Kimlik türetme şeması bire bir aynı (BIP-39 mnemonic → Ed25519), ama iki program birbirinden TAMAMEN bağımsız kimliklere sahiptir.
 - Forum/sohbet/kişisel-site protokollerinin imza payload biçimleri ve GossipSub konu adları bire bir aynı — bu yüzden Arama Motoru, AND'ın ürettiği içeriği doğrulayıp indeksleyebilir. Bu, `protokol/testdata/`'daki örneklerle her test çalışmasında sınanır.
 
-Ayrıntılar için [arama-motoru/README.md](arama-motoru/README.md)'ye bak.
+Ayrıntılar için arama motorunun kendi README'sine bak (`../AND arama motoru/README.md`).
 
 ---
 

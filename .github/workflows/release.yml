@@ -101,11 +101,6 @@ jobs:
             cp "Eklentiler/${klasor}/plugin.json" "and-plugin-${ad}.json"
           done
 
-          # Arama motoru (ayrı Go modülü, kendi sürüm değişkeni)
-          (cd arama-motoru && go build -trimpath \
-            -ldflags "-s -w -X main.Version=${VERSION}" \
-            -o "../and-arama-motoru_${OS}_${ARCH}${SUFFIX}" .)
-
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
@@ -114,7 +109,6 @@ jobs:
             and_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
             andmod_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
             and-plugin-*
-            and-arama-motoru_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
           if-no-files-found: ignore
 
   release:
@@ -184,7 +178,6 @@ jobs:
             dist/and_*
             dist/andmod_*
             dist/and-plugin-*
-            dist/and-arama-motoru_*
             dist/*.json
             dist/SHA256SUMS.txt
             dist/SHA256SUMS.txt.sig
