@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Kaynak kodu al
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Go kur
         uses: actions/setup-go@v5
@@ -81,39 +83,28 @@ jobs:
             -o "andmod_${OS}_${ARCH}${SUFFIX}" \
             ./cmd/andmod
 
-          # Eklenti binary'leri
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-admin_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/admin
+          # Eklenti binary'leri, "klasör:ad" çiftleri. Ad, eklentinin
+          # plugin.json'daki name alanıdır; AND eklentiyi bu adla bulur.
+          # DeltaX, Pembis ve konu_ac ayrı depolardır (alt modül); klasörü
+          # olmayan eklenti tüm yayını durdurmaz, uyarıyla atlanır.
+          for e in admin:admin konu_ac:konu_ac ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site; do
+            klasor="${e%%:*}"
+            ad="${e##*:}"
+            if [ ! -f "Eklentiler/${klasor}/plugin.json" ]; then
+              echo "::warning::Eklentiler/${klasor} depoda yok; and-plugin-${ad} bu sürümde yayınlanmıyor."
+              continue
+            fi
+            go build -trimpath -ldflags "${LDFLAGS}" \
+              -o "and-plugin-${ad}_${OS}_${ARCH}${SUFFIX}" \
+              "./Eklentiler/${klasor}"
+            # Sidecar manifest: AND eklenti bilgisini binary'i çalıştırmadan okur.
+            cp "Eklentiler/${klasor}/plugin.json" "and-plugin-${ad}.json"
+          done
 
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-konu-ac_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/konu_ac
-
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-ozel-chat_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/ozel_chat
-
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-DeltaX_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/DeltaX
-
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-pembis_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/Pembis
-
-          go build -trimpath -ldflags "${LDFLAGS}" \
-            -o "and-plugin-site_${OS}_${ARCH}${SUFFIX}" \
-            ./Eklentiler/site
-
-          # Sidecar manifest JSON dosyaları — AND bu dosyaları okuyarak
-          # binary'i çalıştırmadan eklenti bilgisini alır (XenForo addon.json gibi).
-          cp Eklentiler/admin/plugin.json     and-plugin-admin.json
-          cp Eklentiler/konu_ac/plugin.json   and-plugin-konu-ac.json
-          cp Eklentiler/ozel_chat/plugin.json and-plugin-ozel-chat.json
-          cp Eklentiler/DeltaX/plugin.json    and-plugin-DeltaX.json
-          cp Eklentiler/Pembis/plugin.json    and-plugin-pembis.json
-          cp Eklentiler/site/plugin.json      and-plugin-site.json
+          # Arama motoru (ayrı Go modülü, kendi sürüm değişkeni)
+          (cd arama-motoru && go build -trimpath \
+            -ldflags "-s -w -X main.Version=${VERSION}" \
+            -o "../and-arama-motoru_${OS}_${ARCH}${SUFFIX}" .)
 
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
@@ -122,18 +113,8 @@ jobs:
           path: |
             and_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
             andmod_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-admin_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-konu-ac_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-ozel-chat_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-DeltaX_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-pembis_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-site_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
-            and-plugin-admin.json
-            and-plugin-konu-ac.json
-            and-plugin-ozel-chat.json
-            and-plugin-DeltaX.json
-            and-plugin-pembis.json
-            and-plugin-site.json
+            and-plugin-*
+            and-arama-motoru_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
           if-no-files-found: ignore
 
   release:
@@ -203,6 +184,7 @@ jobs:
             dist/and_*
             dist/andmod_*
             dist/and-plugin-*
+            dist/and-arama-motoru_*
             dist/*.json
             dist/SHA256SUMS.txt
             dist/SHA256SUMS.txt.sig

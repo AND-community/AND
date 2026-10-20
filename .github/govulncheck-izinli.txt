@@ -1,0 +1,5 @@
+# CI'da govulncheck'in kabul ettiği bilinen açıklar. Her satır bir kimlikle
+# başlar; ardından neden kabul edildiği yazılır. Düzeltme yayınlanınca
+# bağımlılık güncellenir ve satır silinir.
+
+GO-2024-3218  go-libp2p-kad-dht: DHT sağlayıcı kayıtlarıyla sansür. Düzeltmesi yok; içerik imzalı olduğu için yalnızca eş keşfi etkilenir (bkz. SECURITY.md, Bilinen sınırlamalar).
