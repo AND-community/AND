@@ -6,7 +6,9 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +24,7 @@ import (
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/peersync"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/profile"
@@ -38,6 +41,20 @@ func main() {
 		fmt.Fprintln(os.Stderr, "and:", err)
 		os.Exit(1)
 	}
+}
+
+// kutuphaneGunlugu, kütüphane günlüklerinin yazılacağı dosyayı ekleme
+// kipinde açar; 5 MB'ı aşmışsa önce sıfırlar. Açılamazsa satırlar atılır —
+// hiçbir durumda terminale gitmezler. Dosya süreç boyunca açık kalır.
+func kutuphaneGunlugu(yol string) io.Writer {
+	if st, err := os.Stat(yol); err == nil && st.Size() > 5<<20 {
+		_ = os.Remove(yol)
+	}
+	f, err := os.OpenFile(yol, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return io.Discard
+	}
+	return f
 }
 
 func appDir() (string, error) {
@@ -262,30 +279,28 @@ func run() error {
 	go siteStore.Run(ctx)
 	siteStore.RegisterSync(node.Host)
 
-	go func() {
-		synced := make(map[peer.ID]bool)
-		for {
-			select {
-			case peerID := <-discovery.PeerConnectedCh():
-				if synced[peerID] {
-					continue
-				}
-				synced[peerID] = true
-				go func(pid peer.ID) {
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(1 * time.Second):
-					}
-					_ = forumStore.SyncWithPeer(ctx, node.Host, pid)
-					_ = chatStore.SyncWithPeer(ctx, node.Host, pid)
-					_ = siteStore.SyncWithPeer(ctx, node.Host, pid)
-				}(peerID)
-			case <-ctx.Done():
-				return
+	// Geçmiş senkronizasyonu: yeni bağlanan, uzun aradan sonra yeniden
+	// bağlanan ve periyodik olarak en uzun süredir senkronlanmamış AND
+	// eşleriyle forum/sohbet/site geçmişi alışverişi (bkz. internal/peersync).
+	// Yalnızca AND protokolünü konuşan eşlerle akış açılır; genel DHT
+	// düğümleri atlanır.
+	senkron := peersync.New(peersync.Config{
+		Sync: func(ctx context.Context, pid peer.ID) error {
+			ferr := forumStore.SyncWithPeer(ctx, node.Host, pid)
+			cerr := chatStore.SyncWithPeer(ctx, node.Host, pid)
+			serr := siteStore.SyncWithPeer(ctx, node.Host, pid)
+			if ferr != nil && cerr != nil && serr != nil {
+				return errors.Join(ferr, cerr, serr)
 			}
-		}
-	}()
+			return nil
+		},
+		Connected: func() []peer.ID { return node.Host.Network().Peers() },
+		Supports: func(pid peer.ID) peersync.Support {
+			return peersync.ProtocolSupport(node.Host.Peerstore(), pid, tui.ANDSyncProtocols()...)
+		},
+	})
+	go senkron.Run(ctx, discovery.PeerConnectedCh())
+	tui.SyncStatus = senkron.Status
 
 	dmBroker := dmmgr.New(node)
 	dmBroker.SetModerator(mod)
@@ -355,6 +370,11 @@ func run() error {
 	if os.Getenv("AND_AUTO_UPDATE") != "0" {
 		go autoUpdate(ctx, updateCh, restartCh)
 	}
+
+	// Tam ekran TUI açıkken terminale yazılan her satır ekranı bozar:
+	// kütüphane günlükleri (mDNS uyarıları, libp2p hataları) bu süre boyunca
+	// veri dizinindeki and.log'a gider.
+	network.RedirectLibraryLogs(kutuphaneGunlugu(filepath.Join(dir, "and.log")))
 
 	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
 		return err
@@ -430,13 +450,18 @@ func (a *identityAdapter) ConnectedPeers() []pluginapi.PeerInfo {
 	}
 	peers := a.node.Host.Network().Peers()
 	out := make([]pluginapi.PeerInfo, 0, len(peers))
+	ps, protos := a.node.Host.Peerstore(), tui.ANDSyncProtocols()
 	for _, pid := range peers {
-		info := a.node.Host.Peerstore().PeerInfo(pid)
+		info := ps.PeerInfo(pid)
 		addrs := make([]string, len(info.Addrs))
 		for i, ma := range info.Addrs {
 			addrs[i] = ma.String()
 		}
-		out = append(out, pluginapi.PeerInfo{PeerID: pid.String(), Addrs: addrs})
+		out = append(out, pluginapi.PeerInfo{
+			PeerID: pid.String(),
+			Addrs:  addrs,
+			AND:    peersync.ProtocolSupport(ps, pid, protos...) == peersync.SupportYes,
+		})
 	}
 	return out
 }

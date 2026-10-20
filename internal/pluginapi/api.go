@@ -8,8 +8,10 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +20,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/lucian95511/and/internal/ui"
 )
 
 const DMProtocol = "/and/dm/1.0.0"
@@ -116,6 +120,27 @@ type DMMsg struct {
 	ReceivedAt     time.Time `json:"received_at"`
 }
 
+// DMRecord, bu AND oturumunda görülen bir özel mesajdır (gelen ya da giden)
+// — GET /api/v1/dm/history. /dm/poll yalnızca o anda dinleyen bir eklentiye
+// iletir; geçmiş, eklenti kapalıyken gelen mesajların kaybolmamasını sağlar.
+// YALNIZCA bellekte tutulur, diske yazılmaz ve AND kapanınca silinir.
+type DMRecord struct {
+	// PeerID, konuşulan eştir: gelen mesajda gönderen, giden mesajda alıcı.
+	// Gelende bağlantının kendisinden doğrulanmıştır.
+	PeerID string `json:"peer_id"`
+	// Name, gelen mesajda gönderenin KENDİ beyan ettiği görünen addır
+	// (doğrulanmamış); giden mesajda boştur.
+	Name     string    `json:"name,omitempty"`
+	Text     string    `json:"text"`
+	At       time.Time `json:"at"` // bu düğümün saatiyle alma/gönderme zamanı
+	Outgoing bool      `json:"outgoing,omitempty"`
+}
+
+// DMHistoryBackend, DM geçmişini sunabilen bir DMBackend'dir (isteğe bağlı).
+type DMHistoryBackend interface {
+	History() []DMRecord
+}
+
 // SendFileReq is the request body for POST /api/v1/file/send.
 // The plugin supplies a local file path; AND reads and streams the file — no data in the request.
 type SendFileReq struct {
@@ -167,6 +192,11 @@ type ThemeReq struct {
 type PeerInfo struct {
 	PeerID string   `json:"peer_id"`
 	Addrs  []string `json:"addrs"`
+	// AND, eşin AND protokolünü konuştuğunun bilindiğidir (identify ile).
+	// Bağlı eşlerin çoğu genel DHT düğümüdür; özel mesaj ya da dosya
+	// gönderilebilecek eşler yalnızca AND olanlardır. Eski bir AND bu alanı
+	// hiç göndermez (false).
+	AND bool `json:"and,omitempty"`
 }
 
 // ChatMsg is a general chat message received from the shared channel.
@@ -468,6 +498,7 @@ func (s *Server) routeTable() []route {
 		{"/api/v1/mod/revoke", onlyMethod(http.MethodPost, s.postModRevoke), true},
 		{"/api/v1/dm/send", onlyMethod(http.MethodPost, rateLimited(s.dmLimiter, s.postSendDM)), true},
 		{"/api/v1/dm/poll", onlyMethod(http.MethodGet, s.getDMPoll), true},
+		{"/api/v1/dm/history", onlyMethod(http.MethodGet, s.getDMHistory), true},
 		{"/api/v1/chat/send", onlyMethod(http.MethodPost, rateLimited(s.chatLimiter, s.postSendChat)), true},
 		{"/api/v1/chat/poll", onlyMethod(http.MethodGet, s.getChatPoll), true},
 		{"/api/v1/chat/all", onlyMethod(http.MethodGet, s.getChatAll), true},
@@ -504,6 +535,22 @@ func buildMuxFromRoutes(routes []route, externalOnly bool) *http.ServeMux {
 	return mux
 }
 
+// newHTTPServer, API dinleyicilerinin ortak sunucu ayarlarıdır. Başlıklar
+// için süre ve boyut sınırı vardır — başlığını hiç bitirmeyen ya da çok yavaş
+// gönderen bir istemci bağlantıyı süresiz tutamaz; boştaki bağlantılar da
+// kapanır. ReadTimeout ve WriteTimeout BİLEREK yoktur: ikisi de istek
+// sürerken dolarsa uzun süre yanıt bekleyen (long-poll) uç noktaları
+// (/chat/poll, /dm/poll, dosya onayı) keserdi. Gövdeler zaten her uç noktada
+// LimitReader ile sınırlıdır (bkz. decodeBodyN).
+func newHTTPServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
+	}
+}
+
 func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	ln, listenErr := net.Listen("tcp", "127.0.0.1:0")
 	if listenErr != nil {
@@ -518,7 +565,7 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	}
 	s.token = hex.EncodeToString(raw)
 
-	s.srv = &http.Server{Handler: s.authMiddleware(s.buildMux(false))}
+	s.srv = newHTTPServer(s.authMiddleware(s.buildMux(false)))
 	go s.srv.Serve(ln) //nolint:errcheck
 
 	if enableExternalAPI() && s.dataDir != "" {
@@ -530,7 +577,7 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 			// (yalnızca bu kullanıcı) kısıtlanmış durumda — bkz. enableExternalAPI.
 			// buildMux(true), yalnızca routeTable()'da allowExternal:true
 			// işaretli route'ları içerir.
-			s.externalSrv = &http.Server{Handler: s.buildMux(true)}
+			s.externalSrv = newHTTPServer(s.buildMux(true))
 			go s.externalSrv.Serve(extLn) //nolint:errcheck
 			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı etkin —", externalDescription(s.dataDir))
 		}
@@ -993,6 +1040,16 @@ func (s *Server) postSendDM(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// getDMHistory, bu oturumdaki özel mesajları (en eskiden en yeniye) döner.
+func (s *Server) getDMHistory(w http.ResponseWriter, r *http.Request) {
+	hb, ok := s.dm.(DMHistoryBackend)
+	if !ok || hb == nil {
+		writeJSON(w, []DMRecord{})
+		return
+	}
+	writeJSON(w, hb.History())
+}
+
 func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	if s.dm == nil {
 		writeJSON(w, []DMMsg{})
@@ -1115,14 +1172,16 @@ func (s *Server) postSendFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if reason := forbiddenSendPath(req.LocalPath); reason != "" {
-		fmt.Fprintf(os.Stderr, "[AND] engellendi: dosya gönderimi reddedildi (%s): %s -> peer %s\n", reason, req.LocalPath, req.PeerID)
+		log.Printf("[AND] engellendi: dosya gönderimi reddedildi (%s): %s -> peer %s", reason, req.LocalPath, req.PeerID)
 		writeBadRequest(w, "güvenlik kısıtlaması: "+reason)
 		return
 	}
-	// Her gönderim, kullanıcının görebileceği bir iz bıraksın diye stderr'e
-	// yazılır — plugin API'sinin bu uç noktası bugün hiçbir onay diyaloğu
-	// göstermiyor (bkz. forbiddenSendPath'in doc yorumu).
-	fmt.Fprintf(os.Stderr, "[AND] dosya gönderiliyor: %s -> peer %s\n", req.LocalPath, req.PeerID)
+	// Her gönderim bir iz bırakır — plugin API'sinin bu uç noktası hiçbir onay
+	// diyaloğu göstermiyor (bkz. forbiddenSendPath'in doc yorumu). Standart
+	// log'a yazılır: TUI açıkken AND bunu veri dizinindeki and.log'a yönlendirir
+	// (bkz. network.RedirectLibraryLogs) — doğrudan stderr'e yazmak, o sırada
+	// terminali kullanan tam ekran eklentinin ekranını bozardı.
+	log.Printf("[AND] dosya gönderiliyor: %s -> peer %s", req.LocalPath, req.PeerID)
 	if err := s.file.SendFile(r.Context(), req.PeerID, s.id.Name(), req.LocalPath); err != nil {
 		writeErr(w, err)
 		return
@@ -1226,32 +1285,22 @@ func (s *Server) postTheme(w http.ResponseWriter, r *http.Request) {
 // pluginapi for ThemeReq).
 const ThemeFile = "theme.json"
 
-// defaultTheme mirrors AND's built-in default colors (internal/tui/styles.go)
-// so plugins that ask for the active theme before any custom theme has ever
-// been set still get a theme that matches what the user actually sees.
-var defaultTheme = ThemeReq{
-	ThemeName: "Turkuaz",
-	Accent:    "63",
-	SelBG:     "57",
-	SelFG:     "255",
-	Muted:     "241",
-	Name:      "86",
-	Badge:     "33",
-}
-
 // getTheme returns the theme AND's main TUI currently has active, so
-// plugins can match their own color scheme to it.
+// plugins can match their own color scheme to it. The built-in default and
+// the legacy-default migration both come from internal/ui — the single
+// source of truth the TUI itself uses — so what plugins (and and-vscode)
+// get always matches what the user actually sees.
 func (s *Server) getTheme(w http.ResponseWriter, _ *http.Request) {
 	if s.dataDir != "" {
 		if data, err := os.ReadFile(filepath.Join(s.dataDir, ThemeFile)); err == nil {
 			var req ThemeReq
 			if json.Unmarshal(data, &req) == nil {
-				writeJSON(w, req)
+				writeJSON(w, ThemeReq(ui.Normalize(ui.Theme(req))))
 				return
 			}
 		}
 	}
-	writeJSON(w, defaultTheme)
+	writeJSON(w, ThemeReq(ui.DefaultTheme()))
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
@@ -1385,6 +1434,34 @@ func (c *Client) SendDM(peerID, message string) error {
 	return c.post("/api/v1/dm/send", SendDMReq{PeerID: peerID, Message: message})
 }
 
+// APIError, AND API'sinin 200 dışı bir yanıtıdır. Status, eklentinin eski bir
+// AND'da bulunmayan bir uç noktayı (404) tanıyabilmesi içindir.
+type APIError struct {
+	Status  int
+	Message string
+}
+
+func (e *APIError) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("api: http %d", e.Status)
+	}
+	return "api: " + e.Message
+}
+
+// IsNotFound, err'in "bu uç nokta yok" (404) olup olmadığıdır.
+func IsNotFound(err error) bool {
+	var ae *APIError
+	return errors.As(err, &ae) && ae.Status == http.StatusNotFound
+}
+
+// DMHistory, bu AND oturumunda görülen özel mesajları döner (bkz. DMRecord).
+// Eski bir AND'da bu uç nokta yoksa hata döner; çağıran boş geçmişle devam
+// edebilir.
+func (c *Client) DMHistory() ([]DMRecord, error) {
+	var v []DMRecord
+	return v, c.get("/api/v1/dm/history", &v)
+}
+
 func (c *Client) PollDM() ([]DMMsg, error) {
 	var v []DMMsg
 	return v, c.get("/api/v1/dm/poll", &v)
@@ -1478,7 +1555,7 @@ func (c *Client) get(path string, out any) error {
 	if resp.StatusCode != http.StatusOK {
 		var e errResp
 		json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
-		return fmt.Errorf("api: %s", e.Error)
+		return &APIError{Status: resp.StatusCode, Message: e.Error}
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
@@ -1533,7 +1610,7 @@ func (c *Client) postJSON(path string, body, out any) error {
 	if resp.StatusCode != http.StatusOK {
 		var e errResp
 		json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
-		return fmt.Errorf("api: %s", e.Error)
+		return &APIError{Status: resp.StatusCode, Message: e.Error}
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

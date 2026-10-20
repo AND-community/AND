@@ -462,3 +462,19 @@ func TestSyncWithPeer_TransfersPost(t *testing.T) {
 		t.Fatalf("Title = %q, want %q", got.Title, p.Title)
 	}
 }
+
+func TestCategoryCounts_MatchesPostCount(t *testing.T) {
+	f := &Forum{byID: map[string]*Post{}, replies: map[string][]*Reply{}}
+	for i, kat := range []string{"Go", "Go", "Rust", "Python", "Go"} {
+		f.posts = append(f.posts, &Post{ID: string(rune('a' + i)), Category: kat})
+	}
+	sayilar := f.CategoryCounts()
+	for _, kat := range []string{"Go", "Rust", "Python", "Linux"} {
+		if sayilar[kat] != f.PostCount(kat) {
+			t.Errorf("%s: CategoryCounts %d, PostCount %d", kat, sayilar[kat], f.PostCount(kat))
+		}
+	}
+	if sayilar["Go"] != 3 {
+		t.Fatalf("Go için 3 konu bekleniyordu, got %d", sayilar["Go"])
+	}
+}

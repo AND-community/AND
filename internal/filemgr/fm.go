@@ -303,8 +303,11 @@ func (b *Broker) handleStream(s libp2pnet.Stream) {
 	if err != nil {
 		return
 	}
-	name := filepath.Base(filename)
-	if name == "" || name == "." {
+	// Gönderenin bildirdiği her şey doğrulanır (bkz. guvenlik.go): ad hem onay
+	// penceresinde hem diskte güvenli hale getirilir; tutarsız bir parça
+	// düzeni, onaylanan boyutun ötesine yazmanın yolu olurdu.
+	name := safeFilename(filename)
+	if !validChunkLayout(totalSize, cs, totalChunks) {
 		return
 	}
 	senderName := s.Conn().RemotePeer().String()
@@ -409,11 +412,19 @@ func (b *Broker) receiveChunks(s libp2pnet.Stream, state *recvState, f *os.File)
 
 		switch mtype {
 		case msgDONE:
+			// Gönderen "bitti" dese de dosya ancak bütün parçalar geldiyse ve
+			// boyutu onaylanan boyuta eşitse tamamlanmış sayılır.
+			if state.NextChunk != state.TotalChunks {
+				return "", false
+			}
+			if info, err := f.Stat(); err != nil || info.Size() != state.TotalSize {
+				return "", false
+			}
 			return b.uniquePath(state.Filename), true
 
 		case msgCHUNK:
 			idx, data, err := readCHUNKBody(s)
-			if err != nil || idx != state.NextChunk {
+			if err != nil || idx != state.NextChunk || !chunkFits(state, idx, uint32(len(data))) {
 				return "", false
 			}
 
@@ -446,7 +457,10 @@ func (b *Broker) loadOrCreateState(tid, filename, senderName string, totalSize i
 	path := b.statePath(tid)
 	if raw, err := os.ReadFile(path); err == nil {
 		var st recvState
-		if json.Unmarshal(raw, &st) == nil && st.NextChunk > 0 {
+		// Yalnızca AYNI gönderenin AYNI aktarımı kaldığı yerden sürdürülür
+		// (bkz. recvState.matches).
+		if json.Unmarshal(raw, &st) == nil && st.NextChunk > 0 && st.NextChunk <= st.TotalChunks &&
+			st.matches(filename, senderName, totalSize, cs, totalChunks) {
 			// Validate: .part dosyası en az yazılmış kadar büyük olmalı
 			if info, err := os.Stat(st.PartPath); err == nil {
 				expected := int64(st.NextChunk) * int64(st.ChunkSize)
@@ -470,6 +484,10 @@ func (b *Broker) loadOrCreateState(tid, filename, senderName string, totalSize i
 		SenderName:  senderName,
 		ReceivedAt:  at.UnixNano(),
 	}
+	// Sıfırdan başlanıyor: aynı kimlikle kalmış eski (başka bir aktarıma ait
+	// olabilecek) bir .part dosyası silinir — üzerine yazılsaydı, eski dosya
+	// daha uzunsa sonunda artık baytlar kalırdı.
+	_ = os.Remove(st.PartPath)
 	b.saveState(st)
 	return st, nil
 }

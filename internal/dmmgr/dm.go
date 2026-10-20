@@ -31,6 +31,37 @@ type Broker struct {
 	mu   sync.Mutex
 	subs []chan pluginapi.DMMsg
 	mod  atomic.Pointer[moderation.Moderator]
+
+	// history, bu oturumdaki son historyLimit özel mesajdır (gelen ve giden).
+	// Deliver yalnızca o anda dinleyen eklentilere iletir; geçmiş olmadan
+	// Özel Chat kapalıyken gelen her DM sessizce kaybolurdu. Yalnızca
+	// bellekte tutulur — diske yazılmaz.
+	history []pluginapi.DMRecord
+}
+
+// historyLimit, bellekte tutulan en fazla özel mesaj sayısıdır.
+const historyLimit = 500
+
+// maxHistoryNameRunes, geçmişe yazılan (gönderenin beyan ettiği) adın en
+// fazla uzunluğudur.
+const maxHistoryNameRunes = 64
+
+// record, m'yi geçmişe ekler; sınır aşılırsa en eskisi düşer.
+func (b *Broker) record(m pluginapi.DMRecord) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.history = append(b.history, m)
+	if over := len(b.history) - historyLimit; over > 0 {
+		b.history = append(b.history[:0], b.history[over:]...)
+	}
+}
+
+// History, bu oturumdaki özel mesajların bir kopyasını (en eskiden en
+// yeniye) döner — pluginapi.DMHistoryBackend.
+func (b *Broker) History() []pluginapi.DMRecord {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]pluginapi.DMRecord(nil), b.history...)
 }
 
 func New(node *network.Node) *Broker {
@@ -98,7 +129,13 @@ func (b *Broker) SendDM(ctx context.Context, peerIDStr, senderName, message stri
 	stream.SetDeadline(time.Now().Add(30 * time.Second)) //nolint:errcheck
 
 	pkt := dmPacket{From: senderName, Text: message, At: time.Now().UTC()}
-	return json.NewEncoder(stream).Encode(pkt)
+	if err := json.NewEncoder(stream).Encode(pkt); err != nil {
+		return err
+	}
+	if message != "" { // alıcı boş metni zaten yok sayar
+		b.record(pluginapi.DMRecord{PeerID: pid.String(), Text: message, At: pkt.At, Outgoing: true})
+	}
+	return nil
 }
 
 func (b *Broker) handleStream(s libp2pnet.Stream) {
@@ -119,6 +156,13 @@ func (b *Broker) handleStream(s libp2pnet.Stream) {
 	}
 	verifiedPeerID := s.Conn().RemotePeer().String()
 	from := combineIdentity(pkt.From, verifiedPeerID)
+	name := strings.TrimSpace(pkt.From)
+	if r := []rune(name); len(r) > maxHistoryNameRunes {
+		name = string(r[:maxHistoryNameRunes])
+	}
+	// Zaman, gönderenin beyan ettiği değil bu düğümün saatidir — geçmişin
+	// sırasını bir eş bozamasın.
+	b.record(pluginapi.DMRecord{PeerID: verifiedPeerID, Name: name, Text: pkt.Text, At: time.Now().UTC()})
 	b.Deliver(pluginapi.DMMsg{
 		From:           from,
 		VerifiedPeerID: verifiedPeerID,

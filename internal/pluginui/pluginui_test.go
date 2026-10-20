@@ -49,3 +49,26 @@ func TestSafe_LeavesPlainTextUntouched(t *testing.T) {
 		t.Fatalf("Safe(%q) = %q, want unchanged", in, got)
 	}
 }
+
+func TestSafe_StripsDELAndC1Controls(t *testing.T) {
+	// U+009B is a single-character CSI on terminals that honour C1 controls.
+	in := "a\x7fb\u009b2Jc\u0085d"
+	if got := Safe(in); got != "ab2Jcd" {
+		t.Fatalf("Safe(%q) = %q, want %q", in, got, "ab2Jcd")
+	}
+}
+
+func TestSafe_StripsBidiOverrides(t *testing.T) {
+	// "fatura<RLO>fdp.exe" would render as "faturaexe.pdf".
+	in := "fatura\u202Efdp.exe ve \u2066yalıtım\u2069"
+	if got := Safe(in); got != "faturafdp.exe ve yalıtım" {
+		t.Fatalf("Safe(%q) = %q", in, got)
+	}
+}
+
+func TestSafe_StripsPrivateCSIWhole(t *testing.T) {
+	in := "önce\x1b[?1049hsonra\x1b[?25l"
+	if got := Safe(in); got != "öncesonra" {
+		t.Fatalf("Safe(%q) = %q, want %q", in, got, "öncesonra")
+	}
+}

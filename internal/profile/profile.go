@@ -22,11 +22,11 @@ import (
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
-	"github.com/lucian95511/and/internal/timewin"
 	"github.com/lucian95511/and/internal/githubverify"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
+	"github.com/lucian95511/and/internal/timewin"
 )
 
 // ProfileTopic is the GossipSub topic profile updates are published on.

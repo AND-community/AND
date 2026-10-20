@@ -232,3 +232,50 @@ func TestHandleStream_BannedSenderRejectedWithoutConsentPrompt(t *testing.T) {
 		t.Fatalf("saveDir boş olmalıydı, ama dosya(lar) bulundu: %v", entries)
 	}
 }
+
+// TestHandleStream_MultiChunkTransferPassesValidation: parça düzeni ve sınır
+// doğrulaması (guvenlik.go) birden çok parçalı meşru bir aktarımı bozmamalı.
+func TestHandleStream_MultiChunkTransferPassesValidation(t *testing.T) {
+	nodeA, nodeB := connectedPair(t)
+
+	srcPath := filepath.Join(t.TempDir(), "buyuk.bin")
+	content := make([]byte, 2*chunkBytes+12345) // 3 parça, sonuncusu kısmi
+	for i := range content {
+		content[i] = byte(i * 31)
+	}
+	if err := os.WriteFile(srcPath, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	brokerA := New(nodeA, t.TempDir())
+	brokerB := New(nodeB, t.TempDir())
+	consentCh := brokerB.SubscribeConsent()
+	defer brokerB.UnsubscribeConsent(consentCh)
+	fileCh := brokerB.Subscribe()
+	defer brokerB.Unsubscribe(fileCh)
+	go func() {
+		select {
+		case req := <-consentCh:
+			brokerB.RespondConsent(req.TransferID, true)
+		case <-time.After(5 * time.Second):
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := brokerA.SendFile(ctx, nodeB.Host.ID().String(), "alice", srcPath); err != nil {
+		t.Fatalf("SendFile: %v", err)
+	}
+	select {
+	case msg := <-fileCh:
+		got, err := os.ReadFile(msg.SavePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(content) || string(got) != string(content) {
+			t.Fatalf("içerik uyuşmuyor: %d bayt geldi, %d bekleniyordu", len(got), len(content))
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("dosya mesajı zaman aşımına uğradı")
+	}
+}

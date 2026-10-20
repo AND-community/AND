@@ -2,12 +2,15 @@ package updater
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -17,6 +20,15 @@ import (
 var (
 	Version    = "v0.1.0"
 	GitHubRepo = "AND-community/AND"
+
+	// UpdateSigningKeyHex, sürüm imzalama anahtarının ed25519 genel anahtarıdır
+	// (hex) — derlemede -ldflags "-X …/updater.UpdateSigningKeyHex=…" ile
+	// gömülür. Doluysa bir güncelleme ancak SHA256SUMS.txt'nin bu anahtarla
+	// imzalandığı (SHA256SUMS.txt.sig) doğrulanırsa uygulanır: özet dosyası
+	// binary ile aynı GitHub sürümünden geldiğinden, imza olmadan sürüme
+	// yazabilen biri (ele geçirilmiş bir hesap ya da iş akışı) ikisini
+	// birlikte değiştirebilirdi. Boşsa yalnızca özet doğrulanır.
+	UpdateSigningKeyHex = ""
 )
 
 type ReleaseInfo struct {
@@ -85,6 +97,13 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 	if dlURL == "" {
 		return fmt.Errorf("bu platform için asset bulunamadı (%s)", name)
 	}
+	// Adresler GitHub API yanıtından gelir; yalnızca HTTPS üzerinden ve
+	// GitHub'ın kendi alan adlarından indirilir.
+	for _, a := range info.Assets {
+		if (a.Name == name || a.Name == checksumAssetName || a.Name == signatureAssetName) && !guvenliIndirmeAdresi(a.BrowserDownloadURL) {
+			return fmt.Errorf("güvenilmeyen indirme adresi: %s", a.BrowserDownloadURL)
+		}
+	}
 
 	exe, err := os.Executable()
 	if err != nil {
@@ -129,7 +148,59 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 	return nil
 }
 
-const checksumAssetName = "SHA256SUMS.txt"
+const (
+	checksumAssetName  = "SHA256SUMS.txt"
+	signatureAssetName = "SHA256SUMS.txt.sig"
+)
+
+// guvenliIndirmeAdresi, bir sürüm dosyasının indirilebileceği adres olup
+// olmadığıdır: HTTPS ve GitHub'ın sürüm dosyalarını sunduğu alan adları.
+func guvenliIndirmeAdresi(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "github.com" || host == "api.github.com" || strings.HasSuffix(host, ".githubusercontent.com")
+}
+
+// imzaDogrula, sums'ın UpdateSigningKeyHex ile imzalandığını doğrular. İmza
+// dosyası ham 64 bayt, base64 ya da hex olabilir.
+func imzaDogrula(ctx context.Context, info *ReleaseInfo, sums []byte) error {
+	pub, err := hex.DecodeString(strings.TrimSpace(UpdateSigningKeyHex))
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("gömülü imza anahtarı geçersiz")
+	}
+	var sigURL string
+	for _, a := range info.Assets {
+		if a.Name == signatureAssetName {
+			sigURL = a.BrowserDownloadURL
+			break
+		}
+	}
+	if sigURL == "" {
+		return fmt.Errorf("bu sürümde %s bulunamadı", signatureAssetName)
+	}
+	raw, err := fetchSmall(ctx, sigURL, 1<<10)
+	if err != nil {
+		return fmt.Errorf("%s indirilemedi: %w", signatureAssetName, err)
+	}
+	sig := raw
+	if len(sig) != ed25519.SignatureSize {
+		// Önce hex: 128 karakterlik bir hex dizgesi geçerli base64 da
+		// sayılır ve yanlış (96 baytlık) bir sonuca çözülürdü.
+		metin := strings.TrimSpace(string(raw))
+		if b, err := hex.DecodeString(metin); err == nil && len(b) == ed25519.SignatureSize {
+			sig = b
+		} else if b, err := base64.StdEncoding.DecodeString(metin); err == nil {
+			sig = b
+		}
+	}
+	if len(sig) != ed25519.SignatureSize || !ed25519.Verify(pub, sums, sig) {
+		return fmt.Errorf("%s imzası doğrulanamadı", checksumAssetName)
+	}
+	return nil
+}
 
 // verifyChecksum, info'daki release'in SHA256SUMS.txt asset'ini indirip
 // assetName için beklenen özeti bulur ve filePath'teki dosyanın gerçek
@@ -147,10 +218,16 @@ func verifyChecksum(ctx context.Context, info *ReleaseInfo, assetName, filePath 
 	if sumsURL == "" {
 		return fmt.Errorf("bu sürümde %s bulunamadı", checksumAssetName)
 	}
-	sums, err := fetchChecksums(ctx, sumsURL)
+	raw, err := fetchSmall(ctx, sumsURL, 1<<16) // SHA256SUMS.txt küçük bir metin dosyasıdır
 	if err != nil {
 		return fmt.Errorf("%s indirilemedi: %w", checksumAssetName, err)
 	}
+	if UpdateSigningKeyHex != "" {
+		if err := imzaDogrula(ctx, info, raw); err != nil {
+			return err
+		}
+	}
+	sums := parseChecksums(raw)
 	want, ok := sums[assetName]
 	if !ok {
 		return fmt.Errorf("%s içinde %s için kayıt yok", checksumAssetName, assetName)
@@ -165,10 +242,8 @@ func verifyChecksum(ctx context.Context, info *ReleaseInfo, assetName, filePath 
 	return nil
 }
 
-// fetchChecksums, `sha256sum` çıktı biçimindeki ("<özet>  <dosya adı>", satır
-// başına bir girdi) bir SHA256SUMS.txt dosyasını indirip dosya adı → özet
-// eşlemesi olarak döndürür.
-func fetchChecksums(ctx context.Context, url string) (map[string]string, error) {
+// fetchSmall, url'deki küçük bir dosyayı (en fazla limit bayt) indirir.
+func fetchSmall(ctx context.Context, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -182,10 +257,13 @@ func fetchChecksums(ctx context.Context, url string) (map[string]string, error) 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("http %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16)) // SHA256SUMS.txt küçük bir metin dosyasıdır
-	if err != nil {
-		return nil, err
-	}
+	return io.ReadAll(io.LimitReader(resp.Body, limit))
+}
+
+// parseChecksums, `sha256sum` çıktı biçimindeki ("<özet>  <dosya adı>", satır
+// başına bir girdi) bir SHA256SUMS.txt içeriğini dosya adı → özet eşlemesine
+// çevirir.
+func parseChecksums(data []byte) map[string]string {
 	out := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
@@ -195,7 +273,7 @@ func fetchChecksums(ctx context.Context, url string) (map[string]string, error) 
 		name := strings.TrimPrefix(fields[1], "*") // sha256sum binary modda "*dosyaadı" yazabilir
 		out[name] = fields[0]
 	}
-	return out, nil
+	return out
 }
 
 func sha256File(path string) (string, error) {
@@ -238,6 +316,9 @@ func downloadFile(ctx context.Context, url, dest string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http %d", resp.StatusCode)
+	}
 	f, err := os.Create(dest)
 	if err != nil {
 		return err

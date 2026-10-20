@@ -541,6 +541,26 @@ func (f *Forum) PostsByCategory(category string) []*Post {
 	return out
 }
 
+// TotalPosts, bellekteki konu sayısıdır (listeyi kopyalamadan).
+func (f *Forum) TotalPosts() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return len(f.posts)
+}
+
+// CategoryCounts, her kategorideki konu sayısını TEK geçişte döner — ekranlar
+// her kategori için ayrı ayrı PostCount çağırınca bütün konular kategori
+// sayısı kadar (34 kez) taranıyordu.
+func (f *Forum) CategoryCounts() map[string]int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	out := make(map[string]int, len(Categories))
+	for _, p := range f.posts {
+		out[p.Category]++
+	}
+	return out
+}
+
 func (f *Forum) PostCount(category string) int {
 	f.mu.RLock()
 	defer f.mu.RUnlock()

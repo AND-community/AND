@@ -5,19 +5,26 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lucian95511/and/internal/ui"
 )
 
+// Renkler ve stiller artık internal/ui'nin ortak paletinden türetilir —
+// AND'ın TUI'si ile eklentiler (Eklentiler/*) aynı temayı paylaşır. Aşağıdaki
+// paket değişkenleri, ekran kodunun geri kalanı onları adlarıyla kullandığı
+// için korunur ve her tema değişiminde initStyles ile yeniden kurulur.
 var (
-	colorAccent  = lipgloss.Color("63")
-	colorSelBG   = lipgloss.Color("57")
-	colorSelFG   = lipgloss.Color("255")
-	colorMuted   = lipgloss.Color("241")
-	colorError   = lipgloss.Color("203")
-	colorOK      = lipgloss.Color("42")
-	colorWarning = lipgloss.Color("220")
-	colorName    = lipgloss.Color("86")
-	colorBadge   = lipgloss.Color("33")
+	colorAccent  lipgloss.Color
+	colorSelBG   lipgloss.Color
+	colorSelFG   lipgloss.Color
+	colorMuted   lipgloss.Color
+	colorError   lipgloss.Color
+	colorOK      lipgloss.Color
+	colorWarning lipgloss.Color
+	colorName    lipgloss.Color
+	colorBadge   lipgloss.Color
 )
 
 var (
@@ -58,111 +65,65 @@ var (
 func init() { initStyles() }
 
 func initStyles() {
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(colorAccent).MarginBottom(1)
-	labelStyle = lipgloss.NewStyle().Foreground(colorMuted)
-	focusedLabelStyle = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	helpStyle = lipgloss.NewStyle().Foreground(colorMuted).MarginTop(1).Italic(true)
-	errorStyle = lipgloss.NewStyle().Foreground(colorError)
-	okStyle = lipgloss.NewStyle().Foreground(colorOK)
-	boxStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 2)
-	selectedItemStyle = lipgloss.NewStyle().
-		Background(colorSelBG).
-		Foreground(colorSelFG).
-		Bold(true).
-		PaddingRight(2)
-	itemStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	selfMsgStyle = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	nameTagStyle = lipgloss.NewStyle().Bold(true).Foreground(colorName)
-	dividerStyle = lipgloss.NewStyle().Foreground(colorMuted)
-	mnemonicStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(colorWarning).
-		Padding(0, 1).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorWarning)
+	p := ui.P
+	colorAccent, colorSelBG, colorSelFG = p.Accent, p.SelBG, p.SelFG
+	colorMuted, colorName, colorBadge = p.Muted, p.Name, p.Badge
+	colorError, colorOK, colorWarning = p.Error, p.Success, p.Warning
+	ActiveThemeName = p.ThemeName
 
-	fStKutu = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 2)
-	fStHeaderSol = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	fStHeaderSag = lipgloss.NewStyle().Foreground(colorMuted)
-	fStSeciliSatir = lipgloss.NewStyle().
-		Background(colorSelBG).
-		Foreground(colorSelFG).
-		Bold(true).
-		PaddingRight(2)
-	fStSeciliMeta = lipgloss.NewStyle().
-		Background(colorSelBG).
-		Foreground(lipgloss.Color("189")).
-		PaddingRight(2)
+	titleStyle = ui.S.Title.MarginBottom(1)
+	labelStyle = ui.S.Muted
+	focusedLabelStyle = ui.S.Title
+	helpStyle = ui.S.Muted.MarginTop(1)
+	errorStyle = ui.S.Error
+	okStyle = ui.S.Success
+	boxStyle = ui.S.Frame
+	selectedItemStyle = ui.S.Selected.PaddingRight(2)
+	itemStyle = ui.S.Text
+	selfMsgStyle = ui.S.Accent
+	nameTagStyle = ui.S.Name
+	dividerStyle = ui.S.Subtle
+	mnemonicStyle = lipgloss.NewStyle().Bold(true).Foreground(p.Warning).
+		Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(p.Warning)
+
+	fStKutu = ui.S.Frame
+	fStHeaderSol = ui.S.Title
+	fStHeaderSag = ui.S.Muted
+	fStSeciliSatir = ui.S.Selected.PaddingRight(2)
+	fStSeciliMeta = lipgloss.NewStyle().Background(p.SelBG).Foreground(p.SelFG).Faint(true).PaddingRight(2)
 	fStNormalSatir = lipgloss.NewStyle()
-	fStOgeSatir = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	fStSoluk = lipgloss.NewStyle().Foreground(colorMuted)
-	fStYardim = lipgloss.NewStyle().Foreground(colorMuted).MarginTop(1).Italic(true)
-	fStAyrac = lipgloss.NewStyle().Foreground(colorMuted)
-	fStYanitBaslik = lipgloss.NewStyle().Bold(true).Foreground(colorName)
-	fStAlanEtiket = lipgloss.NewStyle().Foreground(colorMuted)
-	fStAlanEtiketAktif = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	fStBildirimOK = lipgloss.NewStyle().
-		Background(colorOK).
-		Foreground(lipgloss.Color("0")).
-		Bold(true)
-	fStBildirimHata = lipgloss.NewStyle().
-		Background(colorError).
-		Foreground(lipgloss.Color("255")).
-		Bold(true)
-	fStBildirimBekle = lipgloss.NewStyle().
-		Background(colorWarning).
-		Foreground(lipgloss.Color("0")).
-		Bold(true)
+	fStOgeSatir = ui.S.Text
+	fStSoluk = ui.S.Muted
+	fStYardim = ui.S.Muted
+	fStAyrac = ui.S.Subtle
+	fStYanitBaslik = ui.S.Name
+	fStAlanEtiket = ui.S.Muted
+	fStAlanEtiketAktif = ui.S.Title
+	fStBildirimOK = ui.S.Success
+	fStBildirimHata = ui.S.Error
+	fStBildirimBekle = ui.S.Muted
 
-	loginFormBoxSt = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 3).
-		Width(44)
+	loginFormBoxSt = ui.S.Frame.Padding(1, 3)
 }
 
-type ThemeConfig struct {
-	ThemeName string `json:"theme_name,omitempty"`
-	Accent    string `json:"accent,omitempty"`
-	SelBG     string `json:"sel_bg,omitempty"`
-	SelFG     string `json:"sel_fg,omitempty"`
-	Muted     string `json:"muted,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Badge     string `json:"badge,omitempty"`
-}
+// styleInput, bir metin kutusunu etkin temaya göre biçimlendirir — bkz.
+// ui.StyleInput. Tema çalışma anında değişebildiği için (bkz.
+// themeChangedMsg) yeniden çağrılabilir.
+func styleInput(in *textinput.Model) { ui.StyleInput(in) }
 
-var ActiveThemeName = "Turkuaz"
+// ThemeConfig, theme.json'un ve /api/v1/theme'nin biçimidir (bkz. ui.Theme).
+type ThemeConfig = ui.Theme
+
+// ActiveThemeName, etkin temanın görünen adıdır.
+var ActiveThemeName = ui.DefaultTheme().ThemeName
 
 const ThemeFile = "theme.json"
 
+// applyThemeColors, t'yi etkin tema yapar ve tüm stilleri yeniden kurar.
+// Bubble Tea'nin tek goroutine'li Update döngüsünden (ya da program
+// başlamadan önce) çağrılmalıdır — bkz. Run'daki themeCh goroutine'i.
 func applyThemeColors(t ThemeConfig) {
-	if t.Accent != "" {
-		colorAccent = lipgloss.Color(t.Accent)
-	}
-	if t.SelBG != "" {
-		colorSelBG = lipgloss.Color(t.SelBG)
-	}
-	if t.SelFG != "" {
-		colorSelFG = lipgloss.Color(t.SelFG)
-	}
-	if t.Muted != "" {
-		colorMuted = lipgloss.Color(t.Muted)
-	}
-	if t.Name != "" {
-		colorName = lipgloss.Color(t.Name)
-	}
-	if t.Badge != "" {
-		colorBadge = lipgloss.Color(t.Badge)
-	}
-	if t.ThemeName != "" {
-		ActiveThemeName = t.ThemeName
-	}
+	ui.Apply(t)
 	initStyles()
 }
 

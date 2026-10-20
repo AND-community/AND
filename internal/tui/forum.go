@@ -23,6 +23,7 @@ import (
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
+	"github.com/lucian95511/and/internal/ui"
 )
 
 // profilRecentChatLimit caps how many of an author's recent chat lines are
@@ -109,10 +110,12 @@ func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Iden
 	ya.SetHeight(6)
 	ya.CharLimit = fMaxYanit
 	ya.ShowLineNumbers = false
+	ui.StyleTextarea(&ya)
 
 	banIn := textinput.New()
 	banIn.Placeholder = "sebep…"
 	banIn.CharLimit = 256
+	styleInput(&banIn)
 
 	return forumModel{
 		ctx:            ctx,
@@ -207,18 +210,17 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.genislik, m.yukseklik = msg.Width, msg.Height
-		vw := msg.Width - 8
-		if vw < 10 {
-			vw = 10
-		}
-		vh := msg.Height - 14
+		vw := icGenislik(msg.Width)
+		// Çerçeve (4) + başlık (3) + konu başlığı ve meta (3) + "devamı var",
+		// ayraç, bildirim ve iki satıra kadar kısayol (6).
+		vh := msg.Height - 16
 		if vh < 4 {
 			vh = 4
 		}
 		m.konuVP.Width = vw
 		m.konuVP.Height = vh
-		m.yanitAlan.SetWidth(vw - 2)
-		m.banReasonInput.Width = vw - 2
+		m.yanitAlan.SetWidth(ui.Measure(vw))
+		m.banReasonInput.Width = vw - 4
 		// konuVP, konu gövdesi ile profil metni arasında paylaşılıyor (bkz.
 		// profilAc) — hangi ekran aktifse yalnızca onun içeriği yeniden
 		// oluşturulmalı, aksi halde profil ekranındayken konuVP'nin içeriği
@@ -343,7 +345,7 @@ func (m forumModel) gorubilirKonuSayisi() int {
 	if m.yukseklik < 14 {
 		return 3
 	}
-	n := (m.yukseklik - 10) / 3
+	n := (m.yukseklik - 11) / 3 // çerçeve, başlık, ayraç ve kısayollar
 	if n < 2 {
 		return 2
 	}
@@ -354,7 +356,7 @@ func (m forumModel) gorubilirKatSayisi() int {
 	if m.yukseklik < 14 {
 		return 8
 	}
-	n := m.yukseklik - 11
+	n := m.yukseklik - 12 // çerçeve, başlık, ↑/↓ satırları, ayraç ve kısayollar
 	if n < 4 {
 		return 4
 	}
@@ -489,10 +491,10 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.yanitAlan.Blur()
 		if len(icerik) > forum.MaxBodyBytes {
-				m.errMsg = fmt.Sprintf("Yanit cok uzun (%d/%d bayt)", len(icerik), forum.MaxBodyBytes)
-				return m, forumBildirimTemizle()
-			}
-			m.gonderi = true
+			m.errMsg = fmt.Sprintf("Yanıt çok uzun (%d/%d bayt)", len(icerik), forum.MaxBodyBytes)
+			return m, forumBildirimTemizle()
+		}
+		m.gonderi = true
 		f, konuID := m.forum, m.aktifKonu.ID
 		return m, func() tea.Msg {
 			if _, err := f.CreateReply(m.ctx, konuID, icerik); err != nil {
@@ -733,33 +735,34 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 	if vw < 10 {
 		vw = 60
 	}
-	wrapSt := lipgloss.NewStyle().Width(vw)
-	keyW := lipgloss.NewStyle().Foreground(colorMuted).Width(14)
-	valSt := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	// secSt, Ayarlar ekranının bölüm başlıklarıyla (Sistem/Kimlik/Profil —
-	// bkz. app.go'daki syncSettingsVP) birebir aynı stil: forumdaki profil
-	// görünümü ile Ayarlar'daki kendi-profil görünümü aynı temaya ait
-	// hissettirsin diye kasıtlı olarak paylaşılıyor.
-	secSt := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	row := func(k, v string) string { return keyW.Render(k) + valSt.Render(v) + "\n" }
-	divider := fStAyrac.Render(strings.Repeat("─", vw-4)) + "\n"
+	// Ayarlar → Bilgi'deki kendi-profil görünümüyle (bkz. app.go'daki
+	// syncSettingsVP) aynı bölüm/etiket düzeni: başkasının profili ile kendi
+	// profilin aynı ailenin ekranları gibi görünsün.
+	const labelW = 15
+	row := func(k, v string) string { return ui.KV(labelW, k, v) + "\n" }
 
 	var b strings.Builder
-	b.WriteString(secSt.Render("Kimlik") + "\n")
+	b.WriteString(ui.Section("Kimlik") + "\n")
 	if profileStore != nil {
-		b.WriteString(keyW.Render("Rol") + roleBadgeText(profileStore, authorKey) + "\n")
+		b.WriteString(row("Rol", roleBadgeText(profileStore, authorKey)))
 	}
 	short := authorKey
 	if len(short) > 20 {
 		short = short[:10] + "…" + short[len(short)-6:]
 	}
-	b.WriteString(row("Public key", short))
+	b.WriteString(row("Genel anahtar", short))
+
+	if forumStore != nil {
+		postCount, replyCount, joinDate := forumStore.AuthorStats(authorKey)
+		b.WriteString(row("Aktivite", fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)))
+		if !joinDate.IsZero() {
+			b.WriteString(row("İlk görülme", turkceTarih(joinDate.Local())))
+		}
+	}
 
 	if mod != nil {
 		if info, banned := mod.AuthorBanInfo(authorKey); banned {
-			b.WriteString("\n" + divider)
-			warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorError)
-			b.WriteString(warnSt.Render("⛔ Banlı") + "\n")
+			b.WriteString("\n" + ui.S.Error.Bold(true).Render("⛔ Banlı") + "\n")
 			if info.Permanent {
 				b.WriteString(row("Süre", "Ömür boyu (kalıcı)"))
 			} else {
@@ -769,14 +772,6 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 			if info.Reason != "" {
 				b.WriteString(row("Sebep", pluginui.Safe(info.Reason)))
 			}
-		}
-	}
-
-	if forumStore != nil {
-		postCount, replyCount, joinDate := forumStore.AuthorStats(authorKey)
-		b.WriteString(row("Aktivite", fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)))
-		if !joinDate.IsZero() {
-			b.WriteString(row("İlk görülme", turkceTarih(joinDate.Local())))
 		}
 	}
 
@@ -790,8 +785,7 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 	}
 
 	if status != "" || len(tags) > 0 || link != "" || githubUser != "" {
-		b.WriteString("\n" + divider)
-		b.WriteString(secSt.Render("Profil") + "\n")
+		b.WriteString("\n" + ui.Section("Profil") + "\n")
 		if status != "" {
 			b.WriteString(row("Durum", status))
 		}
@@ -803,20 +797,18 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 			b.WriteString(row("Etiketler", strings.Join(safeTags, ", ")))
 		}
 		if link != "" {
-			b.WriteString(row("Link", link))
+			b.WriteString(row("Bağlantı", link))
 		}
 		if githubUser != "" {
-			okSt := lipgloss.NewStyle().Foreground(colorOK)
-			b.WriteString(keyW.Render("GitHub") + okSt.Render("@"+githubUser+" (doğrulandı)") + "\n")
+			b.WriteString(row("GitHub", ui.S.Success.Render("@"+githubUser)+ui.S.Muted.Render("  doğrulandı")))
 		}
 	}
 
-	b.WriteString("\n" + divider)
-	b.WriteString(secSt.Render("Hakkında") + "\n")
+	b.WriteString("\n" + ui.Section("Hakkında") + "\n")
 	if bio == "" {
-		b.WriteString(fStSoluk.Render("Henüz bir açıklama paylaşılmamış."))
+		b.WriteString(ui.S.Muted.Render("Henüz bir açıklama paylaşılmamış.") + "\n")
 	} else {
-		b.WriteString(wrapSt.Render(bio))
+		b.WriteString(ui.Wrap(bio, vw) + "\n")
 	}
 
 	// Site: authorKey'in kendi çok sayfalı kişisel sitesi (bkz.
@@ -826,8 +818,7 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 	// kaydırılabilir olduğundan bu, en basit ve tutarlı gösterim yolu.
 	if siteStore != nil {
 		if pages := siteStore.PagesByAuthor(authorKey); len(pages) > 0 {
-			b.WriteString("\n\n" + divider)
-			b.WriteString(secSt.Render(fmt.Sprintf("Site (%d sayfa)", len(pages))) + "\n")
+			b.WriteString("\n" + ui.Section(fmt.Sprintf("Site · %d sayfa", len(pages))) + "\n")
 			for i, p := range pages {
 				if i > 0 {
 					b.WriteString("\n")
@@ -836,8 +827,8 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 				if baslik == "" {
 					baslik = p.Slug
 				}
-				b.WriteString(fStYanitBaslik.Render(baslik) + fStSoluk.Render("  ("+p.Slug+")") + "\n")
-				b.WriteString(wrapSt.Render(pluginui.Safe(p.Body)) + "\n")
+				b.WriteString(ui.S.Name.Render(baslik) + ui.S.Muted.Render("  /"+p.Slug) + "\n")
+				b.WriteString(ui.Wrap(pluginui.Safe(p.Body), vw) + "\n")
 			}
 		}
 	}
@@ -845,12 +836,10 @@ func profilMetni(vpWidth int, profileStore *profile.Store, forumStore *forum.For
 	if chatStore != nil {
 		recent := chatStore.ByAuthor(authorKey, profilRecentChatLimit)
 		if len(recent) > 0 {
-			b.WriteString("\n\n" + divider)
-			b.WriteString(secSt.Render("Son Sohbet Mesajları") + "\n")
+			b.WriteString("\n" + ui.Section("Son sohbet mesajları") + "\n")
 			for _, cm := range recent {
-				ts := cm.SentAt.Local().Format("15:04")
-				line := fmt.Sprintf("[%s] %s", ts, pluginui.Safe(cm.Text))
-				b.WriteString(wrapSt.Render(fStSoluk.Render(line)) + "\n")
+				zaman := ui.S.Muted.Render(cm.SentAt.Local().Format("15:04") + "  ")
+				b.WriteString(zaman + ui.Wrap(pluginui.Safe(cm.Text), vw-7) + "\n")
 			}
 		}
 	}
@@ -861,36 +850,35 @@ func (m *forumModel) forumKonuVPGuncelle() {
 	if m.aktifKonu == nil {
 		return
 	}
-	vw := m.konuVP.Width
+	// Görünüm alanı tam ekran genişliğindedir ama yazı okuma genişliğinde sarılır.
+	vw := ui.Measure(m.konuVP.Width)
 	if vw < 10 {
 		vw = 60
 	}
 	var b strings.Builder
 
 	b.WriteString(bbcode.Render(m.aktifKonu.Body, vw))
-
 	b.WriteString("\n\n")
-	ayrac := strings.Repeat("─", vw-4)
-	if len(m.yanitlar) > 0 {
-		b.WriteString(fStAyrac.Render(ayrac))
-		b.WriteString("\n")
-		b.WriteString(fStAyrac.Render(fmt.Sprintf(" %d yanıt", len(m.yanitlar))))
-		b.WriteString("\n")
-		b.WriteString(fStAyrac.Render(ayrac))
-		b.WriteString("\n\n")
 
-		for _, y := range m.yanitlar {
-			b.WriteString(fStYanitBaslik.Render(y.AuthorName))
-			b.WriteString("  ")
-			b.WriteString(fStSoluk.Render(forumNeZaman(y.CreatedAt)))
+	if len(m.yanitlar) == 0 {
+		b.WriteString(ui.Divider(vw) + "\n")
+		b.WriteString(ui.S.Muted.Render("Henüz yanıt yok — ") + ui.S.Key.Render("r") + ui.S.Muted.Render(" ile ilk yanıtı yaz.") + "\n")
+		m.konuVP.SetContent(b.String())
+		return
+	}
+
+	// "── 2 yanıt ─────────" biçiminde, sayıyı taşıyan tek bir ayraç.
+	etiket := fmt.Sprintf(" %d yanıt ", len(m.yanitlar))
+	b.WriteString(ui.S.Subtle.Render("──") + ui.S.Muted.Bold(true).Render(etiket) +
+		ui.S.Subtle.Render(strings.Repeat("─", max(vw-2-lipgloss.Width(etiket), 0))) + "\n\n")
+	for i, y := range m.yanitlar {
+		if i > 0 {
 			b.WriteString("\n")
-			b.WriteString(bbcode.Render(y.Body, vw))
-			b.WriteString("\n\n")
 		}
-	} else {
-		b.WriteString(fStAyrac.Render(ayrac))
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ui.AuthorColor(y.AuthorKey)).Render(pluginui.Safe(y.AuthorName)))
+		b.WriteString(ui.S.Muted.Render("  ·  " + forumNeZaman(y.CreatedAt)))
 		b.WriteString("\n")
-		b.WriteString(fStSoluk.Render("  Henüz yanıt yok  ·  r ile ilk yanıtı yaz"))
+		b.WriteString(bbcode.Render(y.Body, vw))
 		b.WriteString("\n")
 	}
 	m.konuVP.SetContent(b.String())
@@ -912,33 +900,21 @@ func (m forumModel) View() string {
 	return ""
 }
 
-func (m forumModel) forumHeader(sol, sag string) string {
-	ad := forumKullaniciAdi(m.identity)
+func (m forumModel) forumHeader(crumbs []string, sag string) string {
 	if sag == "" {
-		sag = ad
+		sag = ui.S.Name.Render(pluginui.Safe(forumKullaniciAdi(m.identity)))
 	}
-	w := m.genislik - 8
-	if w < 20 {
-		w = 60
-	}
-	bosluk := w - lipgloss.Width(sol) - lipgloss.Width(sag)
-	if bosluk < 1 {
-		bosluk = 1
-	}
-	return fStHeaderSol.Render(sol) +
-		strings.Repeat(" ", bosluk) +
-		fStHeaderSag.Render(sag)
+	return ui.Header(icGenislik(m.genislik), crumbs, sag)
 }
 
 func (m forumModel) forumBildirimSatiri() string {
-	if m.gonderi {
-		return fStBildirimBekle.Render(" Gönderiliyor… ")
-	}
-	if m.errMsg != "" {
-		return fStBildirimHata.Render(" ✖  " + m.errMsg + " ")
-	}
-	if m.okMsg != "" {
-		return fStBildirimOK.Render(" ✔  " + m.okMsg + " ")
+	switch {
+	case m.gonderi:
+		return ui.Notice(ui.KindPending, "Gönderiliyor")
+	case m.errMsg != "":
+		return ui.Notice(ui.KindError, m.errMsg)
+	case m.okMsg != "":
+		return ui.Notice(ui.KindSuccess, m.okMsg)
 	}
 	return ""
 }
@@ -953,21 +929,21 @@ func katPad(s string, w int) string {
 }
 
 func (m forumModel) forumGorunumKategoriler() string {
+	w := icGenislik(m.genislik)
 	var b strings.Builder
+	b.WriteString(m.forumHeader([]string{"Forum", "Kategoriler"}, "") + "\n\n")
 
-	b.WriteString(m.forumHeader("Forum", forumKullaniciAdi(m.identity)))
-	b.WriteString("\n\n")
-
+	var sayilar map[string]int // kategori → konu sayısı, tek geçişte
+	if m.forum != nil {
+		sayilar = m.forum.CategoryCounts()
+	}
 	maks := 1
-	for _, kat := range forum.Categories {
-		if m.forum != nil {
-			if c := m.forum.PostCount(kat); c > maks {
-				maks = c
-			}
-		}
+	for _, c := range sayilar {
+		maks = max(maks, c)
 	}
 
-	const nameW = 27
+	const nameW = 26
+	const barW = 10
 
 	gorubilirKat := m.gorubilirKatSayisi()
 	katBaslangic := m.katScrollOff
@@ -986,61 +962,61 @@ func (m forumModel) forumGorunumKategoriler() string {
 	}
 
 	if katBaslangic > 0 {
-		b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↑ %d kategori daha…", katBaslangic)) + "\n")
+		b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  ↑ %d kategori daha", katBaslangic)) + "\n")
 	}
 
 	for i := katBaslangic; i < katBitis; i++ {
 		kat := forum.Categories[i]
-		sayi := 0
-		if m.forum != nil {
-			sayi = m.forum.PostCount(kat)
+		sayi := sayilar[kat]
+		dolu := sayi * barW / maks
+		if dolu == 0 && sayi > 0 {
+			dolu = 1
 		}
-		secili := i == m.katIdx
-
-		if secili {
-			satir := fStSeciliSatir.Render(fmt.Sprintf("  ▶ %s  %s  %d konu",
-				katPad(kat, nameW),
-				forumMiniBar(sayi, maks, 8),
-				sayi,
-			))
-			b.WriteString(satir + "\n")
-		} else {
-			satir := fStOgeSatir.Render(fmt.Sprintf("    %s  %s  %s",
-				fStSoluk.Render(katPad(kat, nameW)),
-				fStSoluk.Render(forumMiniBar(sayi, maks, 8)),
-				fStSoluk.Render(fmt.Sprintf("%d konu", sayi)),
-			))
-			b.WriteString(satir + "\n")
+		// Konusu olan kategoriler birincil, boş olanlar soluk renkte: liste
+		// göz ucuyla tarandığında "nerede hareket var" hemen görünür.
+		ad := ui.T(katPad(kat, nameW))
+		if sayi == 0 {
+			ad = ui.C(katPad(kat, nameW), colorMuted)
 		}
+		b.WriteString(ui.Row(w, i == m.katIdx,
+			ad,
+			ui.C(strings.Repeat("━", dolu), colorAccent),
+			ui.C(strings.Repeat("─", barW-dolu), ui.P.Subtle),
+			ui.M(fmt.Sprintf("   %d konu", sayi))) + "\n")
 	}
 
 	if katBitis < len(forum.Categories) {
-		b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↓ %d kategori daha…", len(forum.Categories)-katBitis)) + "\n")
+		b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  ↓ %d kategori daha", len(forum.Categories)-katBitis)) + "\n")
 	}
 
-	b.WriteString("\n")
+	return ui.Page(m.genislik, m.yukseklik, b.String(),
+		m.forumAltBilgi(w, ui.H("↑↓", "gezin"), ui.H("enter", "aç"), ui.H("esc", "ana menü")))
+}
+
+// forumAltBilgi, forum ekranlarının en alta yaslı alt bilgisidir: ayraç,
+// varsa bildirim ve kısayol satırı.
+func (m forumModel) forumAltBilgi(w int, hints ...ui.Hint) string {
+	f := ui.Divider(w) + "\n"
 	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
+		f += bd + "\n"
 	}
-	b.WriteString(fStYardim.Render("↑/↓  hareket    enter  aç    esc  ana menü"))
-	return fStKutu.Render(b.String())
+	return f + ui.KeyHints(w, hints...)
 }
 
 func (m forumModel) forumGorunumKonular() string {
+	w := icGenislik(m.genislik)
 	var b strings.Builder
 
-	baslikSol := m.kategori
-	baslikSag := forumKullaniciAdi(m.identity)
+	sag := ""
 	if len(m.konular) > 0 {
-		baslikSag = fmt.Sprintf("%d konu  ·  %s", len(m.konular), forumKullaniciAdi(m.identity))
+		sag = ui.S.Muted.Render(fmt.Sprintf("%d konu", len(m.konular)))
 	}
-	b.WriteString(m.forumHeader(baslikSol, baslikSag))
-	b.WriteString("\n\n")
+	b.WriteString(m.forumHeader([]string{"Forum", m.kategori}, sag) + "\n\n")
 
 	if len(m.konular) == 0 {
-		b.WriteString(fStSoluk.Render("  Bu kategoride henüz konu yok."))
+		b.WriteString(ui.S.Muted.Render("Bu kategoride henüz konu yok."))
 		if m.konuAcEtkin() {
-			b.WriteString("  " + fStSoluk.Render("[n  ile yeni konu aç]"))
+			b.WriteString(ui.S.Muted.Render(" İlk konuyu açmak için ") + ui.S.Key.Render("n") + ui.S.Muted.Render("."))
 		}
 		b.WriteString("\n\n")
 	} else {
@@ -1061,7 +1037,7 @@ func (m forumModel) forumGorunumKonular() string {
 		}
 
 		if konuBaslangic > 0 {
-			b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↑ %d konu daha…", konuBaslangic)) + "\n\n")
+			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  ↑ %d konu daha", konuBaslangic)) + "\n\n")
 		}
 
 		for i := konuBaslangic; i < konuBitis; i++ {
@@ -1071,134 +1047,116 @@ func (m forumModel) forumGorunumKonular() string {
 			if m.forum != nil {
 				yanit = m.forum.ReplyCount(k.ID)
 			}
-			var yanitStr string
-			switch yanit {
-			case 0:
-				yanitStr = "—"
-			case 1:
-				yanitStr = "1 yanıt"
-			default:
+			yanitStr := "yanıt yok"
+			if yanit > 0 {
 				yanitStr = fmt.Sprintf("%d yanıt", yanit)
 			}
-			baslik := forumKisalt(k.Title, 46)
-			meta := fmt.Sprintf("  %s · %s · %s", k.AuthorName, forumNeZaman(k.CreatedAt), yanitStr)
-
-			if secili {
-				b.WriteString(fStSeciliSatir.Render("  "+baslik) + "\n")
-				b.WriteString(fStSeciliMeta.Render(meta) + "\n")
-			} else {
-				b.WriteString(fStOgeSatir.Render("  "+baslik) + "\n")
-				b.WriteString(fStSoluk.Render(meta) + "\n")
-			}
+			b.WriteString(ui.Row(w, secili, ui.Seg{Text: pluginui.Safe(k.Title), Bold: true}) + "\n")
+			b.WriteString(ui.Row(w, secili,
+				ui.Seg{Text: pluginui.Safe(k.AuthorName), Color: ui.AuthorColor(k.AuthorKey), Dim: true},
+				ui.M("  ·  "+forumNeZaman(k.CreatedAt)+"  ·  "+yanitStr)) + "\n")
 			b.WriteString("\n")
 		}
 
 		if konuBitis < len(m.konular) {
-			b.WriteString(fStSoluk.Render(fmt.Sprintf("  ↓ %d konu daha…", len(m.konular)-konuBitis)) + "\n")
+			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  ↓ %d konu daha", len(m.konular)-konuBitis)) + "\n")
 		}
 	}
 
-	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
-	}
-
-	helpText := "↑/↓  hareket    enter  aç    r  yenile    p  profil    esc  geri"
+	hints := []ui.Hint{ui.H("↑↓", "gezin"), ui.H("enter", "aç")}
 	if m.konuAcEtkin() {
-		helpText += "    n  yeni konu"
+		hints = append(hints, ui.H("n", "yeni konu"))
 	}
-	b.WriteString(fStYardim.Render(helpText))
-	return fStKutu.Render(b.String())
+	hints = append(hints, ui.H("p", "yazarın profili"), ui.H("r", "yenile"), ui.H("esc", "kategoriler"))
+	return ui.Page(m.genislik, m.yukseklik, b.String(), m.forumAltBilgi(w, hints...))
 }
 
 func (m forumModel) forumGorunumKonu() string {
 	if m.aktifKonu == nil {
-		return fStKutu.Render("")
+		return ui.Frame(m.genislik, m.yukseklik, "")
 	}
+	w := icGenislik(m.genislik)
 	k := m.aktifKonu
 
 	var b strings.Builder
-	b.WriteString(m.forumHeader(forumKisalt(k.Title, 40), forumKullaniciAdi(m.identity)))
-	b.WriteString("\n")
-	b.WriteString(fStYanitBaslik.Render(k.AuthorName) +
-		"  " + fStSoluk.Render(k.Category+" · "+forumNeZaman(k.CreatedAt)))
-
+	b.WriteString(m.forumHeader([]string{"Forum", k.Category, "Konu"}, "") + "\n\n")
+	b.WriteString(ui.S.Heading.Render(ui.Truncate(pluginui.Safe(k.Title), w)) + "\n")
+	meta := lipgloss.NewStyle().Bold(true).Foreground(ui.AuthorColor(k.AuthorKey)).Render(pluginui.Safe(k.AuthorName)) +
+		ui.S.Muted.Render("  ·  "+forumNeZaman(k.CreatedAt))
 	if !k.ExpiresAt.IsZero() {
-		kalan := time.Until(k.ExpiresAt)
-		if kalan <= 0 {
-			b.WriteString("  " + lipgloss.NewStyle().Background(colorError).Foreground(lipgloss.Color("255")).Bold(true).Render(" ⏱ Süre doldu "))
-		} else {
-			gun := int(kalan.Hours() / 24)
-			saat := int(kalan.Hours()) % 24
-			var kalanStr string
-			if gun > 0 {
-				kalanStr = fmt.Sprintf(" ⏱ %d gün %d sa kaldı ", gun, saat)
-			} else {
-				kalanStr = fmt.Sprintf(" ⏱ %d sa kaldı ", saat)
-			}
-			b.WriteString("  " + lipgloss.NewStyle().Background(colorWarning).Foreground(lipgloss.Color("0")).Bold(true).Render(kalanStr))
-		}
+		meta += ui.S.Subtle.Render("  ·  ") + konuOmruEtiketi(k.ExpiresAt)
 	}
-	b.WriteString("\n\n")
+	b.WriteString(meta + "\n\n")
 
 	b.WriteString(m.konuVP.View())
 	b.WriteString("\n")
-
 	if !m.konuVP.AtBottom() {
-		b.WriteString(fStSoluk.Render("  ↓ daha fazla…"))
-		b.WriteString("\n")
+		b.WriteString(ui.S.Muted.Render("  ↓ devamı var") + "\n")
 	}
 
 	if m.silOnay {
-		b.WriteString(fStBildirimHata.Render(" Konuyu silmek istediğinizden emin misiniz? [y] Evet  [esc] İptal "))
-		b.WriteString("\n")
-	} else if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
+		f := ui.Divider(w) + "\n" + ui.Notice(ui.KindWarning, "Bu konu herkes için kalıcı olarak silinsin mi?") + "\n" +
+			ui.KeyHints(w, ui.H("y", "sil"), ui.H("başka bir tuş", "vazgeç"))
+		return ui.Page(m.genislik, m.yukseklik, b.String(), f)
 	}
-
-	helpText := "↑/↓  kaydır    pgup/pgdn  sayfa    g/G  başa/sona    r  yanıtla    p  profil    esc  geri"
+	hints := []ui.Hint{ui.H("↑↓", "kaydır"), ui.H("r", "yanıtla"), ui.H("p", "yazarın profili")}
 	if m.identity != nil && k.AuthorKey == hex.EncodeToString(m.identity.PublicKey()) {
-		helpText += "    x  sil"
+		hints = append(hints, ui.H("x", "sil"))
 	}
-	b.WriteString(fStYardim.Render(helpText))
-	return fStKutu.Render(b.String())
+	hints = append(hints, ui.H("esc", "konular"))
+	return ui.Page(m.genislik, m.yukseklik, b.String(), m.forumAltBilgi(w, hints...))
+}
+
+// konuOmruEtiketi, bir konunun otomatik silinmesine (oluşturulduktan 5 gün
+// sonra) kalan süreyi gösterir — son 24 saatte uyarı renginde. Emoji
+// (ör. ⏱) BİLEREK kullanılmaz: genişliği terminale göre değişen bir
+// karakter çerçevenin sağ kenarını kaydırırdı.
+func konuOmruEtiketi(t time.Time) string {
+	kalan := time.Until(t)
+	switch {
+	case kalan <= 0:
+		return ui.S.Error.Render("süresi doldu")
+	case kalan < time.Hour:
+		return ui.S.Warning.Render("1 saatten az kaldı")
+	case kalan < 24*time.Hour:
+		return ui.S.Warning.Render(fmt.Sprintf("%d sa sonra silinecek", int(kalan.Hours())))
+	default:
+		return ui.S.Muted.Render(fmt.Sprintf("%d gün %d sa sonra silinecek", int(kalan.Hours()/24), int(kalan.Hours())%24))
+	}
 }
 
 func (m forumModel) forumGorunumYanit() string {
-	ad := forumKullaniciAdi(m.identity)
-	baslikStr := "Yanıtla"
+	w := icGenislik(m.genislik)
+	crumbs := []string{"Forum", "Yanıtla"}
 	if m.aktifKonu != nil {
-		baslikStr = "Yanıtla: " + forumKisalt(m.aktifKonu.Title, 40)
+		crumbs = []string{"Forum", m.aktifKonu.Category, "Yanıtla"}
 	}
 
 	var b strings.Builder
-	b.WriteString(m.forumHeader(baslikStr, ad))
-	b.WriteString("\n\n")
+	b.WriteString(m.forumHeader(crumbs, "") + "\n\n")
+	if m.aktifKonu != nil {
+		b.WriteString(ui.S.Muted.Render("Konu  ") + ui.S.Bold.Render(ui.Truncate(pluginui.Safe(m.aktifKonu.Title), w-6)) + "\n\n")
+	}
 
 	icerikLen := len([]rune(m.yanitAlan.Value()))
-	b.WriteString(fStAlanEtiketAktif.Render("Yanıt  ") + forumCharBar(icerikLen, fMaxYanit))
-	b.WriteString("\n")
+	b.WriteString(ui.S.Title.Render("Yanıtın") + "   " + forumCharBar(icerikLen, fMaxYanit) + "\n")
 	b.WriteString(m.yanitAlan.View())
 	b.WriteString("\n")
-	b.WriteString(fStSoluk.Render("ctrl+k ile kod bloğu ekle  ·  ör: [code=python] ... [/code]") + "\n")
+	b.WriteString(ui.S.Muted.Render("Kod bloğu için ") + ui.S.Key.Render("ctrl+k") + ui.S.Muted.Render("  ·  ör. [code=python] … [/code]") + "\n")
 
-	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
-	}
-	b.WriteString(fStYardim.Render("ctrl+s  gönder    ctrl+k  kod bloğu    esc  iptal"))
-	return fStKutu.Render(b.String())
+	return ui.Page(m.genislik, m.yukseklik, b.String(),
+		m.forumAltBilgi(w, ui.H("ctrl+s", "gönder"), ui.H("ctrl+k", "kod bloğu"), ui.H("esc", "vazgeç")))
 }
 
 func (m forumModel) forumGorunumProfil() string {
+	w := icGenislik(m.genislik)
 	var b strings.Builder
-	b.WriteString(m.forumHeader("Profil: "+forumKisalt(pluginui.Safe(m.profilAd), 40), forumKullaniciAdi(m.identity)))
-	b.WriteString("\n\n")
+	b.WriteString(m.forumHeader([]string{"Forum", "Profil", pluginui.Safe(m.profilAd)}, "") + "\n\n")
 
 	b.WriteString(m.konuVP.View())
 	b.WriteString("\n")
-
 	if !m.konuVP.AtBottom() {
-		b.WriteString(fStSoluk.Render("  ↓ daha fazla…"))
-		b.WriteString("\n")
+		b.WriteString(ui.S.Muted.Render("  ↓ daha fazla") + "\n")
 	}
 
 	if m.banConfirming {
@@ -1208,51 +1166,34 @@ func (m forumModel) forumGorunumProfil() string {
 		b.WriteString(unbanOnayGorunumu(m.profilAd))
 	}
 
-	if bd := m.forumBildirimSatiri(); bd != "" {
-		b.WriteString(bd + "\n")
-	}
-	help := "↑/↓  kaydır    esc  geri"
-	switch {
-	case m.banConfirming:
-		help = "←/→  süre seç    enter  onayla    esc  vazgeç"
-	case m.unbanConfirming:
-		help = "e  onayla    esc  vazgeç"
-	case m.profilCanBan && m.profilIsBanned:
-		help = "↑/↓  kaydır    b  banla    u  banı kaldır    esc  geri"
-	case m.profilCanBan:
-		help = "↑/↓  kaydır    b  banla    esc  geri"
-	}
-	b.WriteString(fStYardim.Render(help))
-	return fStKutu.Render(b.String())
+	return ui.Page(m.genislik, m.yukseklik, b.String(),
+		m.forumAltBilgi(w, profilKisayollari(m.banConfirming, m.unbanConfirming, m.profilCanBan, m.profilIsBanned, "geri")...))
 }
 
 // banOnayGorunumu, "b" ile açılan süre+sebep onay alt-durumunun ortak
 // görünümü — hem forum hem sohbet profil ekranı bunu kullanır.
 func banOnayGorunumu(hedefAd string, durationIdx int, reasonInput textinput.Model) string {
 	var b strings.Builder
-	b.WriteString("\n" + fStAyrac.Render(strings.Repeat("─", 40)) + "\n")
-	warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
-	b.WriteString(warnSt.Render("Banla: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n")
+	b.WriteString("\n" + ui.S.Warning.Bold(true).Render("Banla: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n")
+	b.WriteString(ui.S.Muted.Render("Süre   "))
 	for i, p := range banDurationPresets {
 		if i == durationIdx {
-			b.WriteString(fStSeciliSatir.Render(" " + p.label + " "))
+			b.WriteString(ui.S.Pill.Render(p.label))
 		} else {
-			b.WriteString(" " + p.label + " ")
+			b.WriteString(ui.S.Muted.Padding(0, 1).Render(p.label))
 		}
+		b.WriteString(" ")
 	}
-	b.WriteString("\n")
+	b.WriteString("\n" + ui.S.Muted.Render("Sebep") + "\n")
 	b.WriteString(reasonInput.View() + "\n")
 	return b.String()
 }
 
 // unbanOnayGorunumu, "u" ile açılan ban-kaldırma onayının ortak görünümü.
 func unbanOnayGorunumu(hedefAd string) string {
-	var b strings.Builder
-	b.WriteString("\n" + fStAyrac.Render(strings.Repeat("─", 40)) + "\n")
-	warnSt := lipgloss.NewStyle().Bold(true).Foreground(colorWarning)
-	b.WriteString(warnSt.Render("Banı kaldır: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n")
-	b.WriteString(fStSoluk.Render("Emin misin? (e: evet, esc: vazgeç)") + "\n")
-	return b.String()
+	return "\n" + ui.S.Warning.Bold(true).Render("Banı kaldır: "+forumKisalt(pluginui.Safe(hedefAd), 30)) + "\n" +
+		ui.S.Muted.Render("Emin misin? ") + ui.S.Key.Render("e") + ui.S.Muted.Render(" ile onayla, ") +
+		ui.S.Key.Render("esc") + ui.S.Muted.Render(" ile vazgeç.") + "\n"
 }
 
 func forumKullaniciAdi(id *stdcrypto.Identity) string {
@@ -1267,11 +1208,6 @@ func forumKullaniciAdi(id *stdcrypto.Identity) string {
 
 func forumCharBar(suanki, maks int) string {
 	pct := float64(suanki) / float64(maks)
-	dolu := int(pct * 16)
-	if dolu > 16 {
-		dolu = 16
-	}
-	bar := strings.Repeat("█", dolu) + strings.Repeat("░", 16-dolu)
 	renk := colorOK
 	if pct > 0.75 {
 		renk = colorWarning
@@ -1279,20 +1215,7 @@ func forumCharBar(suanki, maks int) string {
 	if pct > 0.92 {
 		renk = colorError
 	}
-	return lipgloss.NewStyle().Foreground(renk).Render(
-		fmt.Sprintf("%s %d/%d", bar, suanki, maks))
-}
-
-func forumMiniBar(sayi, maks, genislik int) string {
-	if maks == 0 {
-		return strings.Repeat("░", genislik)
-	}
-	dolu := int(float64(sayi) / float64(maks) * float64(genislik))
-	if dolu == 0 && sayi > 0 {
-		dolu = 1
-	}
-	return lipgloss.NewStyle().Foreground(colorAccent).Render(strings.Repeat("█", dolu)) +
-		lipgloss.NewStyle().Foreground(colorMuted).Render(strings.Repeat("░", genislik-dolu))
+	return ui.Bar(suanki, maks, 16, renk) + " " + ui.S.Muted.Render(fmt.Sprintf("%d/%d", suanki, maks))
 }
 
 func forumNeZaman(t time.Time) string {

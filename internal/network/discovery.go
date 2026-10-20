@@ -1,10 +1,16 @@
 package network
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"os"
+	"sync"
 	"time"
 
+	golog "github.com/ipfs/go-log/v2"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-kad-dht/dual"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -13,6 +19,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const Rendezvous = "and-community/1.0.0"
@@ -94,6 +102,7 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 		return ch
 	})
 
+	muteNoisyMDNSLog()
 	d.mdns = mdns.NewMdnsService(h, mdnsServiceTag, peerFoundNotifee{ctx: ctx, host: h})
 	if err := d.mdns.Start(); err != nil {
 		kdht.Close()
@@ -176,6 +185,61 @@ func (d *Discovery) rebootstrapLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// quietMDNSLogOnce ensures muteNoisyMDNSLog only ever installs its filter
+// once per process, even if StartDiscovery runs more than once (ör. testler).
+var quietMDNSLogOnce sync.Once
+
+// muteNoisyMDNSLog, standart kütüphanenin varsayılan logger çıktısını (bunu
+// github.com/libp2p/zeroconf/v2 — go-libp2p'nin mDNS uygulamasının alt
+// katmanı — go-libp2p'nin kendi seviyeli logger'ı ÜZERİNDEN DEĞİL, doğrudan
+// stdlib log.Printf ile yazar) yalnızca "Failed to set multicast interface"
+// uyarısını süzen bir filtreyle değiştirir. Windows'ta zeroconf'un
+// linux/darwin-dışı geri dönüş yolu (server.go'daki writeResponse), gönderdiği
+// HER mDNS yanıtında yerel makinede numaralandırılmış HER ağ arayüzü için bir
+// kez net.PacketConn.SetMulticastInterface çağırır; kapalı, loopback ya da
+// başka bir sebeple uygun olmayan arayüzler (VPN istemcileri, Hyper-V
+// switch'leri, WSL, Bluetooth PAN gibi birçok sanal adaptöre sahip Windows
+// makinelerinde yaygın) bu çağrıda başarısız olur ve HER başarısızlık ayrı
+// bir satır loglar. Sonuç, saniyede onlarca neredeyse özdeş "[WARN] mdns:
+// Failed to set multicast interface: no such interface" satırıdır — gerçek
+// tanılama çıktısını boğar, ama mDNS başarılı olan arayüzlerde zaten normal
+// çalışmaya devam eder ve DHT/bilinen-eş keşfi bundan hiç etkilenmez. Bu,
+// AND'ın kendi kodunun kontrol edemediği, yukarı akış (upstream) zeroconf/v2
+// davranışıdır — bu yüzden kaynağında "düzeltilmek" yerine burada süzülür.
+// Standart log paketiyle yazılan BAŞKA her şey stderr'e değişmeden ulaşır.
+func muteNoisyMDNSLog() {
+	quietMDNSLogOnce.Do(func() {
+		log.SetOutput(mdnsNoiseFilter{out: os.Stderr})
+	})
+}
+
+// RedirectLibraryLogs, kütüphanelerin terminale yazdığı günlükleri w'ye
+// yönlendirir: standart log paketi (zeroconf'un mDNS uyarısı yine süzülür)
+// ve go-log (libp2p'nin kendi günlüğü; varsayılanı hata düzeyindeki
+// satırları stderr'e yazmaktır). AND, tam ekran TUI açılmadan hemen önce
+// çağırır — arayüzün üstüne terminale yazılan tek bir satır bile ekranı
+// kaydırıp çerçeveyi bozar. Sonradan çalışan bir muteNoisyMDNSLog bu
+// yönlendirmeyi geri almaz.
+func RedirectLibraryLogs(w io.Writer) {
+	quietMDNSLogOnce.Do(func() {})
+	log.SetOutput(mdnsNoiseFilter{out: w})
+	golog.SetPrimaryCore(zapcore.NewCore(
+		zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig()),
+		zapcore.AddSync(w), zapcore.DebugLevel))
+}
+
+// mdnsNoiseFilter, yalnızca muteNoisyMDNSLog'un doc yorumunda açıklanan tek
+// bir gürültülü satırı düşürür; başka her şeyi olduğu gibi alttaki writer'a
+// iletir.
+type mdnsNoiseFilter struct{ out io.Writer }
+
+func (f mdnsNoiseFilter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte("mdns: Failed to set multicast interface")) {
+		return len(p), nil
+	}
+	return f.out.Write(p)
 }
 
 // connectToBootstrapPeers dials all bootstrap peers concurrently and returns

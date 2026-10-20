@@ -283,6 +283,33 @@ func TestDeletePage_TombstoneBlocksRepublishFromNetwork(t *testing.T) {
 	}
 }
 
+// TestPublishPage_DeletedSlugReturnsError, silinmiş (tombstone'lanmış) bir
+// slug'ı yeniden yayınlamanın AÇIK bir hata döndürdüğünü doğrular — önceden
+// PublishPage nil dönüyordu ama persist() tombstone yüzünden sayfayı
+// sessizce atlıyordu: TUI "yayınlandı" diyor, sayfa hiçbir yerde
+// saklanmıyordu.
+func TestPublishPage_DeletedSlugReturnsError(t *testing.T) {
+	env := newTestStore(t)
+	ctx := context.Background()
+	if err := env.store.PublishPage(ctx, "home", "t", "b"); err != nil {
+		t.Fatalf("PublishPage: %v", err)
+	}
+	if err := env.store.DeletePage(ctx, "home"); err != nil {
+		t.Fatalf("DeletePage: %v", err)
+	}
+
+	if err := env.store.PublishPage(ctx, "home", "yeni", "yeni gövde"); err == nil {
+		t.Fatal("silinmiş bir slug'ı yeniden yayınlamak hata döndürmeliydi")
+	}
+	myKey := hex.EncodeToString(env.identity.PublicKey())
+	if got := env.store.Get(myKey, "home"); got != nil {
+		t.Fatalf("silinmiş slug yeniden canlanmamalıydı, got %+v", got)
+	}
+	if err := env.store.PublishPage(ctx, "home-2", "yeni", "yeni gövde"); err != nil {
+		t.Fatalf("farklı bir slug ile yayın etkilenmemeliydi: %v", err)
+	}
+}
+
 func TestDeletePage_NonExistentSlugErrors(t *testing.T) {
 	env := newTestStore(t)
 	if err := env.store.DeletePage(context.Background(), "hicbirzaman"); err == nil {

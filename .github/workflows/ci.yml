@@ -36,3 +36,34 @@ jobs:
 
       - name: Statik analiz
         run: go vet ./...
+
+  and-vscode:
+    name: and-vscode (typecheck/build/test)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: and-vscode/package-lock.json
+
+      - name: Bağımlılıkları kur
+        working-directory: and-vscode
+        run: npm ci
+
+      - name: Tip kontrolü
+        working-directory: and-vscode
+        run: npm run typecheck
+
+      - name: Derle
+        working-directory: and-vscode
+        run: npm run build
+
+      - name: Testleri çalıştır
+        working-directory: and-vscode
+        run: npm test

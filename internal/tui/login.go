@@ -5,22 +5,18 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/internal/updater"
 )
 
 var ErrLoginCancelled = errors.New("tui: login cancelled")
-
-const andASCIIArt = ` █████╗ ███╗   ██╗██████╗
-██╔══██╗████╗  ██║██╔══██╗
-███████║██╔██╗ ██║██║  ██║
-██╔══██║██║╚██╗██║██║  ██║
-██║  ██║██║ ╚████║██████╔╝
-╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝`
 
 type loginStage int
 
@@ -62,6 +58,7 @@ type loginModel struct {
 
 func Login(path, dataDir string) (*stdcrypto.Identity, error) {
 	loadAndApplyTheme(dataDir)
+	ui.FrameTag = updater.Version
 
 	register := true
 	if _, err := os.Stat(path); err == nil {
@@ -92,7 +89,7 @@ func newLoginModel(path string, register bool) loginModel {
 		name := textinput.New()
 		name.Placeholder = "görünen adın"
 		name.CharLimit = 32
-		name.Width = 32
+		name.Width = girisKartW - 4
 		name.Focus()
 		inputs = append(inputs, name)
 	}
@@ -101,7 +98,7 @@ func newLoginModel(path string, register bool) loginModel {
 	pass.Placeholder = "şifre"
 	pass.EchoMode = textinput.EchoPassword
 	pass.EchoCharacter = '•'
-	pass.Width = 32
+	pass.Width = girisKartW - 4
 	if !register {
 		pass.Focus()
 	}
@@ -112,8 +109,11 @@ func newLoginModel(path string, register bool) loginModel {
 		confirm.Placeholder = "şifre (tekrar)"
 		confirm.EchoMode = textinput.EchoPassword
 		confirm.EchoCharacter = '•'
-		confirm.Width = 32
+		confirm.Width = girisKartW - 4
 		inputs = append(inputs, confirm)
+	}
+	for i := range inputs {
+		styleInput(&inputs[i])
 	}
 
 	return loginModel{path: path, register: register, inputs: inputs, stage: stageForm}
@@ -127,17 +127,30 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc":
+		if msg.String() == "ctrl+c" {
 			m.cancelled = true
 			return m, tea.Quit
 		}
+		// esc her aşamada kısayol satırının söylediğini yapar: formda çıkış,
+		// kurtarma kodunda forma, doğrulamada koda dönüş, ad sorusunda atlama.
+		// (Eskiden esc her aşamada programı kapatıyordu — doğrulamada
+		// kaydedilmemiş yeni kimlik de kayboluyordu.)
 		switch m.stage {
 		case stageForm:
+			if msg.String() == "esc" {
+				m.cancelled = true
+				return m, tea.Quit
+			}
 			return m.updateForm(msg)
 		case stageMnemonic:
-			if msg.String() == "enter" {
+			switch msg.String() {
+			case "enter":
 				return m.goToVerify()
+			case "esc":
+				// Kod henüz hiçbir yere kaydedilmedi; formdan yeniden
+				// gönderilince yeni bir kimlik (ve yeni bir kod) üretilir.
+				m.stage, m.identity, m.mnemonic, m.passphrase, m.err = stageForm, nil, "", "", nil
+				return m, nil
 			}
 			return m, nil
 		case stageVerify:
@@ -186,7 +199,10 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 		passphrase := m.inputs[0].Value()
 		id, err := stdcrypto.LoadEncrypted(m.path, passphrase)
 		if err != nil {
-			m.err = err
+			m.err = fmt.Errorf("kimlik dosyası açılamadı: %w", err)
+			if errors.Is(err, stdcrypto.ErrWrongPassphrase) {
+				m.err = errors.New("şifre yanlış, tekrar dene")
+			}
 			m.inputs[0].SetValue("")
 			return m, nil
 		}
@@ -196,7 +212,7 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 			nameInput := textinput.New()
 			nameInput.Placeholder = "görünen adın"
 			nameInput.CharLimit = 32
-			nameInput.Width = 32
+			nameInput.Width = girisKartW - 4
 			nameInput.Focus()
 			m.inputs = []textinput.Model{nameInput}
 			m.focus = 0
@@ -256,6 +272,10 @@ func (m loginModel) goToVerify() (tea.Model, tea.Cmd) {
 	target := words[idx]
 	vi := textinput.New()
 	vi.Placeholder = fmt.Sprintf("%d. kelimeyi yaz…", idx+1)
+	if len(words) == 1 {
+		vi.Placeholder = "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
+	}
+	styleInput(&vi)
 	// CharLimit/Width sabit 20/26 değil, target'a göre: m.mnemonic
 	// (id.RecoveryCode()) boşluksuz tek bir "kelime" olduğundan (bkz.
 	// RecoveryCode'un "AAAA-BBBB-CCCC-DDDD" biçimi), words her zaman tek
@@ -275,6 +295,12 @@ func (m loginModel) goToVerify() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// kodNormal, kurtarma kodunu karşılaştırma için sadeleştirir: tire ve
+// boşluklar atılır, harfler küçültülür.
+func kodNormal(s string) string {
+	return strings.ToLower(strings.NewReplacer("-", "", " ", "").Replace(strings.TrimSpace(s)))
+}
+
 func (m loginModel) updateVerify(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -283,8 +309,9 @@ func (m loginModel) updateVerify(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.stage = stageMnemonic
 		return m, nil
 	case "enter":
-		entered := strings.ToLower(strings.TrimSpace(m.verifyInput.Value()))
-		if entered != strings.ToLower(m.verifyWordVal) {
+		// Tireler, boşluklar ve büyük/küçük harf önemsizdir — kimliği geri
+		// yükleyen crypto.RestoreFromCode da onları yok sayar.
+		if kodNormal(m.verifyInput.Value()) != kodNormal(m.verifyWordVal) {
 			m.err = errors.New("yanlış kelime — kurtarma kodunu tekrar kontrol et")
 			m.verifyInput.SetValue("")
 			return m, nil
@@ -340,144 +367,237 @@ func (m loginModel) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m loginModel) center(content string) string {
-	if m.width <= 0 || m.height <= 0 {
-		return content
+// ─── Görünüm ────────────────────────────────────────────────────────────────
+//
+// Giriş ekranları da AND'ın geri kalanı gibi tam ekran çerçevededir (ui.Page).
+// Geniş terminalde solda amblem ve AND'ı tanıtan üç satır, sağda form kartı;
+// dar terminalde amblem kartın üstünde; kısa terminalde yalnızca kart. Kısayol
+// satırı her zaman en alttadır.
+
+const (
+	girisKartW   = 46 // kartın iç (içerik) genişliği
+	girisGenisEn = 104
+)
+
+// kayitAdimlari, ilk kayıt akışının adımlarıdır — kullanıcı nerede olduğunu
+// ve kaç adım kaldığını görsün diye kartın üstünde gösterilir.
+var kayitAdimlari = []string{"Bilgiler", "Kurtarma kodu", "Doğrulama"}
+
+// adimCizgisi: tamamlanan adımlar ✓ ile, etkin adım vurgu renginde,
+// sıradakiler soluk.
+func adimCizgisi(aktif int) string {
+	parcalar := make([]string, len(kayitAdimlari))
+	for i, ad := range kayitAdimlari {
+		switch {
+		case i < aktif:
+			parcalar[i] = ui.S.Success.Render("✓ " + ad)
+		case i == aktif:
+			parcalar[i] = ui.S.Title.Render(fmt.Sprintf("%d %s", i+1, ad))
+		default:
+			parcalar[i] = ui.S.Muted.Render(fmt.Sprintf("%d %s", i+1, ad))
+		}
 	}
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+	return strings.Join(parcalar, ui.S.Subtle.Render("  ›  "))
 }
 
-func logoBlock() string {
-	logoSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	verSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
-	badgeSt := lipgloss.NewStyle().
-		Background(colorSelBG).Foreground(colorSelFG).
-		Bold(true).Padding(0, 1)
-
-	badge := badgeSt.Render(ActiveThemeName)
-	ver := verSt.Render("v0.1.0")
-
-	return lipgloss.JoinVertical(lipgloss.Center,
-		logoSt.Render(andASCIIArt),
+// girisTanitim, geniş ekranda kartın solunda duran amblem ve tanıtımdır.
+func girisTanitim() string {
+	madde := func(s string) string { return ui.S.Accent.Render("▸ ") + ui.S.Muted.Render(s) }
+	return strings.Join([]string{
+		ui.Logo(),
 		"",
-		lipgloss.JoinHorizontal(lipgloss.Center, ver, "  ", badge),
-	)
+		ui.S.Bold.Render("Sunucusuz, eşten eşe terminal forumu"),
+		"",
+		madde("Hesap ve sunucu yok; kimliğin bu cihazda üretilir"),
+		madde("Her konu ve mesaj Ed25519 ile imzalanır"),
+		madde("İçerik eşler arasında doğrudan yayılır"),
+	}, "\n")
+}
+
+// alan, etiketli bir giriş alanıdır: etiket (sağında isteğe bağlı bir durum,
+// ör. şifre gücü), giriş satırı ve odaktayken vurgu renginde bir alt çizgi.
+func alan(w int, etiket, durum string, in textinput.Model, odak bool) string {
+	lbl, cizgi := ui.S.Muted, ui.S.Subtle
+	if odak {
+		lbl, cizgi = ui.S.Title, ui.S.Accent
+	}
+	return ui.Spread(w, lbl.Render(etiket), durum) + "\n" + ui.Truncate(in.View(), w) + "\n" + cizgi.Render(strings.Repeat("─", w))
+}
+
+// sifreGucu, kayıtta şifrenin kabaca ne kadar güçlü olduğudur (0-4): uzunluğa
+// ve karakter çeşitliliğine bakan basit, yalnızca yol gösteren bir ölçüt.
+func sifreGucu(s string) (puan int, etiket string) {
+	r := []rune(s)
+	if len(r) == 0 {
+		return 0, ""
+	}
+	if len(r) < 8 {
+		return 1, "çok kısa"
+	}
+	var kucuk, buyuk, rakam, diger bool
+	for _, c := range r {
+		switch {
+		case unicode.IsLower(c):
+			kucuk = true
+		case unicode.IsUpper(c):
+			buyuk = true
+		case unicode.IsDigit(c):
+			rakam = true
+		default:
+			diger = true
+		}
+	}
+	cesit := 0
+	for _, v := range []bool{kucuk, buyuk, rakam, diger} {
+		if v {
+			cesit++
+		}
+	}
+	puan = 1
+	if len(r) >= 12 {
+		puan++
+	}
+	if len(r) >= 16 {
+		puan++
+	}
+	if cesit >= 3 {
+		puan++
+	}
+	puan = min(puan, 4)
+	return puan, []string{"", "zayıf", "orta", "iyi", "güçlü"}[puan]
+}
+
+// sifreGucuGostergesi, şifre alanının sağındaki güç çubuğudur.
+func sifreGucuGostergesi(s string) string {
+	puan, etiket := sifreGucu(s)
+	if puan == 0 {
+		return ""
+	}
+	renk := ui.P.Error
+	switch {
+	case puan >= 3:
+		renk = ui.P.Success
+	case puan == 2:
+		renk = ui.P.Warning
+	}
+	return lipgloss.NewStyle().Foreground(renk).Render(etiket) + " " + ui.Bar(puan, 4, 8, renk)
+}
+
+// eslesmeDurumu, şifre tekrarı alanının sağındaki işarettir: tekrar yazılırken
+// "eşleşmiyor" uyarısı ancak tekrar en az şifre kadar uzunsa gösterilir.
+func eslesmeDurumu(sifre, tekrar string) string {
+	switch {
+	case tekrar == "":
+		return ""
+	case tekrar == sifre:
+		return ui.S.Success.Render("✓ eşleşiyor")
+	case len([]rune(tekrar)) >= len([]rune(sifre)):
+		return ui.S.Warning.Render("eşleşmiyor")
+	}
+	return ""
+}
+
+// ilkHarfBuyuk, bir hata metnini cümle gibi büyük harfle başlatır (Türkçe
+// kuralıyla: "i" → "İ"). Go'da hata metinleri küçük harfle yazılır.
+func ilkHarfBuyuk(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
+	}
+	r[0] = unicode.TurkishCase.ToUpper(r[0])
+	return string(r)
+}
+
+// ekran, bir giriş aşamasını tam ekran çerçeveye yerleştirir: adim ≥ 0 ise
+// kayıt adımlarını gösterir; kart dikeyde ve yatayda ortalanır.
+func (m loginModel) ekran(adim int, baslik, aciklama, govde string, hints ...ui.Hint) string {
+	var k strings.Builder
+	if adim >= 0 {
+		k.WriteString(adimCizgisi(adim) + "\n\n")
+	}
+	k.WriteString(ui.S.Title.Render(baslik) + "\n")
+	if aciklama != "" {
+		k.WriteString(ui.S.Muted.Render(ui.Wrap(aciklama, girisKartW)) + "\n")
+	}
+	k.WriteString("\n" + strings.TrimRight(govde, "\n"))
+	if m.err != nil {
+		k.WriteString("\n\n" + ui.Notice(ui.KindError, ilkHarfBuyuk(m.err.Error())))
+	}
+	kart := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ui.P.Accent).
+		Padding(1, 3).Width(girisKartW + 6).Render(k.String())
+
+	W := icGenislik(m.width)
+	alt := ui.Divider(W) + "\n" + ui.KeyHints(W, hints...)
+	yer := 0 // kart bloğu için kalan yükseklik; 0 = bilinmiyor
+	if m.height > 0 {
+		yer = ui.ContentHeight(m.height) - lipgloss.Height(alt)
+	}
+	sigar := func(blok string) bool { return yer == 0 || lipgloss.Height(blok) <= yer }
+
+	blok := kart
+	switch {
+	case W >= girisGenisEn && sigar(girisTanitim()):
+		blok = lipgloss.JoinHorizontal(lipgloss.Center, girisTanitim(), strings.Repeat(" ", 10), kart)
+	case sigar(ui.Logo() + "\n\n" + kart):
+		blok = lipgloss.JoinVertical(lipgloss.Center, ui.Logo(), "", kart)
+	}
+	if yer > 0 {
+		blok = lipgloss.Place(W, max(yer, lipgloss.Height(blok)), lipgloss.Center, lipgloss.Center, blok)
+	}
+	return ui.Page(m.width, m.height, blok, alt)
 }
 
 func (m loginModel) viewForm() string {
-	var b strings.Builder
-
-	if m.register {
-		b.WriteString(focusedLabelStyle.Render("Kimliğini Oluştur"))
-	} else {
-		b.WriteString(focusedLabelStyle.Render("Kimliğinin Kilidini Aç"))
+	if !m.register {
+		govde := alan(girisKartW, "Şifre", "", m.inputs[0], true)
+		return m.ekran(-1, "Kimliğinin kilidini aç", "Kimliğin bu cihazda, şifrenle şifrelenmiş olarak saklanıyor.", govde,
+			ui.H("enter", "kilidi aç"), ui.H("esc", "çıkış"))
 	}
-	b.WriteString("\n\n")
-
-	labels := map[int]string{
-		fieldName: "Ad", fieldPass: "Şifre", fieldConfirm: "Şifre (tekrar)",
-	}
-	order := []int{fieldPass}
-	if m.register {
-		order = []int{fieldName, fieldPass, fieldConfirm}
-	}
-
-	for i, idx := range order {
-		lbl := labelStyle
-		if i == m.focus {
-			lbl = focusedLabelStyle
-		}
-		b.WriteString(lbl.Render(labels[idx]))
-		b.WriteString("\n")
-		b.WriteString(m.inputs[i].View())
-		b.WriteString("\n\n")
-	}
-
-	if m.err != nil {
-		b.WriteString(errorStyle.Render("✗  " + m.err.Error()))
-		b.WriteString("\n\n")
-	}
-
-	b.WriteString(helpStyle.Render("tab / ↑↓  alan değiştir    enter  onayla    esc  çıkış"))
-
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		logoBlock(),
-		"",
-		loginFormBoxSt.Render(b.String()),
-	)
-	return m.center(content)
+	sifre, tekrar := m.inputs[fieldPass].Value(), m.inputs[fieldConfirm].Value()
+	govde := alan(girisKartW, "Görünen ad", ui.S.Muted.Render(fmt.Sprintf("%d/32", len([]rune(m.inputs[fieldName].Value())))), m.inputs[fieldName], m.focus == fieldName) + "\n\n" +
+		alan(girisKartW, "Şifre", sifreGucuGostergesi(sifre), m.inputs[fieldPass], m.focus == fieldPass) + "\n\n" +
+		alan(girisKartW, "Şifre (tekrar)", eslesmeDurumu(sifre, tekrar), m.inputs[fieldConfirm], m.focus == fieldConfirm) + "\n\n" +
+		ui.S.Subtle.Render("Şifre en az 8 karakter olmalı ve yalnızca bu cihazda kullanılır.")
+	return m.ekran(0, "Kimliğini oluştur", "Hesap ya da sunucu yok: kimliğin bu cihazda üretilir ve şifrenle korunur.", govde,
+		ui.H("tab ↑↓", "alanlar arası"), ui.H("enter", "devam"), ui.H("esc", "çıkış"))
 }
 
 func (m loginModel) viewName() string {
-	var b strings.Builder
-	b.WriteString(focusedLabelStyle.Render("Görünen Adını Belirle"))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("Adın sohbet ve forumda diğer kullanıcılara gösterilir."))
-	b.WriteString("\n\n")
-	b.WriteString(focusedLabelStyle.Render("Ad"))
-	b.WriteString("\n")
-	b.WriteString(m.inputs[0].View())
-	b.WriteString("\n\n")
-	if m.err != nil {
-		b.WriteString(errorStyle.Render("✗  " + m.err.Error()))
-		b.WriteString("\n\n")
-	}
-	b.WriteString(helpStyle.Render("enter  onayla    esc  atla"))
-
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		logoBlock(),
-		"",
-		loginFormBoxSt.Render(b.String()),
-	)
-	return m.center(content)
+	govde := alan(girisKartW, "Görünen ad", "", m.inputs[0], true)
+	return m.ekran(-1, "Görünen adını belirle",
+		"Adın sohbette ve forumda diğer kullanıcılara gösterilir; imzalarını etkilemez.",
+		govde, ui.H("enter", "kaydet"), ui.H("esc", "şimdilik atla"))
 }
 
 func (m loginModel) viewMnemonic() string {
-	var b strings.Builder
-	b.WriteString(focusedLabelStyle.Render("Kurtarma Kodunu Kaydet"))
-	b.WriteString("\n")
-	b.WriteString(errorStyle.Render("Bu kod, kimliğini yeni bir cihazda geri almanın TEK yoludur."))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("Yaz veya güvenli bir yere sakla — bir daha gösterilmeyecek."))
-	b.WriteString("\n\n")
-	b.WriteString(mnemonicStyle.Render(m.mnemonic))
-	b.WriteString("\n\n")
-	if m.err != nil {
-		b.WriteString(errorStyle.Render("✗  " + m.err.Error()))
-		b.WriteString("\n\n")
+	// Kod (bkz. crypto.Identity.RecoveryCode) tireyle ayrılmış dört gruptur;
+	// numaralı 2×2 bir tablo, onu kâğıda geçirmeyi ve geri okumayı kolaylaştırır.
+	kod := ui.S.Warning.Bold(true).Render(m.mnemonic)
+	if gruplar := strings.Split(m.mnemonic, "-"); len(gruplar) == 4 {
+		hucre := func(n int) string {
+			return ui.S.Muted.Render(fmt.Sprintf("%d  ", n)) + ui.S.Warning.Bold(true).Render(gruplar[n-1])
+		}
+		kod = hucre(1) + "      " + hucre(2) + "\n" + hucre(3) + "      " + hucre(4)
 	}
-	b.WriteString(helpStyle.Render("kaydettikten sonra enter    esc  iptal"))
-
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		logoBlock(),
-		"",
-		loginFormBoxSt.Render(b.String()),
-	)
-	return m.center(content)
+	kutu := mnemonicStyle.Padding(1, 3).Render(kod)
+	govde := lipgloss.PlaceHorizontal(girisKartW, lipgloss.Center, kutu) + "\n\n" +
+		ui.S.Muted.Render("Tek satırda") + "\n" + ui.S.Bold.Render(m.mnemonic) + "\n\n" +
+		ui.Notice(ui.KindWarning, "Bu kod bir daha gösterilmeyecek.")
+	return m.ekran(1, "Kurtarma kodunu kaydet",
+		"Bu kod, kimliğini başka bir cihazda ya da şifreni unutursan geri getirmenin tek yoludur. Kâğıda yaz ya da güvenli bir yere kaydet.",
+		govde, ui.H("enter", "kaydettim"), ui.H("esc", "forma dön"))
 }
 
 func (m loginModel) viewVerify() string {
-	var b strings.Builder
-	b.WriteString(focusedLabelStyle.Render("Kurtarma Kodunu Doğrula"))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("Kodun gerçekten kaydedildiğinden emin olmak için"))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render(fmt.Sprintf("kurtarma kodunun %d. kelimesini gir:", m.verifyWordIdx+1)))
-	b.WriteString("\n\n")
-	b.WriteString(focusedLabelStyle.Render(fmt.Sprintf("%d. Kelime", m.verifyWordIdx+1)))
-	b.WriteString("\n")
-	b.WriteString(m.verifyInput.View())
-	b.WriteString("\n\n")
-	if m.err != nil {
-		b.WriteString(errorStyle.Render("✗  " + m.err.Error()))
-		b.WriteString("\n\n")
+	// RecoveryCode boşluksuz tek bir "kelime"dir (bkz. goToVerify): o durumda
+	// istenen şey kodun TAMAMIDIR, "1. kelime" demek yanıltıcı olurdu.
+	etiket := "Kurtarma kodu"
+	aciklama := "Kodu gerçekten kaydettiğinden emin olmak için tamamını yaz. Tireleri yazmasan da olur."
+	if len(strings.Fields(m.mnemonic)) > 1 {
+		etiket = fmt.Sprintf("%d. kelime", m.verifyWordIdx+1)
+		aciklama = fmt.Sprintf("Kodu gerçekten kaydettiğinden emin olmak için %d. kelimeyi yaz.", m.verifyWordIdx+1)
 	}
-	b.WriteString(helpStyle.Render("enter  onayla    esc  geri dön"))
-
-	content := lipgloss.JoinVertical(lipgloss.Center,
-		logoBlock(),
-		"",
-		loginFormBoxSt.Render(b.String()),
-	)
-	return m.center(content)
+	govde := alan(girisKartW, etiket, "", m.verifyInput, true)
+	return m.ekran(2, "Kurtarma kodunu doğrula", aciklama, govde,
+		ui.H("enter", "doğrula ve bitir"), ui.H("esc", "koda dön"))
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
+	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
 )
 
@@ -152,6 +153,11 @@ type appModel struct {
 	// chatNotice shows a send-failure message (e.g. "Gönderilemedi: ...")
 	// below the input box — cleared on the next successful send.
 	chatNotice string
+	// chatLineStart[i], i'nci mesajın chatViewport içindeki ilk satırıdır;
+	// son eleman toplam satır sayısıdır. Uzun mesajlar birden fazla satıra
+	// sarıldığından (bkz. syncChatViewport) imleci görünür tutmak için mesaj
+	// indeksi değil bu satır aralığı kullanılır (bkz. ensureChatCursorVisible).
+	chatLineStart []int
 
 	// chatProfilKey/chatProfilAd, screenChatProfile aktifken hangi yazarın
 	// profilinin gösterildiğini tutar — forum.go'daki profilKey/profilAd'ın
@@ -178,6 +184,9 @@ type appModel struct {
 	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar
 	settingsVP   viewport.Model
 	showMnemonic bool
+	// settingsNotice, Eklentiler/Temalar sekmelerinin geri bildirimi (ör.
+	// "Orman teması uygulandı") — Bilgi sekmesinin profileNotice'ından ayrı.
+	settingsNotice string
 
 	// settingsDiskStatsAt/DBSize/Bans cache syncSettingsVP's disk-derived
 	// "Depolama" fields (os.Stat/os.ReadDir) — see settingsDiskStats. Without
@@ -225,6 +234,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 	updateCh <-chan UpdateReadyMsg, themeCh <-chan pluginapi.ThemeReq) error {
 
 	loadAndApplyTheme(dataDir)
+	ui.FrameTag = updater.Version
 
 	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, siteStore, dataDir, chatStore, mod, modTopic)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
@@ -309,13 +319,17 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	banIn.Placeholder = "sebep…"
 	banIn.CharLimit = 256
 
-	// Ana menü, ağaç görünümünde üç dala ayrılır: Topluluk (Forum/Chat),
-	// Eklentiler (etkin eklentiler, dinamik) ve Sistem (Ayarlar/Quit).
+	for _, in := range []*textinput.Model{&chatIn, &bioIn, &statusIn, &linkIn, &banIn} {
+		styleInput(in)
+	}
+
+	// Ana menü, ağaç görünümünde üç dala ayrılır: Topluluk (Forum/Sohbet),
+	// Eklentiler (etkin eklentiler, dinamik) ve Sistem (Ayarlar/Çıkış).
 	// menuGroups, menuItems ile paraleldir ve yalnızca viewMenu'nün dal
 	// başlıklarını nerede çizeceğini belirler — Enter/Space tuş işleyicileri
 	// (handleMenuKey) hâlâ etiket string'ine ya da pluginByIdx'e bakar,
 	// gruplamadan bağımsızdır.
-	items := []string{"Forum", "Chat"}
+	items := []string{"Forum", "Sohbet"}
 	byIdx := []*pluginmgr.Plugin{nil, nil}
 	groups := []string{"Topluluk", "Topluluk"}
 	for i := range plugins {
@@ -327,7 +341,7 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		byIdx = append(byIdx, pl)
 		groups = append(groups, "Eklentiler")
 	}
-	items = append(items, "Ayarlar", "Quit")
+	items = append(items, "Ayarlar", "Çıkış")
 	byIdx = append(byIdx, nil, nil)
 	groups = append(groups, "Sistem", "Sistem")
 
@@ -452,21 +466,24 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case UpdateReadyMsg:
-		m.updateNotice = "▲  " + msg.Version + " indirildi — çıkışta otomatik yenilenir"
+		m.updateNotice = msg.Version + " indirildi — çıkışta otomatik yenilenir"
 		return m, nil
 
 	case themeChangedMsg:
 		// Paylaşılan stil değişkenlerine tek dokunan yer burası olmalı —
 		// bkz. Run()'daki themeCh goroutine'i.
 		applyThemeColors(msg.theme)
+		m.restyleInputs()
+		if m.screen == screenSettings {
+			m.syncSettingsVP()
+		}
 		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		vw := msg.Width - 10
-		if vw < 20 {
-			vw = 20
-		}
+		vw := icGenislik(msg.Width)
+		// Çerçeve (4) + başlık ve açıklama (4) + ayraç, giriş ve iki satıra
+		// kadar kısayol (4) — sohbet ekranının sabit kısımları.
 		vh := msg.Height - 12
 		if vh < 4 {
 			vh = 4
@@ -492,7 +509,10 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chatFollow = m.chatViewport.AtBottom()
 			}
 		}
-		svh := msg.Height - 8
+		// Çerçeve (4) + başlık (2) + sekmeler (2) + "daha fazla" (1) + ayraç
+		// ve iki satıra kadar kısayol (3) — eskiden 8 düşülüyordu ve ekran
+		// alttan taşıyordu.
+		svh := msg.Height - 12
 		if svh < 4 {
 			svh = 4
 		}
@@ -741,7 +761,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		label := m.menuItems[m.menuIndex]
 		pl := m.pluginByIdx[m.menuIndex]
 		switch {
-		case label == "Quit":
+		case label == "Çıkış":
 			m.quitting = true
 			return m, tea.Quit
 		case label == "Forum":
@@ -758,7 +778,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.forumModel = sized
 			m.screen = screenForum
 			return m, tea.Batch(initCmd, sizeCmd)
-		case label == "Chat":
+		case label == "Sohbet":
 			m.screen = screenChat
 			m.chatInput.Focus()
 			m.chatFollow = true
@@ -992,23 +1012,32 @@ func (m appModel) issueChatUnban() (tea.Model, tea.Cmd) {
 	return m, chatBildirimTemizle()
 }
 
-// ensureChatCursorVisible, chatViewport'un görünür penceresini chatCursor
-// satırını kapsayacak şekilde kaydırır — chatLines'ın her girdisi
-// syncChatViewport tarafından tam olarak bir satıra render edildiğinden
-// (uzun mesajların olası sarması hesaba katılmaz — forum'un liste
-// seçimlerinin de yapmadığı bir basitleştirme), chatCursor'ı doğrudan bir
-// satır indeksi olarak ele almak yeterli.
+// ensureChatCursorVisible, chatViewport'un görünür penceresini chatCursor'daki
+// mesajın TÜM satırlarını kapsayacak şekilde kaydırır. Uzun mesajlar
+// birden fazla satıra sarıldığından mesaj indeksi değil, syncChatViewport'un
+// hesapladığı chatLineStart satır aralığı kullanılır.
 func (m *appModel) ensureChatCursorVisible() {
-	if m.chatCursor < 0 {
+	if m.chatCursor < 0 || m.chatCursor+1 >= len(m.chatLineStart) {
 		return
 	}
+	start := m.chatLineStart[m.chatCursor]
+	end := m.chatLineStart[m.chatCursor+1] - 1
 	top := m.chatViewport.YOffset
 	bottom := top + m.chatViewport.Height - 1
 	switch {
-	case m.chatCursor < top:
-		m.chatViewport.SetYOffset(m.chatCursor)
-	case m.chatCursor > bottom:
-		m.chatViewport.SetYOffset(m.chatCursor - m.chatViewport.Height + 1)
+	case start < top:
+		m.chatViewport.SetYOffset(start)
+	case end > bottom:
+		m.chatViewport.SetYOffset(end - m.chatViewport.Height + 1)
+	}
+}
+
+// restyleInputs, metin kutularını etkin temaya göre yeniden biçimlendirir —
+// tema çalışma anında değiştiğinde (bkz. themeChangedMsg, Temalar sekmesi)
+// kutuların istem/yer tutucu renkleri eski temada kalmasın diye.
+func (m *appModel) restyleInputs() {
+	for _, in := range []*textinput.Model{&m.chatInput, &m.bioInput, &m.statusInput, &m.linkInput, &m.banReasonInput} {
+		styleInput(in)
 	}
 }
 
@@ -1061,19 +1090,76 @@ func listenForChatHistoryChange(ch <-chan struct{}) tea.Cmd {
 	}
 }
 
+// chatSatirParcala, formatChatLine'ın "[15:04] ad: metin" biçimini zaman ve
+// metin olarak geri ayırır — ad, paralel chatAuthorNames dizisinden bilinir.
+// Biçime uymayan bir satır (ok=false) olduğu gibi gösterilir.
+func chatSatirParcala(line, ad string) (zaman, metin string, ok bool) {
+	if ad == "" || len(line) < 8 || line[0] != '[' || line[6] != ']' || line[7] != ' ' {
+		return "", "", false
+	}
+	rest := line[8:]
+	if !strings.HasPrefix(rest, ad+": ") {
+		return "", "", false
+	}
+	return line[1:6], rest[len(ad)+2:], true
+}
+
+// syncChatViewport, sohbeti üç hizalı sütun olarak çizer: soluk saat, kişiye
+// özgü renkte ad (kendi adın vurgu renginde) ve metin. Uzun mesajlar metin
+// sütununa hizalı olarak alt satırlara sarılır; seçili mesajın tüm satırları
+// seçim zemininde gösterilir.
 func (m *appModel) syncChatViewport() {
-	rendered := make([]string, len(m.chatLines))
-	for i, line := range m.chatLines {
-		switch {
-		case i == m.chatCursor:
-			rendered[i] = fStSeciliSatir.Render(line)
-		case i < len(m.chatOwn) && m.chatOwn[i]:
-			rendered[i] = selfMsgStyle.Render(line)
-		default:
-			rendered[i] = line
+	w := m.chatViewport.Width
+	if w <= 0 {
+		w = 60
+	}
+	nameW := 4
+	for _, ad := range m.chatAuthorNames {
+		if nw := lipgloss.Width(pluginui.Safe(ad)); nw > nameW {
+			nameW = nw
 		}
 	}
-	m.chatViewport.SetContent(strings.Join(rendered, "\n"))
+	if nameW > 14 {
+		nameW = 14
+	}
+	girinti := 2 + 5 + 2 + nameW + 2 // Row öneki + saat + boşluk + ad + boşluk
+
+	var out []string
+	m.chatLineStart = m.chatLineStart[:0]
+	for i, line := range m.chatLines {
+		m.chatLineStart = append(m.chatLineStart, len(out))
+		sel := i == m.chatCursor
+		ad := ""
+		if i < len(m.chatAuthorNames) {
+			ad = m.chatAuthorNames[i]
+		}
+		zaman, metin, ok := chatSatirParcala(line, ad)
+		if !ok || w-girinti < 12 {
+			for _, l := range strings.Split(ui.Wrap(pluginui.Safe(line), w-2), "\n") {
+				out = append(out, ui.Row(w, sel, ui.T(l)))
+			}
+			continue
+		}
+		renk := ui.AuthorColor(ad)
+		if i < len(m.chatAuthorKeys) && m.chatAuthorKeys[i] != "" {
+			renk = ui.AuthorColor(m.chatAuthorKeys[i])
+		}
+		if i < len(m.chatOwn) && m.chatOwn[i] {
+			renk = colorAccent
+		}
+		adHucre := ui.Truncate(pluginui.Safe(ad), nameW)
+		adHucre += strings.Repeat(" ", nameW-lipgloss.Width(adHucre))
+		satirlar := strings.Split(ui.Wrap(pluginui.Safe(metin), w-girinti), "\n")
+		out = append(out, ui.Row(w, sel,
+			ui.M(zaman+"  "),
+			ui.Seg{Text: adHucre + "  ", Color: renk, Bold: true},
+			ui.T(satirlar[0])))
+		for _, s := range satirlar[1:] {
+			out = append(out, ui.Row(w, sel, ui.T(strings.Repeat(" ", girinti-2)+s)))
+		}
+	}
+	m.chatLineStart = append(m.chatLineStart, len(out))
+	m.chatViewport.SetContent(strings.Join(out, "\n"))
 }
 
 func (m appModel) View() string {
@@ -1097,211 +1183,65 @@ func (m appModel) View() string {
 	}
 }
 
-func (m appModel) viewMenu() string {
+// kimlikDurumu, sohbet başlık çubuğunun sağındaki kısa durum metnidir: eş
+// bağlantısı ve kendi adın.
+func (m appModel) kimlikDurumu() string {
 	name := m.identity.Name()
 	if name == "" {
 		name = "anonim"
 	}
-
-	logoSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	tag2St := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true)
-	sepSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	offSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	offSelSt := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Bold(true)
-	groupSt := lipgloss.NewStyle().Bold(true).Foreground(colorMuted)
-
-	rawLines := strings.Split(andASCIIArt, "\n")
-	leftLines := make([]string, len(rawLines))
-	for i, l := range rawLines {
-		leftLines[i] = logoSt.Render(l)
+	ad := ui.S.Name.Render(pluginui.Safe(name))
+	if m.node == nil {
+		return ad
 	}
-	leftLines = append(leftLines,
-		"",
-		tag2St.Render(updater.Version+"  ·  "+ActiveThemeName),
-	)
-
-	var rightLines []string
-
-	rightLines = append(rightLines, nameTagStyle.Render("◈  "+name))
-	if m.node != nil {
-		pid := m.node.Host.ID().String()
-		if r := []rune(pid); len(r) > 22 {
-			pid = string(r[:10]) + "…" + string(r[len(r)-10:])
-		}
-		rightLines = append(rightLines, labelStyle.Render(pid))
-
-		n := m.peerCount()
-		netSt := lipgloss.NewStyle()
-		if n == 0 {
-			rightLines = append(rightLines, netSt.Foreground(lipgloss.Color("203")).Render("◌  bağlanıyor…"))
-		} else {
-			rightLines = append(rightLines, netSt.Foreground(lipgloss.Color("42")).Render(fmt.Sprintf("●  %d peer bağlı", n)))
-		}
-	}
-	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, divSt.Render(strings.Repeat("─", 30)))
-
-	var sonGrup string
-	for i, item := range m.menuItems {
-		grup := m.menuGroups[i]
-		if grup != sonGrup {
-			rightLines = append(rightLines, groupSt.Render("▾ "+grup))
-			sonGrup = grup
-		}
-		dal := "├── "
-		if i == len(m.menuItems)-1 || m.menuGroups[i+1] != grup {
-			dal = "└── " // grubun son öğesi
-		}
-
-		pl := m.pluginByIdx[i]
-		disabled := pl != nil && !pl.Enabled
-		if i == m.menuIndex {
-			line := selectedItemStyle.Render("▶ " + dal + item)
-			if disabled {
-				line += offSelSt.Render(" [kapalı]")
-			}
-			rightLines = append(rightLines, line)
-		} else {
-			line := itemStyle.Render("  " + dal + item)
-			if disabled {
-				line += offSt.Render(" [kapalı]")
-			}
-			rightLines = append(rightLines, line)
-		}
-	}
-	rightLines = append(rightLines, divSt.Render(strings.Repeat("─", 30)))
-
-	if m.updateNotice != "" {
-		updateSt := lipgloss.NewStyle().Foreground(lipgloss.Color("35")).Bold(true)
-		rightLines = append(rightLines, updateSt.Render("  "+m.updateNotice))
-	}
-
-	rightLines = append(rightLines, "")
-	rightLines = append(rightLines, helpSt.Render("↑/↓  j/k    enter  aç    space  aç/kapat    q  çıkış"))
-
-	const leftColW = 27
-	vSep := "   " + sepSt.Render("│") + "   "
-
-	maxH := len(leftLines)
-	if len(rightLines) > maxH {
-		maxH = len(rightLines)
-	}
-
-	rows := make([]string, maxH)
-	for i := range rows {
-		var L, R string
-		if i < len(leftLines) {
-			L = leftLines[i]
-		}
-		if i < len(rightLines) {
-			R = rightLines[i]
-		}
-		pad := leftColW - lipgloss.Width(L)
-		if pad < 0 {
-			pad = 0
-		}
-		rows[i] = L + strings.Repeat(" ", pad) + vSep + R
-	}
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 3).
-		Render(strings.Join(rows, "\n"))
-
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-	}
-	return box
+	return esDurumu(m.peerCount()) + ui.S.Subtle.Render("  ·  ") + ad
 }
 
 func (m appModel) viewChat() string {
-	name := m.identity.Name()
-	if name == "" {
-		name = "anonim"
-	}
-
-	titleSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-
-	innerW := m.width - 10
-	if innerW < 20 {
-		innerW = 60
-	}
-	div := divSt.Render(strings.Repeat("─", innerW))
+	iw := icGenislik(m.width)
 
 	var b strings.Builder
-	n := m.peerCount()
-	var connStr string
-	if n == 0 {
-		connStr = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Render("◌ bağlanıyor")
-	} else {
-		connStr = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render(fmt.Sprintf("● %d peer", n))
-	}
-	b.WriteString(titleSt.Render("◈  Genel Sohbet"))
-	b.WriteString("  " + nameTagStyle.Render(name) + "  " + connStr + "\n")
-	b.WriteString(labelStyle.Render("P2P · uçtan uca şifreli") + "\n")
-	b.WriteString(div + "\n")
+	b.WriteString(ui.Header(iw, []string{"Sohbet", "Genel kanal"}, m.kimlikDurumu()) + "\n")
+	// Genel kanal herkese açık bir GossipSub konusudur: mesajlar imzalıdır
+	// ama uçtan uca ŞİFRELİ DEĞİLDİR — burada öyle iddia edilmemeli.
+	b.WriteString(ui.S.Muted.Render("Herkese açık kanal · mesajlar imzalı, eşler arasında senkronize") + "\n\n")
 
 	if len(m.chatLines) == 0 {
-		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Italic(true).
-			Render("henüz mesaj yok — ilk sen yaz")
 		pad := m.chatViewport.Height/2 - 1
 		if pad < 0 {
 			pad = 0
 		}
 		b.WriteString(strings.Repeat("\n", pad))
-		b.WriteString(lipgloss.NewStyle().Width(innerW).Align(lipgloss.Center).Render(empty))
-		b.WriteString(strings.Repeat("\n", m.chatViewport.Height-pad-1))
+		b.WriteString(lipgloss.PlaceHorizontal(iw, lipgloss.Center, ui.S.Muted.Render("Henüz mesaj yok — ilk mesajı sen yaz.")))
+		b.WriteString(strings.Repeat("\n", max(m.chatViewport.Height-pad-1, 0)))
 	} else {
 		b.WriteString(m.chatViewport.View())
 		if !m.chatViewport.AtBottom() {
-			b.WriteString("\n" + helpSt.Render("  ↓ daha fazla…"))
+			b.WriteString("\n" + ui.S.Muted.Render("  ↓ daha yeni mesajlar"))
 		}
 	}
 
-	b.WriteString("\n" + div + "\n")
-	b.WriteString(m.chatInput.View() + "\n")
+	var f strings.Builder
+	f.WriteString(ui.Divider(iw) + "\n")
+	f.WriteString(m.chatInput.View() + "\n")
 	if m.chatNotice != "" {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorError).Render(m.chatNotice) + "\n")
+		f.WriteString(ui.Notice(ui.KindError, m.chatNotice) + "\n")
 	}
-	b.WriteString(helpSt.Render("↑/↓  mesaj seç/kaydır    ctrl+p  profili gör    enter  gönder    esc  ana menü"))
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 3).
-		Render(b.String())
-
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-	}
-	return box
+	f.WriteString(ui.KeyHints(iw, ui.H("↑↓", "mesaj seç"), ui.H("ctrl+p", "yazarın profili"), ui.H("enter", "gönder"), ui.H("esc", "ana menü")))
+	return ui.Page(m.width, m.height, b.String(), f.String())
 }
 
 // viewChatProfile, chatCursor'daki mesajın yazarı için ctrl+p ile açılan
 // profil ekranını çizer — forum.go'daki forumGorunumProfil'in chat
 // tarafındaki eşdeğeri, aynı profilMetni içeriğini gösterir.
 func (m appModel) viewChatProfile() string {
-	titleSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-
-	innerW := m.width - 10
-	if innerW < 20 {
-		innerW = 60
-	}
-	div := divSt.Render(strings.Repeat("─", innerW))
+	iw := icGenislik(m.width)
 
 	var b strings.Builder
-	b.WriteString(titleSt.Render("◈  Profil: " + forumKisalt(pluginui.Safe(m.chatProfilAd), 40)))
-	b.WriteString("\n" + div + "\n")
+	b.WriteString(ui.Header(iw, []string{"Sohbet", "Profil", pluginui.Safe(m.chatProfilAd)}, m.kimlikDurumu()) + "\n\n")
 	b.WriteString(m.chatViewport.View())
 	if !m.chatViewport.AtBottom() {
-		b.WriteString("\n" + helpSt.Render("  ↓ daha fazla…"))
+		b.WriteString("\n" + ui.S.Muted.Render("  ↓ daha fazla"))
 	}
 
 	if m.banConfirming {
@@ -1311,37 +1251,36 @@ func (m appModel) viewChatProfile() string {
 		b.WriteString(unbanOnayGorunumu(m.chatProfilAd))
 	}
 
-	b.WriteString("\n" + div + "\n")
+	var f strings.Builder
+	f.WriteString(ui.Divider(iw) + "\n")
 	if m.banNotice != "" {
-		noticeSt := lipgloss.NewStyle().Foreground(colorOK)
+		kind := ui.KindSuccess
 		if m.banNoticeErr {
-			noticeSt = lipgloss.NewStyle().Foreground(colorError)
+			kind = ui.KindError
 		}
-		b.WriteString(noticeSt.Render(m.banNotice) + "\n")
+		f.WriteString(ui.Notice(kind, m.banNotice) + "\n")
 	}
+	f.WriteString(ui.KeyHints(iw, profilKisayollari(m.banConfirming, m.unbanConfirming, m.chatProfilCanBan, m.chatProfilIsBanned, "sohbete dön")...))
+	return ui.Page(m.width, m.height, b.String(), f.String())
+}
+
+// profilKisayollari, profil ekranının (forum ve sohbet ortak) kısayol
+// satırıdır — onay alt-durumlarında yalnızca o durumun tuşları gösterilir.
+func profilKisayollari(banOnay, unbanOnay, banlayabilir, banli bool, geri string) []ui.Hint {
 	switch {
-	case m.banConfirming:
-		b.WriteString(helpSt.Render("←/→  süre seç    enter  onayla    esc  vazgeç"))
-	case m.unbanConfirming:
-		b.WriteString(helpSt.Render("e  onayla    esc  vazgeç"))
-	case m.chatProfilCanBan && m.chatProfilIsBanned:
-		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    b  banla    u  banı kaldır    esc  sohbete dön"))
-	case m.chatProfilCanBan:
-		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    b  banla    esc  sohbete dön"))
-	default:
-		b.WriteString(helpSt.Render("↑/↓/PgUp/PgDn  kaydır    esc  sohbete dön"))
+	case banOnay:
+		return []ui.Hint{ui.H("←→", "süre seç"), ui.H("enter", "banla"), ui.H("esc", "vazgeç")}
+	case unbanOnay:
+		return []ui.Hint{ui.H("e", "banı kaldır"), ui.H("esc", "vazgeç")}
 	}
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 3).
-		Render(b.String())
-
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	hints := []ui.Hint{ui.H("↑↓", "kaydır")}
+	if banlayabilir {
+		hints = append(hints, ui.H("b", "banla"))
+		if banli {
+			hints = append(hints, ui.H("u", "banı kaldır"))
+		}
 	}
-	return box
+	return append(hints, ui.H("esc", geri))
 }
 
 func (m appModel) settingsPluginList() []int {
@@ -1381,15 +1320,18 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.settingsTab > 0 {
 			m.settingsTab--
 			m.settingsIdx = 0
+			m.settingsNotice = ""
 		}
 	case "right", "l":
 		if m.settingsTab < 2 {
 			m.settingsTab++
 			m.settingsIdx = 0
+			m.settingsNotice = ""
 		}
 	case "tab":
 		m.settingsTab = (m.settingsTab + 1) % 3
 		m.settingsIdx = 0
+		m.settingsNotice = ""
 	}
 
 	switch m.settingsTab {
@@ -1439,24 +1381,41 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case 1, 2: // Eklentiler / Temalar — liste navigasyonu
 		list := m.settingsPluginList()
+		// Temalar sekmesinde listenin başında yerleşik temalar (ui.Presets)
+		// yer alır, tema eklentileri onlardan sonra gelir.
+		onek := 0
+		if m.settingsTab == 2 {
+			onek = len(ui.Presets)
+		}
 		switch msg.String() {
 		case "up", "k":
 			if m.settingsIdx > 0 {
 				m.settingsIdx--
 			}
 		case "down", "j":
-			if m.settingsIdx < len(list)-1 {
+			if m.settingsIdx < onek+len(list)-1 {
 				m.settingsIdx++
 			}
 		case " ":
-			if m.settingsIdx < len(list) {
-				pl := &m.plugins[list[m.settingsIdx]]
+			if i := m.settingsIdx - onek; i >= 0 && i < len(list) {
+				pl := &m.plugins[list[i]]
 				pl.Enabled = !pl.Enabled
 				pluginmgr.SaveState(m.plugins, m.dataDir) //nolint:errcheck
 			}
 		case "enter":
-			if m.settingsTab == 2 && m.settingsIdx < len(list) {
-				pl := &m.plugins[list[m.settingsIdx]]
+			if m.settingsTab != 2 {
+				break
+			}
+			if m.settingsIdx < onek {
+				// theme.json'a kaydedilir: GET /api/v1/theme onu okur, böylece
+				// eklentiler ve and-vscode da aynı temayla açılır.
+				t := ui.Presets[m.settingsIdx]
+				applyThemeColors(t)
+				SaveTheme(m.dataDir, t)
+				m.restyleInputs()
+				m.settingsNotice = t.ThemeName + " teması uygulandı"
+			} else if i := m.settingsIdx - onek; i < len(list) {
+				pl := &m.plugins[list[i]]
 				if pl.Enabled {
 					cmd := pl.Launch(m.apiAddr, m.apiToken, m.dataDir)
 					m.syncSettingsVP()
@@ -1509,20 +1468,22 @@ func (m *appModel) refreshSettingsDiskStats() {
 }
 
 func (m *appModel) syncSettingsVP() {
-	secSt := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	keyW := lipgloss.NewStyle().Foreground(colorMuted).Width(18)
-	valW := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	mutSt := lipgloss.NewStyle().Foreground(colorMuted)
-	onSt := lipgloss.NewStyle().Foreground(colorOK).Bold(true)
-	offSt := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	verSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	warnSt := lipgloss.NewStyle().Foreground(colorWarning)
-	okSt := lipgloss.NewStyle().Foreground(colorOK)
-	errSt := lipgloss.NewStyle().Foreground(colorError)
-
-	row := func(k, v string) string { return keyW.Render(k) + valW.Render(v) + "\n" }
-	div := divSt.Render(strings.Repeat("─", 54)) + "\n"
+	w := m.settingsVP.Width
+	if w <= 0 {
+		w = icGenislik(m.width)
+	}
+	const labelW = 18
+	girinti := strings.Repeat(" ", labelW)
+	row := func(k, v string) string { return ui.KV(labelW, k, v) + "\n" }
+	// ipucu, bir alanın altındaki "x ile düzenle" türü küçük açıklamadır.
+	ipucu := func(s string) string { return girinti + ui.S.Subtle.Render(s) + "\n" }
+	bildirim := func(metin string, hata bool) string {
+		kind := ui.KindSuccess
+		if hata {
+			kind = ui.KindError
+		}
+		return ui.Notice(kind, metin)
+	}
 
 	var b strings.Builder
 
@@ -1532,27 +1493,18 @@ func (m *appModel) syncSettingsVP() {
 		myKey := hex.EncodeToString(m.identity.PublicKey())
 
 		if m.profileEdit == profileFieldTags {
-			b.WriteString(secSt.Render("Etiket Seç") + "\n")
-			b.WriteString(mutSt.Render(fmt.Sprintf("en fazla %d etiket · ↑/↓ gezin · enter/space işaretle · ctrl+s kaydet · esc iptal", profile.MaxTags)) + "\n\n")
+			b.WriteString(ui.Section("Etiketlerini seç") + "\n")
+			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("En fazla %d etiket — profilinde ilgi alanların olarak görünür.", profile.MaxTags)) + "\n\n")
 			const headerLines = 3
 			for i, cat := range forum.Categories {
-				mark := "[ ]"
+				isaret := ui.C("○ ", ui.P.Subtle)
 				if m.tagSelected[cat] {
-					mark = "[x]"
+					isaret = ui.C("● ", colorAccent)
 				}
-				line := fmt.Sprintf("%s %s", mark, cat)
-				if i == m.tagIdx {
-					b.WriteString(selectedItemStyle.Render("▶ "+line) + "\n")
-				} else {
-					b.WriteString(itemStyle.Render("  "+line) + "\n")
-				}
+				b.WriteString(ui.Row(w, i == m.tagIdx, isaret, ui.T(cat)) + "\n")
 			}
 			if m.profileNotice != "" {
-				noticeSt := okSt
-				if m.profileNoticeErr {
-					noticeSt = errSt
-				}
-				b.WriteString("\n" + noticeSt.Render(m.profileNotice) + "\n")
+				b.WriteString("\n" + bildirim(m.profileNotice, m.profileNoticeErr) + "\n")
 			}
 			visible := m.settingsVP.Height
 			if visible <= 0 {
@@ -1568,21 +1520,20 @@ func (m *appModel) syncSettingsVP() {
 			break
 		}
 
-		b.WriteString(secSt.Render("Sistem") + "\n")
-		b.WriteString(row("Sürüm", updater.Version+"  ·  alpha"))
+		b.WriteString(ui.Section("Sistem") + "\n")
+		b.WriteString(row("Sürüm", updater.Version+ui.S.Muted.Render("  ·  alfa")))
 		b.WriteString(row("Platform", runtime.GOOS+"/"+runtime.GOARCH))
-		b.WriteString(row("Veri dizini", m.dataDir))
+		b.WriteString(row("Veri dizini", ui.Truncate(m.dataDir, w-labelW)))
 		b.WriteString("\n")
 
-		b.WriteString(div)
-		b.WriteString(secSt.Render("Kimlik") + "\n")
+		b.WriteString(ui.Section("Kimlik") + "\n")
 		name := m.identity.Name()
 		if name == "" {
 			name = "(adsız)"
 		}
-		b.WriteString(row("Ad", name))
+		b.WriteString(row("Ad", ui.S.Name.Render(pluginui.Safe(name))))
 		pubHex := hex.EncodeToString(m.identity.PublicKey())
-		b.WriteString(row("Public key", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
+		b.WriteString(row("Genel anahtar", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
 		if m.profileStore != nil {
 			b.WriteString(row("Rol", roleBadgeText(m.profileStore, myKey)))
 		}
@@ -1590,66 +1541,67 @@ func (m *appModel) syncSettingsVP() {
 			postCount, replyCount, joinDate := m.forumStore.AuthorStats(myKey)
 			stat := fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)
 			if !joinDate.IsZero() {
-				stat += "  ·  ilk görülme " + turkceTarih(joinDate.Local())
+				stat += ui.S.Muted.Render("  ·  ilk görülme " + turkceTarih(joinDate.Local()))
 			}
 			b.WriteString(row("Aktivite", stat))
 		}
-		mnemo := m.identity.RecoveryCode()
-		if mnemo != "" {
+		if mnemo := m.identity.RecoveryCode(); mnemo != "" {
 			if m.showMnemonic {
-				mnemSt := lipgloss.NewStyle().Foreground(colorWarning).Bold(true)
-				b.WriteString(row("Güvenlik kodu", mnemSt.Render(mnemo)))
-				b.WriteString(keyW.Render("") + mutSt.Render("  m ile gizle") + "\n")
+				satirlar := strings.Split(ui.Wrap(mnemo, w-labelW), "\n")
+				b.WriteString(row("Kurtarma kodu", ui.S.Warning.Bold(true).Render(satirlar[0])))
+				for _, s := range satirlar[1:] {
+					b.WriteString(girinti + ui.S.Warning.Bold(true).Render(s) + "\n")
+				}
+				b.WriteString(ipucu("m ile gizle · kimseyle paylaşma"))
 			} else {
-				b.WriteString(row("Güvenlik kodu", mutSt.Render("••••••••••••••  m ile göster")))
+				b.WriteString(row("Kurtarma kodu", ui.S.Muted.Render("•••• •••• •••• ••••")))
+				b.WriteString(ipucu("m ile göster"))
 			}
 		}
 		b.WriteString("\n")
 
 		if m.profileStore != nil {
-			b.WriteString(div)
-			b.WriteString(secSt.Render("Profil") + "\n")
+			b.WriteString(ui.Section("Profil") + "\n")
 
 			fieldRow := func(label string, field profileField, key, storedVal string, input textinput.Model, maxBytes int) {
 				if m.profileEdit == field {
 					b.WriteString(row(label, ""))
-					b.WriteString(keyW.Render("") + input.View() + "\n")
+					b.WriteString(girinti + input.View() + "\n")
 					used := len([]byte(input.Value()))
-					counterSt := mutSt
+					sayac := ui.S.Muted
 					if used > maxBytes {
-						counterSt = errSt
+						sayac = ui.S.Error
 					}
-					b.WriteString(keyW.Render("") + counterSt.Render(fmt.Sprintf("  %d/%d bayt", used, maxBytes)) + "\n")
-					b.WriteString(keyW.Render("") + mutSt.Render("  enter kaydet · esc iptal") + "\n")
+					b.WriteString(girinti + sayac.Render(fmt.Sprintf("%d/%d bayt", used, maxBytes)) + ui.S.Subtle.Render("  ·  enter kaydet · esc iptal") + "\n")
 					return
 				}
 				if storedVal == "" {
-					b.WriteString(row(label, mutSt.Render("(belirtilmemiş)")))
+					b.WriteString(row(label, ui.S.Muted.Render("belirtilmemiş")))
 				} else {
 					b.WriteString(row(label, storedVal))
 				}
-				b.WriteString(keyW.Render("") + mutSt.Render("  "+key+" ile düzenle") + "\n")
+				b.WriteString(ipucu(key + " ile düzenle"))
 			}
 
 			p := m.profileStore.Get(myKey)
 			bio, status, link, tags := "", "", "", ""
 			if p != nil {
-				bio, status, link = p.Bio, p.Status, p.Link
+				bio, status, link = pluginui.Safe(p.Bio), pluginui.Safe(p.Status), pluginui.Safe(p.Link)
 				if len(p.Tags) > 0 {
-					tags = strings.Join(p.Tags, ", ")
+					tags = pluginui.Safe(strings.Join(p.Tags, ", "))
 				}
 			}
 
 			fieldRow("Bio", profileFieldBio, "b", bio, m.bioInput, profile.MaxBioBytes)
 			fieldRow("Durum", profileFieldStatus, "s", status, m.statusInput, profile.MaxStatusBytes)
-			fieldRow("Link", profileFieldLink, "w", link, m.linkInput, profile.MaxLinkBytes)
+			fieldRow("Bağlantı", profileFieldLink, "w", link, m.linkInput, profile.MaxLinkBytes)
 
 			if tags == "" {
-				b.WriteString(row("Etiketler", mutSt.Render("(belirtilmemiş)")))
+				b.WriteString(row("Etiketler", ui.S.Muted.Render("belirtilmemiş")))
 			} else {
 				b.WriteString(row("Etiketler", tags))
 			}
-			b.WriteString(keyW.Render("") + mutSt.Render("  t ile düzenle") + "\n")
+			b.WriteString(ipucu("t ile düzenle"))
 
 			// GitHub — metin girişi değil: bir hesap adı yazmak onu
 			// KANITLAMAZ, bu yüzden burada bir textinput yok. Değer
@@ -1659,75 +1611,59 @@ func (m *appModel) syncSettingsVP() {
 			// işleyicileri).
 			githubUser := ""
 			if p != nil {
-				githubUser = p.GitHubUser
+				githubUser = pluginui.Safe(p.GitHubUser)
 			}
 			switch {
 			case m.githubLinking && m.githubUserCode != "":
-				b.WriteString(row("GitHub", ""))
-				codeSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-				b.WriteString(keyW.Render("") + "  Kod: " + codeSt.Render(m.githubUserCode) + "\n")
-				b.WriteString(keyW.Render("") + mutSt.Render("  "+m.githubVerificationURI+" adresinde onaylayın") + "\n")
-				b.WriteString(keyW.Render("") + mutSt.Render("  onay bekleniyor… (esc ile iptal)") + "\n")
+				b.WriteString(row("GitHub", "Kod: "+ui.S.Title.Render(m.githubUserCode)))
+				b.WriteString(ipucu(m.githubVerificationURI + " adresinde onayla"))
+				b.WriteString(ipucu("onay bekleniyor… (esc ile iptal)"))
 			case m.githubLinking:
-				b.WriteString(row("GitHub", mutSt.Render("kod alınıyor…")))
+				b.WriteString(row("GitHub", ui.S.Muted.Render("kod alınıyor…")))
 			case githubUser != "":
-				b.WriteString(row("GitHub", okSt.Render("@"+githubUser+" (doğrulandı)")))
-				b.WriteString(keyW.Render("") + mutSt.Render("  v ile yeniden bağla") + "\n")
+				b.WriteString(row("GitHub", ui.S.Success.Render("@"+githubUser)+ui.S.Muted.Render("  doğrulandı")))
+				b.WriteString(ipucu("v ile yeniden bağla"))
 			default:
-				b.WriteString(row("GitHub", mutSt.Render("(bağlanmamış)")))
-				b.WriteString(keyW.Render("") + mutSt.Render("  v ile GitHub hesabını doğrula") + "\n")
+				b.WriteString(row("GitHub", ui.S.Muted.Render("bağlanmamış")))
+				b.WriteString(ipucu("v ile GitHub hesabını doğrula"))
 			}
 
 			if m.profileNotice != "" {
-				noticeSt := okSt
-				if m.profileNoticeErr {
-					noticeSt = errSt
-				}
-				b.WriteString(keyW.Render("") + noticeSt.Render("  "+m.profileNotice) + "\n")
+				b.WriteString(girinti + bildirim(m.profileNotice, m.profileNoticeErr) + "\n")
 			}
 			b.WriteString("\n")
 		}
 
-		b.WriteString(div)
-		b.WriteString(secSt.Render("Ağ") + "\n")
+		b.WriteString(ui.Section("Ağ") + "\n")
 		if m.node != nil {
-			pid := m.node.Host.ID().String()
-			r := []rune(pid)
-			b.WriteString(row("Peer ID", string(r[:10])+"…"+string(r[len(r)-10:])))
-			n := m.peerCount()
-			if n == 0 {
-				b.WriteString(row("Bağlantı", warnSt.Render("◌  bağlanıyor…")))
-			} else {
-				b.WriteString(row("Bağlantı", okSt.Render(fmt.Sprintf("●  %d peer bağlı", n))))
-			}
+			b.WriteString(row("Peer ID", kisaPeerID(m.node.Host.ID().String())))
+			b.WriteString(row("Bağlantı", esDurumu(m.peerCount())))
 			addrs := m.node.Host.Network().ListenAddresses()
 			if len(addrs) > 0 {
 				b.WriteString(row("Adres", addrs[0].String()))
 				for _, a := range addrs[1:] {
-					b.WriteString(keyW.Render("") + valW.Render(a.String()) + "\n")
+					b.WriteString(girinti + a.String() + "\n")
 				}
 			}
 		} else {
-			b.WriteString(row("Ağ", mutSt.Render("(başlatılmadı)")))
+			b.WriteString(row("Ağ", ui.S.Muted.Render("başlatılmadı")))
 		}
 		b.WriteString("\n")
 
-		b.WriteString(div)
-		b.WriteString(secSt.Render("Depolama") + "\n")
+		b.WriteString(ui.Section("Depolama") + "\n")
 		m.refreshSettingsDiskStats()
 		dbSize := m.settingsDBSizeStr
 		if dbSize == "" {
-			dbSize = mutSt.Render("(yok)")
+			dbSize = ui.S.Muted.Render("yok")
 		}
 		b.WriteString(row("forum.db", dbSize))
-		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%d mesaj (forum.db içinde, senkronize)", len(m.chatLines))))
+		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%d mesaj", len(m.chatLines))+ui.S.Muted.Render("  ·  forum.db içinde, senkronize")))
 		if m.settingsBansCountStr != "" {
 			b.WriteString(row("Yasaklar", m.settingsBansCountStr))
 		}
 		b.WriteString("\n")
 
-		b.WriteString(div)
-		b.WriteString(secSt.Render("Forum") + "\n")
+		b.WriteString(ui.Section("Forum") + "\n")
 		if m.forumStore != nil {
 			posts := m.forumStore.AllInMemoryPosts()
 			replies := 0
@@ -1737,53 +1673,71 @@ func (m *appModel) syncSettingsVP() {
 			b.WriteString(row("Toplam konu", fmt.Sprintf("%d", len(posts))))
 			b.WriteString(row("Toplam yanıt", fmt.Sprintf("%d", replies)))
 		} else {
-			b.WriteString(row("Forum", mutSt.Render("(başlatılmadı)")))
+			b.WriteString(row("Forum", ui.S.Muted.Render("başlatılmadı")))
 		}
 
-	case 1, 2: // ── Eklentiler / Temalar ────────────────────────
+	case 1: // ── Eklentiler ────────────────────────────────────
 		list := m.settingsPluginList()
 		if len(list) == 0 {
-			b.WriteString(mutSt.Render("\n  (bu kategoride eklenti yok)\n"))
+			b.WriteString(ui.S.Muted.Render("Yüklü eklenti yok — and-plugin-* dosyaları AND ile aynı dizine konur.") + "\n")
 			break
 		}
 		for localIdx, globalIdx := range list {
-			pl := m.plugins[globalIdx]
-			mf := pl.Manifest
-			label := mf.Label
-			if label == "" {
-				label = mf.Name
-			}
-			ver := ""
-			if mf.Version != "" {
-				ver = "v" + mf.Version
-			}
-			var stStr string
-			if pl.Enabled {
-				stStr = onSt.Render("● etkin ")
-			} else {
-				stStr = offSt.Render("○ kapalı")
-			}
-			if localIdx == m.settingsIdx {
-				b.WriteString(selectedItemStyle.Render(fmt.Sprintf("▶  %-24s", label)) +
-					"  " + stStr + "  " + verSt.Render(ver) + "\n")
-				if mf.Description != "" {
-					b.WriteString(labelStyle.Render("   "+mf.Description) + "\n")
-				}
-				hint := "  space → aç/kapat"
-				if m.settingsTab == 2 && pl.Enabled {
-					hint += "    enter → uygula"
-				}
-				b.WriteString(mutSt.Render(hint) + "\n")
-			} else {
-				b.WriteString(itemStyle.Render(fmt.Sprintf("   %-24s", label)) +
-					"  " + stStr + "  " + verSt.Render(ver) + "\n")
-			}
-			b.WriteString("\n")
+			b.WriteString(m.eklentiSatiri(w, localIdx == m.settingsIdx, m.plugins[globalIdx]))
 		}
-		_ = div
+
+	case 2: // ── Temalar ───────────────────────────────────────
+		b.WriteString(ui.S.Muted.Render("Yerleşik temalar") + "\n")
+		// Renk örnekleri doğru değerlendirilebilsin diye bu listede seçim
+		// zemini KULLANILMAZ (tema kendi seçim rengini gösterirken o zemin
+		// örneği yutardı) — seçili tema vurgu çubuğu ve kalın adla belirtilir.
+		ornek := func(renk string) string { return lipgloss.NewStyle().Foreground(lipgloss.Color(renk)).Render("██") }
+		for i, t := range ui.Presets {
+			isaret, ad := "  ", ui.S.Text.Render(fmt.Sprintf("%-14s", t.ThemeName))
+			if i == m.settingsIdx {
+				isaret = ui.S.Accent.Render("▌ ")
+				ad = ui.S.Bold.Render(fmt.Sprintf("%-14s", t.ThemeName))
+			}
+			satir := isaret + ad + ornek(t.Accent) + " " + ornek(t.SelBG) + " " + ornek(t.Name) + " " + ornek(t.Badge)
+			if t.ThemeName == ActiveThemeName {
+				satir += "   " + ui.S.Success.Render("● etkin")
+			}
+			b.WriteString(satir + "\n")
+		}
+		b.WriteString("\n" + ui.S.Muted.Render("Tema eklentileri") + "\n")
+		list := m.settingsPluginList()
+		if len(list) == 0 {
+			b.WriteString(ui.S.Subtle.Render("  Yüklü tema eklentisi yok.") + "\n")
+		}
+		for localIdx, globalIdx := range list {
+			b.WriteString(m.eklentiSatiri(w, len(ui.Presets)+localIdx == m.settingsIdx, m.plugins[globalIdx]))
+		}
 	}
 
 	m.settingsVP.SetContent(b.String())
+}
+
+// eklentiSatiri, Eklentiler/Temalar sekmelerindeki tek bir eklentinin
+// satırıdır; seçiliyse açıklaması da altında gösterilir.
+func (m appModel) eklentiSatiri(w int, secili bool, pl pluginmgr.Plugin) string {
+	mf := pl.Manifest
+	label := mf.Label
+	if label == "" {
+		label = mf.Name
+	}
+	durum := ui.C("● etkin ", colorOK)
+	if !pl.Enabled {
+		durum = ui.M("○ kapalı")
+	}
+	ver := ""
+	if mf.Version != "" {
+		ver = "v" + mf.Version
+	}
+	satir := ui.Row(w, secili, ui.Seg{Text: fmt.Sprintf("%-24s", pluginui.Safe(label)), Bold: secili}, durum, ui.M("   "+ver)) + "\n"
+	if secili && mf.Description != "" {
+		satir += "    " + ui.S.Muted.Render(ui.Truncate(pluginui.Safe(mf.Description), w-4)) + "\n"
+	}
+	return satir
 }
 
 // enterProfileEdit switches Settings' Bilgi tab into edit mode for field,
@@ -1998,64 +1952,41 @@ func (m appModel) handleGitHubLinkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m appModel) viewSettings() string {
-	accentSt := lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
-	helpSt := lipgloss.NewStyle().Foreground(colorMuted).Italic(true)
-	divSt := lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
-	tabNames := []string{"  Bilgi  ", " Eklentiler ", "  Temalar  "}
-	activeTab := lipgloss.NewStyle().Bold(true).Foreground(colorSelFG).Background(colorSelBG).Padding(0, 1)
-	inactTab := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
+	iw := icGenislik(m.width)
 
 	var b strings.Builder
-
-	// başlık
-	b.WriteString(accentSt.Render("◈  Ayarlar") + "\n\n")
-
-	// sekme çubuğu
-	for i, name := range tabNames {
-		if i == m.settingsTab {
-			b.WriteString(activeTab.Render(name))
-		} else {
-			b.WriteString(inactTab.Render(name))
-		}
-		if i < len(tabNames)-1 {
-			b.WriteString(divSt.Render("│"))
-		}
-	}
-	b.WriteString("\n" + divSt.Render(strings.Repeat("─", 56)) + "\n\n")
+	b.WriteString(ui.Header(iw, []string{"Ayarlar"}, ui.S.Muted.Render(ActiveThemeName+" teması")) + "\n")
+	b.WriteString(ui.Tabs(m.settingsTab, "Bilgi", "Eklentiler", "Temalar") + "\n\n")
 
 	b.WriteString(m.settingsVP.View())
 	b.WriteString("\n")
 	if !m.settingsVP.AtBottom() {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorMuted).Render("  ↓ daha fazla…\n"))
+		b.WriteString(ui.S.Muted.Render("  ↓ daha fazla") + "\n")
 	}
+	var f strings.Builder
+	if m.settingsNotice != "" {
+		f.WriteString(ui.Notice(ui.KindSuccess, m.settingsNotice) + "\n")
+	}
+	f.WriteString(ui.Divider(iw) + "\n")
 
-	b.WriteString(divSt.Render(strings.Repeat("─", 56)) + "\n")
-
-	var help string
+	sekme := ui.H("←→", "sekme")
+	geri := ui.H("esc", "ana menü")
+	var hints []ui.Hint
 	switch {
 	case m.settingsTab == 0 && m.githubLinking:
-		help = "esc  iptal"
+		hints = []ui.Hint{ui.H("esc", "iptal")}
 	case m.settingsTab == 0 && m.profileEdit == profileFieldTags:
-		help = "↑/↓  gezin    enter/space  işaretle    ctrl+s  kaydet    esc  iptal"
+		hints = []ui.Hint{ui.H("↑↓", "gezin"), ui.H("space", "işaretle"), ui.H("ctrl+s", "kaydet"), ui.H("esc", "iptal")}
 	case m.settingsTab == 0 && m.profileEdit != profileFieldNone:
-		help = "enter  kaydet    esc  iptal"
+		hints = []ui.Hint{ui.H("enter", "kaydet"), ui.H("esc", "iptal")}
 	case m.settingsTab == 0:
-		help = "↑/↓  kaydır    m  güvenlik kodu    b/s/w  bio/durum/link düzenle    t  etiketler    v  GitHub doğrula    ←/→ tab  sekme değiştir    esc  geri"
+		hints = []ui.Hint{ui.H("↑↓", "kaydır"), ui.H("b/s/w", "bio/durum/bağlantı"), ui.H("t", "etiketler"),
+			ui.H("v", "GitHub doğrula"), ui.H("m", "kurtarma kodu"), sekme, geri}
 	case m.settingsTab == 1:
-		help = "↑/↓  seç    space  aç/kapat    ←/→ tab  sekme değiştir    esc  geri"
-	case m.settingsTab == 2:
-		help = "↑/↓  seç    space  aç/kapat    enter  uygula    ←/→ tab  sekme değiştir    esc  geri"
+		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("space", "aç/kapat"), sekme, geri}
+	default:
+		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("enter", "uygula"), ui.H("space", "eklentiyi aç/kapat"), sekme, geri}
 	}
-	b.WriteString(helpSt.Render(help))
-
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorAccent).
-		Padding(1, 3).
-		Render(b.String())
-
-	if m.width > 0 && m.height > 0 {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
-	}
-	return box
+	f.WriteString(ui.KeyHints(iw, hints...))
+	return ui.Page(m.width, m.height, b.String(), f.String())
 }

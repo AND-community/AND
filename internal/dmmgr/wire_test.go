@@ -10,12 +10,14 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
+	"github.com/lucian95511/and/internal/pluginapi"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -185,5 +187,49 @@ func TestSendDM_BannedSenderRejected(t *testing.T) {
 	case msg := <-ch:
 		t.Fatalf("banlı bir peer'ın DM'i teslim edilmemeliydi: %+v", msg)
 	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+// TestHistory_KeepsDMsWithoutSubscriber: dinleyen eklenti yokken gelen bir DM
+// eskiden sessizce kayboluyordu; artık geçmişte durur. Giden mesaj da
+// alıcısıyla birlikte kaydedilir.
+func TestHistory_KeepsDMsWithoutSubscriber(t *testing.T) {
+	nodeA, nodeB := connectedPair(t)
+	brokerA := New(nodeA)
+	brokerB := New(nodeB) // hiçbir abone yok
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := brokerA.SendDM(ctx, nodeB.Host.ID().String(), "Alice", "kapalıyken gelen"); err != nil {
+		t.Fatalf("SendDM: %v", err)
+	}
+
+	sonZaman := time.Now().Add(5 * time.Second)
+	for len(brokerB.History()) == 0 && time.Now().Before(sonZaman) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	gelen := brokerB.History()
+	if len(gelen) != 1 || gelen[0].Text != "kapalıyken gelen" || gelen[0].Outgoing ||
+		gelen[0].PeerID != nodeA.Host.ID().String() || gelen[0].Name != "Alice" {
+		t.Fatalf("gelen DM geçmişte doğrulanmış gönderenle durmalı: %+v", gelen)
+	}
+	giden := brokerA.History()
+	if len(giden) != 1 || !giden[0].Outgoing || giden[0].PeerID != nodeB.Host.ID().String() {
+		t.Fatalf("giden DM alıcısıyla kaydedilmeli: %+v", giden)
+	}
+}
+
+func TestHistory_BoundedAndCopied(t *testing.T) {
+	b := &Broker{}
+	for i := range historyLimit + 25 {
+		b.record(pluginapi.DMRecord{PeerID: "p", Text: fmt.Sprint(i)})
+	}
+	h := b.History()
+	if len(h) != historyLimit || h[0].Text != "25" || h[len(h)-1].Text != fmt.Sprint(historyLimit+24) {
+		t.Fatalf("geçmiş en yeni %d mesajı tutmalı: ilk=%q son=%q n=%d", historyLimit, h[0].Text, h[len(h)-1].Text, len(h))
+	}
+	h[0].Text = "değişti"
+	if b.History()[0].Text == "değişti" {
+		t.Fatal("History bir kopya dönmeli")
 	}
 }

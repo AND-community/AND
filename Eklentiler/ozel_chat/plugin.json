@@ -1,0 +1,8 @@
+{
+  "name":        "ozel_chat",
+  "label":       "Özel Chat",
+  "version":     "2.0.0",
+  "description": "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
+  "author":      "AND",
+  "requires":    []
+}

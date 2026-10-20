@@ -366,7 +366,15 @@ func (s *Store) PublishPage(ctx context.Context, slug, title, body string) error
 	authorPages := s.pages[authorKey]
 	_, editingExisting := authorPages[slug]
 	pageCount := len(authorPages)
+	_, tombstoned := s.deleted[authorKey+"/"+slug]
 	s.mu.RUnlock()
+	// Silinmiş bir slug kalıcı olarak tombstone'lanmıştır: persist() onu
+	// sessizce atlar, eşler de (handlePage) reddeder. Burada açıkça hata
+	// dönülmezse çağıran (TUI, VS Code) "yayınlandı" der ama sayfa hiçbir
+	// yerde — kendi düğümümüzde bile — saklanmazdı.
+	if tombstoned {
+		return fmt.Errorf("site: %q daha önce silindi — silinen bir slug yeniden kullanılamaz, farklı bir slug seç", slug)
+	}
 	if !editingExisting && pageCount >= MaxPagesPerAuthor {
 		return fmt.Errorf("site: en fazla %d sayfan olabilir", MaxPagesPerAuthor)
 	}

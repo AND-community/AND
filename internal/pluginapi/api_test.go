@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lucian95511/and/internal/ui"
 )
 
 // ─── Mock backends ────────────────────────────────────────────────────────────
@@ -1338,8 +1340,47 @@ func TestGetTheme_DefaultWhenNoFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != defaultTheme {
-		t.Errorf("GetTheme: got %+v, want default %+v", got, defaultTheme)
+	if want := ThemeReq(ui.DefaultTheme()); got != want {
+		t.Errorf("GetTheme: got %+v, want default %+v", got, want)
+	}
+}
+
+// TestGetTheme_LegacyDefaultMigrated, eski (mor) varsayılan temanın birebir
+// kaydını taşıyan bir theme.json'ın — Pembiş'in eski "Varsayılan Temaya
+// Dön"ü bunu yazıyordu — eklentilere güncel varsayılan olarak sunulduğunu
+// doğrular; TUI de aynı dönüşümü uyguladığından ikisi ayrışmaz.
+func TestGetTheme_LegacyDefaultMigrated(t *testing.T) {
+	id := &mockID{name: "alice", peerID: "12D3KooWTest"}
+	dataDir := t.TempDir()
+	legacy := ThemeReq{ThemeName: "Turkuaz", Accent: "63", SelBG: "57", SelFG: "255", Muted: "241", Name: "86", Badge: "33"}
+	data, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, ThemeFile), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	srv := NewServer(id, &mockForum{}, nil, nil, nil, nil, nil, dataDir, nil)
+	addr, token, err := srv.Start(ctx)
+	if err != nil {
+		t.Fatalf("server start: %v", err)
+	}
+	t.Setenv("AND_API_ADDR", addr)
+	t.Setenv("AND_API_TOKEN", token)
+	c, err := NewClientFromEnv()
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+
+	got, err := c.GetTheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := ThemeReq(ui.DefaultTheme()); got != want {
+		t.Errorf("eski varsayılan güncel varsayılana çevrilmeliydi: got %+v, want %+v", got, want)
 	}
 }
 
@@ -1419,5 +1460,36 @@ func TestHelpers(t *testing.T) {
 	}
 	if got := Category(); got != "genel" {
 		t.Errorf("Category: %q", got)
+	}
+}
+
+// historyDM, geçmişi olan bir DM arka ucudur.
+type historyDM struct {
+	mockDM
+	kayitlar []DMRecord
+}
+
+func (h *historyDM) History() []DMRecord { return h.kayitlar }
+
+func TestDMHistory(t *testing.T) {
+	id := &mockID{name: "alice", pubKeyHex: "aabbcc", peerID: "12D3KooWTest"}
+
+	// Geçmişi olmayan (eski) bir arka uç boş liste döner, hata değil.
+	c := startTestServer(t, id, &mockForum{}, &mockDM{})
+	if got, err := c.DMHistory(); err != nil || len(got) != 0 {
+		t.Fatalf("geçmişsiz arka uç boş liste dönmeli: %v %v", got, err)
+	}
+
+	dm := &historyDM{kayitlar: []DMRecord{
+		{PeerID: "12D3KooWBob", Name: "bob", Text: "selam"},
+		{PeerID: "12D3KooWBob", Text: "merhaba", Outgoing: true},
+	}}
+	c = startTestServer(t, id, &mockForum{}, dm)
+	got, err := c.DMHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Name != "bob" || !got[1].Outgoing || got[1].Text != "merhaba" {
+		t.Fatalf("geçmiş beklenmedik: %+v", got)
 	}
 }
