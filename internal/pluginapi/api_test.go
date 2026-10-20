@@ -1042,11 +1042,12 @@ func TestPathWithinDir(t *testing.T) {
 func TestBuildMuxExternalFiltering(t *testing.T) {
 	var internalCalled, sharedCalled bool
 	routes := []route{
-		{"/internal-only", func(http.ResponseWriter, *http.Request) { internalCalled = true }, false},
-		{"/shared", func(http.ResponseWriter, *http.Request) { sharedCalled = true }, true},
+		{pattern: "/internal-only", handler: func(http.ResponseWriter, *http.Request) { internalCalled = true }, izin: IzinTemel},
+		{pattern: "/shared", handler: func(http.ResponseWriter, *http.Request) { sharedCalled = true }, allowExternal: true, izin: IzinTemel},
 	}
 
-	externalMux := buildMuxFromRoutes(routes, true)
+	// Sunucu, harici mux'u tam yetkiyle sarar (bkz. Start); burada da öyle.
+	externalMux := tamYetkiyle(buildMuxFromRoutes(routes, true))
 
 	rec := httptest.NewRecorder()
 	externalMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal-only", nil))
@@ -1067,7 +1068,7 @@ func TestBuildMuxExternalFiltering(t *testing.T) {
 	}
 
 	internalCalled = false
-	internalMux := buildMuxFromRoutes(routes, false)
+	internalMux := tamYetkiyle(buildMuxFromRoutes(routes, false))
 	rec = httptest.NewRecorder()
 	internalMux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/internal-only", nil))
 	if rec.Code != http.StatusOK {

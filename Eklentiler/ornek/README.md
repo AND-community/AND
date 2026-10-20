@@ -101,6 +101,7 @@ XenForo'nun `addon.json` dosyasına karşılık gelir. AND bu dosyayı okuyarak 
   "version":     "1.0.0",
   "description": "Ne yaptığını anlat",
   "author":      "Adın Soyadın",
+  "permissions": ["forum"],
   "requires":    []
 }
 ```
@@ -112,9 +113,34 @@ XenForo'nun `addon.json` dosyasına karşılık gelir. AND bu dosyayı okuyarak 
 | `version` | Hayır | Sürüm bilgisi (menü detayında görünür) |
 | `description` | Hayır | Menü detayında görünen kısa açıklama |
 | `author` | Hayır | Geliştirici adı |
+| `permissions` | Hayır | Eklentinin istediği izinler (aşağıya bak); yoksa yalnızca herkese açık okumalar |
+| `min_api` | Hayır | Gereken en düşük eklenti API sürümü; AND daha eskiyse eklentiyi başlatmaz |
 | `requires` | Hayır | Gelecek için; şu an kullanılmıyor |
 
 AND, `name` alanı boş olan veya `plugin.json` bulunamayıp `--manifest` çalıştırılamayan binary'leri sessizce atlar.
+
+### İzinler
+
+Eklenti, AND'dan yalnızca `permissions`'ta istediği ve kullanıcının onayladığı izinleri taşıyan bir
+anahtar alır. Kullanıcıya ilk açılışta sorulur; eklenti bir güncellemede yeni bir izin isterse yeniden
+sorulur. Kimlik, eşler, forum ve site içeriği, genel sohbet ve tema okumak izin istemez.
+
+| İzin | Açtığı uç noktalar |
+|------|--------------------|
+| `dm` | `/api/v1/dm/send`, `/dm/poll`, `/dm/history` |
+| `file` | `/api/v1/file/send`, `/file/poll`, `/file/consent-poll`, `/file/consent` |
+| `chat` | `POST /api/v1/chat/send` |
+| `forum` | `POST /api/v1/forum/post`, `/forum/reply` |
+| `site` | `/api/v1/site/publish`, `/site/delete` |
+| `moderation` | `/api/v1/forum/delete`, `/api/v1/mod/*` |
+| `theme` | `POST /api/v1/theme` |
+
+Verilmemiş bir izni gerektiren istek `403` döner; `pluginapi.IsForbidden(err)` bunu ayırt eder.
+Yalnızca gerçekten kullandığın izinleri iste: kullanıcı onay ekranında her birini görür.
+`main.go`'daki `manifest` değişkenine de aynı izinleri yaz (`Permissions: []string{pluginapi.IzinForum}`).
+
+Bağlı AND'ın API sürümü `client.APIVersion()` ile okunur (eski bir AND için `1`); yeni bir uç noktaya
+dayanıyorsan manifest'e `"min_api"` koy.
 
 ---
 
@@ -259,6 +285,7 @@ esler, err := client.Peers()
 | `GET` | `/api/v1/dm/poll` | Gelen DM bekle (5 sn. long poll) |
 | `GET` | `/api/v1/dm/history` | Bu oturumun gelen ve giden DM'leri (en fazla 500, yalnızca bellekte) |
 | `GET` | `/api/v1/peers` | Bağlı eşler; `"and": true` olanlar AND düğümüdür (DM/dosya gönderilebilir) |
+| `GET` | `/api/v1/version` | Eklenti API sürümü `{"api": 2}`; yoksa AND eskidir (sürüm 1) |
 
 Tüm hata yanıtları `{"error":"açıklama"}` formatında JSON döner (durum kodu
 hataya göre değişir: geçersiz istek 400, yetki yok 403, hız sınırı 429,

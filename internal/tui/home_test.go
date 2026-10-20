@@ -25,7 +25,7 @@ func newHomeTestModel(t *testing.T) appModel {
 		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Version: "1.4.1", Description: "Özel gruplar ve sürüm kontrolü."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Version: "1.2.0"}, Enabled: false},
 	}
-	return newAppModel(context.Background(), id, nil, plugins, "", "", nil, nil, nil, "", nil, nil, nil)
+	return newAppModel(context.Background(), id, nil, plugins, "", nil, nil, nil, "", nil, nil, nil)
 }
 
 // TestViewMenu_FullScreen, ana sayfanın her terminal boyutunda ekranı tam

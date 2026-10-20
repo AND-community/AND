@@ -3,10 +3,7 @@ package pluginapi
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +16,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lucian95511/and/internal/ui"
@@ -37,6 +35,12 @@ type Manifest struct {
 	Description string `json:"description"`
 	Author      string `json:"author"`
 	Category    string `json:"category,omitempty"`
+	// Permissions, eklentinin istediği izinlerdir (bkz. IzinBilgileri). AND
+	// ilk açılışta kullanıcıya sorar; verilmeyen izni gerektiren uç noktalar
+	// 403 döner. Alan yoksa eklenti yalnızca herkese açık okumaları yapabilir.
+	Permissions []string `json:"permissions,omitempty"`
+	// MinAPI, eklentinin çalışmak için gereken en düşük APIVersion'dır.
+	MinAPI int `json:"min_api,omitempty"`
 }
 
 type IdentityInfo struct {
@@ -392,9 +396,14 @@ var reAuthorKey = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 func validAuthorKey(key string) bool { return reAuthorKey.MatchString(key) }
 
 type Server struct {
-	addr        string
-	token       string
-	dataDir     string
+	addr    string
+	token   string
+	dataDir string
+	// yetkiler, geçerli API anahtarlarının (özetleriyle) yetkileridir: Start'ın
+	// döndürdüğü tam yetkili ana anahtar ve EklentiAnahtari'nın eklenti
+	// başına verdikleri.
+	yetkiMu     sync.RWMutex
+	yetkiler    map[[sha256.Size]byte]yetki
 	srv         *http.Server
 	externalLn  net.Listener
 	externalSrv *http.Server
@@ -465,10 +474,16 @@ func enableExternalAPI() bool {
 // "harici erişime açık mı?" sorusu her yeni endpoint için BİLİNÇLİ, tek
 // satırlık bir karar olmak zorundadır — yalnızca bir yorumu okuyup
 // hatırlamaya güvenilmez (bkz. buildMux, Start).
+//
+// izin, uç noktanın gerektirdiği eklenti iznidir (IzinTemel ya da
+// IzinBilgileri'nden biri); TestRouteTableIzinleri her route'un bilinçli
+// bir izin taşıdığını denetler. okumaSerbest ise GET istekleri izinsizdir.
 type route struct {
 	pattern       string
 	handler       http.HandlerFunc
 	allowExternal bool
+	izin          string
+	okumaSerbest  bool
 }
 
 // routeTable, Server'ın tüm HTTP endpoint'lerini tanımlayan TEK yerdir.
@@ -480,33 +495,34 @@ type route struct {
 // bırakmak yeterlidir.
 func (s *Server) routeTable() []route {
 	return []route{
-		{"/api/v1/identity", onlyMethod(http.MethodGet, s.getIdentity), true},
-		{"/api/v1/role", onlyMethod(http.MethodGet, s.getRole), true},
-		{"/api/v1/peers", onlyMethod(http.MethodGet, s.getPeers), true},
-		{"/api/v1/forum/all-posts", onlyMethod(http.MethodGet, s.getAllPosts), true},
-		{"/api/v1/forum/post", s.handleForumPost, true},
-		{"/api/v1/forum/reply", onlyMethod(http.MethodPost, rateLimited(s.forumLimiter, s.postReply)), true},
-		{"/api/v1/forum/delete", onlyMethod(http.MethodPost, s.postDeletePost), true},
-		{"/api/v1/site/pages", onlyMethod(http.MethodGet, s.getSitePages), true},
-		{"/api/v1/site/publish", onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSitePublish)), true},
-		{"/api/v1/site/delete", onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSiteDelete)), true},
-		{"/api/v1/mod/bans", onlyMethod(http.MethodGet, s.getModBans), true},
-		{"/api/v1/mod/unban", onlyMethod(http.MethodPost, s.postModUnban), true},
-		{"/api/v1/mod/history", onlyMethod(http.MethodGet, s.getModHistory), true},
-		{"/api/v1/mod/grants", onlyMethod(http.MethodGet, s.getModGrants), true},
-		{"/api/v1/mod/grant", onlyMethod(http.MethodPost, s.postModGrant), true},
-		{"/api/v1/mod/revoke", onlyMethod(http.MethodPost, s.postModRevoke), true},
-		{"/api/v1/dm/send", onlyMethod(http.MethodPost, rateLimited(s.dmLimiter, s.postSendDM)), true},
-		{"/api/v1/dm/poll", onlyMethod(http.MethodGet, s.getDMPoll), true},
-		{"/api/v1/dm/history", onlyMethod(http.MethodGet, s.getDMHistory), true},
-		{"/api/v1/chat/send", onlyMethod(http.MethodPost, rateLimited(s.chatLimiter, s.postSendChat)), true},
-		{"/api/v1/chat/poll", onlyMethod(http.MethodGet, s.getChatPoll), true},
-		{"/api/v1/chat/all", onlyMethod(http.MethodGet, s.getChatAll), true},
-		{"/api/v1/file/send", onlyMethod(http.MethodPost, rateLimited(s.fileLimiter, s.postSendFile)), true},
-		{"/api/v1/file/poll", onlyMethod(http.MethodGet, s.getFilePoll), true},
-		{"/api/v1/file/consent-poll", onlyMethod(http.MethodGet, s.getConsentPoll), true},
-		{"/api/v1/file/consent", onlyMethod(http.MethodPost, s.postConsent), true},
-		{"/api/v1/theme", s.handleTheme, true},
+		{pattern: "/api/v1/version", handler: onlyMethod(http.MethodGet, s.getVersion), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/identity", handler: onlyMethod(http.MethodGet, s.getIdentity), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/role", handler: onlyMethod(http.MethodGet, s.getRole), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/peers", handler: onlyMethod(http.MethodGet, s.getPeers), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/forum/all-posts", handler: onlyMethod(http.MethodGet, s.getAllPosts), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/forum/post", handler: s.handleForumPost, allowExternal: true, izin: IzinForum, okumaSerbest: true},
+		{pattern: "/api/v1/forum/reply", handler: onlyMethod(http.MethodPost, rateLimited(s.forumLimiter, s.postReply)), allowExternal: true, izin: IzinForum},
+		{pattern: "/api/v1/forum/delete", handler: onlyMethod(http.MethodPost, s.postDeletePost), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/site/pages", handler: onlyMethod(http.MethodGet, s.getSitePages), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/site/publish", handler: onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSitePublish)), allowExternal: true, izin: IzinSite},
+		{pattern: "/api/v1/site/delete", handler: onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSiteDelete)), allowExternal: true, izin: IzinSite},
+		{pattern: "/api/v1/mod/bans", handler: onlyMethod(http.MethodGet, s.getModBans), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/unban", handler: onlyMethod(http.MethodPost, s.postModUnban), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/history", handler: onlyMethod(http.MethodGet, s.getModHistory), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/grants", handler: onlyMethod(http.MethodGet, s.getModGrants), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/grant", handler: onlyMethod(http.MethodPost, s.postModGrant), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/revoke", handler: onlyMethod(http.MethodPost, s.postModRevoke), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/dm/send", handler: onlyMethod(http.MethodPost, rateLimited(s.dmLimiter, s.postSendDM)), allowExternal: true, izin: IzinDM},
+		{pattern: "/api/v1/dm/poll", handler: onlyMethod(http.MethodGet, s.getDMPoll), allowExternal: true, izin: IzinDM},
+		{pattern: "/api/v1/dm/history", handler: onlyMethod(http.MethodGet, s.getDMHistory), allowExternal: true, izin: IzinDM},
+		{pattern: "/api/v1/chat/send", handler: onlyMethod(http.MethodPost, rateLimited(s.chatLimiter, s.postSendChat)), allowExternal: true, izin: IzinSohbet},
+		{pattern: "/api/v1/chat/poll", handler: onlyMethod(http.MethodGet, s.getChatPoll), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/chat/all", handler: onlyMethod(http.MethodGet, s.getChatAll), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/file/send", handler: onlyMethod(http.MethodPost, rateLimited(s.fileLimiter, s.postSendFile)), allowExternal: true, izin: IzinDosya},
+		{pattern: "/api/v1/file/poll", handler: onlyMethod(http.MethodGet, s.getFilePoll), allowExternal: true, izin: IzinDosya},
+		{pattern: "/api/v1/file/consent-poll", handler: onlyMethod(http.MethodGet, s.getConsentPoll), allowExternal: true, izin: IzinDosya},
+		{pattern: "/api/v1/file/consent", handler: onlyMethod(http.MethodPost, s.postConsent), allowExternal: true, izin: IzinDosya},
+		{pattern: "/api/v1/theme", handler: s.handleTheme, allowExternal: true, izin: IzinTema, okumaSerbest: true},
 	}
 }
 
@@ -530,7 +546,7 @@ func buildMuxFromRoutes(routes []route, externalOnly bool) *http.ServeMux {
 		if externalOnly && !r.allowExternal {
 			continue
 		}
-		mux.HandleFunc(r.pattern, r.handler)
+		mux.HandleFunc(r.pattern, izinDenetle(r.izin, r.okumaSerbest, r.handler))
 	}
 	return mux
 }
@@ -558,12 +574,15 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	}
 	s.addr = ln.Addr().String()
 
-	raw := make([]byte, 32)
-	if _, randErr := rand.Read(raw); randErr != nil {
+	// Ana anahtar tam yetkilidir; AND'ın kendisi ve testler kullanır. Eklentiler
+	// bunu değil, EklentiAnahtari'nın verdiği izinli anahtarı alır.
+	tok, randErr := yeniAnahtar()
+	if randErr != nil {
 		ln.Close() //nolint:errcheck
 		return "", "", fmt.Errorf("pluginapi: generate token: %w", randErr)
 	}
-	s.token = hex.EncodeToString(raw)
+	s.token = tok
+	s.yetkiKaydet(tok, yetki{tam: true})
 
 	s.srv = newHTTPServer(s.authMiddleware(s.buildMux(false)))
 	go s.srv.Serve(ln) //nolint:errcheck
@@ -576,8 +595,8 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 			// authMiddleware YOK: bu dinleyiciye erişim zaten OS tarafından
 			// (yalnızca bu kullanıcı) kısıtlanmış durumda — bkz. enableExternalAPI.
 			// buildMux(true), yalnızca routeTable()'da allowExternal:true
-			// işaretli route'ları içerir.
-			s.externalSrv = newHTTPServer(s.buildMux(true))
+			// işaretli route'ları içerir; buradaki araç tam yetkilidir.
+			s.externalSrv = newHTTPServer(tamYetkiyle(s.buildMux(true)))
 			go s.externalSrv.Serve(extLn) //nolint:errcheck
 			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı etkin —", externalDescription(s.dataDir))
 		}
@@ -594,25 +613,20 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	return s.addr, s.token, nil
 }
 
-// tokenEqual, X-And-Token doğrulamasını sabit zamanlı yapar. İki değer önce
-// aynı boyuta (sha256) indirgenir — subtle.ConstantTimeCompare, farklı
-// uzunluktaki dilimlerde erken (uzunluk bazlı) dönüş yaptığından, doğrudan
-// ham token'lar üzerinde çağrılması küçük bir zamanlama sızıntısı bırakır.
-func tokenEqual(got, want string) bool {
-	gotSum := sha256.Sum256([]byte(got))
-	wantSum := sha256.Sum256([]byte(want))
-	return subtle.ConstantTimeCompare(gotSum[:], wantSum[:]) == 1
-}
-
+// authMiddleware, X-And-Token'ı geçerli anahtarlar arasında arar ve
+// bulduğu yetkiyi isteğe ekler; her uç nokta izni ona göre denetler (bkz.
+// izinDenetle). Arama ham anahtarın değil özetinin üzerinden yapılır (bkz.
+// anahtarOzeti).
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !tokenEqual(r.Header.Get("X-And-Token"), s.token) {
+		y, ok := s.yetkiBul(r.Header.Get("X-And-Token"))
+		if !ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(errResp{Error: "yetkisiz erişim"}) //nolint:errcheck
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), yetkiAnahtari{}, y)))
 	})
 }
 
@@ -1585,7 +1599,14 @@ func (c *Client) postWith(hc *http.Client, path string, body any) error {
 	}
 	var e errResp
 	json.NewDecoder(resp.Body).Decode(&e) //nolint:errcheck
-	return fmt.Errorf("api: %s", e.Error)
+	return &APIError{Status: resp.StatusCode, Message: e.Error}
+}
+
+// IsForbidden, err'in AND'ın bir izin eksikliği yüzünden reddettiği bir
+// istek olup olmadığını söyler (eklentiye o izin verilmemiş).
+func IsForbidden(err error) bool {
+	var ae *APIError
+	return errors.As(err, &ae) && ae.Status == http.StatusForbidden
 }
 
 // postJSON is like post but decodes a JSON response body on success (200

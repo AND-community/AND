@@ -29,6 +29,7 @@ var manifest = pluginapi.Manifest{
 	Version:     "2.0.0",
 	Description: "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
 	Author:      "AND",
+	Permissions: []string{pluginapi.IzinDM, pluginapi.IzinDosya},
 }
 
 func main() {

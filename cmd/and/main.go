@@ -355,11 +355,15 @@ func run() error {
 
 	themeCh := make(chan pluginapi.ThemeReq, 1)
 	apiSrv := pluginapi.NewServer(idBackend, fBackend, siteBackend, dmBroker, fileBroker, chatBackend, mBackend, dir, themeCh)
-	apiAddr, apiToken, err := apiSrv.Start(ctx)
+	// Start'ın döndürdüğü tam yetkili ana anahtar eklentilere verilmez: her
+	// eklenti başlatılırken yalnızca kullanıcının onayladığı izinleri taşıyan
+	// kendi anahtarını alır (bkz. tui.EklentiAnahtari).
+	apiAddr, _, err := apiSrv.Start(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
 		apiAddr = ""
-		apiToken = ""
+	} else {
+		tui.EklentiAnahtari = apiSrv.EklentiAnahtari
 	}
 
 	plugins := pluginmgr.DiscoverWithState(dir)
@@ -376,7 +380,7 @@ func run() error {
 	// veri dizinindeki and.log'a gider.
 	network.RedirectLibraryLogs(kutuphaneGunlugu(filepath.Join(dir, "and.log")))
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
+	if err := tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
 		return err
 	}
 

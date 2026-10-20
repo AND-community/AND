@@ -45,7 +45,7 @@ func newTestModel(t *testing.T) appModel {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
 	id.SetName("alice")
-	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", "", nil, nil, nil, "", nil, nil, nil)
+	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", nil, nil, nil, "", nil, nil, nil)
 }
 
 // newTestModelWithChatStore is like newTestModel but with a real (nil-topic,
@@ -67,7 +67,7 @@ func newTestModelWithChatStore(t *testing.T) appModel {
 	if err != nil {
 		t.Fatalf("chatlog.New: %v", err)
 	}
-	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", "", nil, nil, nil, "", cs, nil, nil)
+	return newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{}, "", nil, nil, nil, "", cs, nil, nil)
 }
 
 func TestAppModel_SendChat_NoTopicIsNoop(t *testing.T) {
@@ -285,7 +285,7 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 		{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli"}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX"}, Enabled: true},
 	}
-	m := newAppModel(context.Background(), id, nil, plugins, "", "", nil, nil, nil, "", nil, nil, nil)
+	m := newAppModel(context.Background(), id, nil, plugins, "", nil, nil, nil, "", nil, nil, nil)
 
 	wantItems := []string{"Forum", "Sohbet", "Yönetici Paneli", "DeltaX", "Ayarlar", "Çıkış"}
 	wantGroups := []string{"Topluluk", "Topluluk", "Eklentiler", "Eklentiler", "Sistem", "Sistem"}

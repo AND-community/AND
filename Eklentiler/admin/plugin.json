@@ -1,1 +1,1 @@
-{"name":"admin","label":"Yönetici Paneli","version":"4.0.0","description":"Konu yönetimi, ban listesi, moderasyon geçmişi ve moderatör atama (kurucu/moderatör yetkisi gerekir)","author":"AND"}
+{"name":"admin","label":"Yönetici Paneli","version":"4.0.0","description":"Konu yönetimi, ban listesi, moderasyon geçmişi ve moderatör atama (kurucu/moderatör yetkisi gerekir)","author":"AND","permissions":["moderation"]}

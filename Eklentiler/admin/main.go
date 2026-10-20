@@ -28,6 +28,7 @@ var manifest = pluginapi.Manifest{
 	Version:     "4.0.0",
 	Description: "Konu yönetimi, ban listesi, moderasyon geçmişi ve moderatör atama (kurucu/moderatör yetkisi gerekir)",
 	Author:      "AND",
+	Permissions: []string{pluginapi.IzinModerasyon},
 }
 
 func main() {

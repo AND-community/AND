@@ -4,5 +4,6 @@
   "version":     "2.0.0",
   "description": "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
   "author":      "AND",
+  "permissions": ["dm", "file"],
   "requires":    []
 }

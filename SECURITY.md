@@ -152,10 +152,22 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   security descriptor'lı (`D:P(A;;GA;;;OW)`) named pipe, Unix'te `0600` izinli bir domain socket.
   Yalnızca bu dinleyicide açık şekilde işaretlenmiş (`allowExternal:true`) route'lara erişilebilir —
   varsayılan kapalıdır (bkz. `internal/pluginapi/api.go`'daki `routeTable()`).
-- Token sabit sürede karşılaştırılır; sunucuların başlık okuma süresi ve başlık boyutu sınırlıdır, istek
-  gövdeleri her uç noktada boyutla sınırlıdır ve yazma işlemleri hız sınırına tabidir.
-- Güven modeli: her iki dinleyici için de aynı işletim sistemi kullanıcısı = güvenilir. Farklı
-  kullanıcı hesaplarının erişemeyeceği yerel iletişimdir; ağa açık değildir.
+- **Eklenti izinleri:** Her eklenti başlatılırken kendi anahtarını alır; anahtar yalnızca eklentinin
+  `plugin.json`'da istediği ve kullanıcının ilk açılışta onayladığı izinleri taşır, eklenti kapanınca
+  geçersizleşir. İzinler: özel mesajlar (`dm`), dosya aktarımı (`file`), genel sohbete yazma (`chat`),
+  forumda konu ve yanıt (`forum`), kişisel site (`site`), moderasyon (`moderation`), tema (`theme`).
+  Herkese açık içeriği okumak (kimlik, eşler, forum, siteler, genel sohbet) izin istemez. Verilmemiş
+  bir izni gerektiren istek `403` ile reddedilir. AND'ın kendi tam yetkili anahtarı hiçbir eklentiye
+  verilmez. Onaylar `plugins_state.json`'da durur ve Ayarlar › Eklentiler'de `r` ile geri alınır;
+  eklenti bir güncellemede yeni bir izin isterse yeniden sorulur. Her uç noktanın hangi izni
+  gerektirdiği `routeTable()`'da yazılıdır ve bir test her uç noktanın bilinçli bir izin taşıdığını denetler.
+- Anahtar aramaları ham anahtarın değil SHA-256 özetinin üzerinden yapılır; sunucuların başlık okuma
+  süresi ve başlık boyutu sınırlıdır, istek gövdeleri her uç noktada boyutla sınırlıdır ve yazma
+  işlemleri hız sınırına tabidir.
+- Güven modeli: harici dinleyici için aynı işletim sistemi kullanıcısı = güvenilir (VS Code eklentisi
+  AND'ın kendi arayüzüyle eşdeğer erişime sahiptir). AND'ın başlattığı eklentiler ise yalnızca
+  onaylanan izinlerle sınırlıdır. Farklı kullanıcı hesaplarının erişemeyeceği yerel iletişimdir; ağa
+  açık değildir.
 
 ### Yerel depolama
 
@@ -169,7 +181,7 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 - **Bootstrap güveni:** DHT bootstrap node'ları kimlik doğrulaması yapılmadan kullanılır; Sybil saldırısına karşı ek koruma yoktur.
 - **DHT sansürü (GO-2024-3218):** go-libp2p-kad-dht'de düzeltmesi olmayan bilinen bir açık, saldırganın DHT'deki sağlayıcı kayıtlarını bastırarak eş keşfini zorlaştırmasına izin verir. İçeriğin kendisi etkilenmez (her ileti imzalıdır); en kötü durumda bazı eşler birbirini DHT üzerinden bulamaz. mDNS ile yerel ağdaki eşler ve zaten bağlı olanlar etkilenmez. govulncheck'in bildirdiği tek açıktır; düzeltme yayınlanınca güncellenecek.
 - **DM şifrelemesi:** Özel mesajlar yalnızca Noise transport şifrelemesiyle korunur; uçtan uca şifreleme yoktur.
-- **DM geçmişi:** AND, oturum boyunca gelen ve giden özel mesajları (en fazla 500) yalnızca bellekte tutar ve eklenti API'si (`/api/v1/dm/history`) üzerinden verir; diske yazılmaz, AND kapanınca silinir. Bu uç noktayı yüklü her eklenti (ve `AND_ENABLE_EXTERNAL_API=1` iken harici süreçler) okuyabilir; güvenmediğin eklentiyi kurma. Özel Chat yalnızca hangi konuşmayı en son ne zaman okuduğunu (`ozel_chat_okundu.json`, mesaj içeriği olmadan) diske yazar.
+- **DM geçmişi:** AND, oturum boyunca gelen ve giden özel mesajları (en fazla 500) yalnızca bellekte tutar ve eklenti API'si (`/api/v1/dm/history`) üzerinden verir; diske yazılmaz, AND kapanınca silinir. Bu uç noktayı yalnızca `dm` izni onaylanmış eklentiler (ve `AND_ENABLE_EXTERNAL_API=1` iken harici süreçler) okuyabilir. Özel Chat yalnızca hangi konuşmayı en son ne zaman okuduğunu (`ozel_chat_okundu.json`, mesaj içeriği olmadan) diske yazar.
 - **Tek kurucu anahtarı:** Tüm moderasyon yetkisi tek bir kurucu Ed25519 anahtarına dayanır — çoklu imza, yedek kurucu ya da anahtar döndürme (rotation) mekanizması yoktur. Kurucunun `identity.dat`'ı kaybolur/çalınırsa, moderasyon yetkisi kalıcı olarak devredilemez hale gelir; bu, `identity.dat`'ın (ve varsa yedeklerinin) güvenliğini kritik önemli kılar.
 - **Moderatör sertifikası dağıtımı ve keşfi:** Bir sertifika, kurucunun onu ilgili kişiye elle (ör. Özel Chat ile) iletmesini gerektirir; ağda "şu anki moderatörler kimler" sorusuna cevap verecek yayınlanmış bir kayıt yoktur (bkz. Yönetici Paneli eklentisinin "Moderatörler" sekmesi — bu yalnızca YEREL, o düğümün kendi verdiği sertifikaların defteridir).
 - **Yerel denetim geçmişi tahrif edilebilir:** `mod_history.json` imza doğrulamalı değildir, yalnızca yerel bir kayıt kolaylığıdır; diskine erişimi olan biri bu dosyayı düzenleyebilir/silebilir. Gerçek ban/unban kararlarının kendisi (ağa yayılan `BanMsg`/`UnbanMsg`) her zaman imzalıdır ve bundan etkilenmez.

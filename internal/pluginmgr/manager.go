@@ -34,6 +34,9 @@ func (p *Plugin) Launch(apiAddr, apiToken, dataDir string, extraEnv ...string) *
 
 type pluginsState struct {
 	Disabled []string `json:"disabled"`
+	// Izinler, kullanıcının eklenti başına onayladığı izinlerdir (bkz.
+	// pluginapi.IzinBilgileri).
+	Izinler map[string][]string `json:"approved_permissions,omitempty"`
 }
 
 const stateFile = "plugins_state.json"
@@ -94,12 +97,80 @@ func SaveState(plugins []Plugin, dataDir string) error {
 			disabled = append(disabled, p.Name())
 		}
 	}
-	st := pluginsState{Disabled: disabled}
+	// Diğer alanları (izin onayları) korumak için önce mevcut durum okunur.
+	st := loadState(dataDir)
+	st.Disabled = disabled
+	return writeState(dataDir, st)
+}
+
+func writeState(dataDir string, st pluginsState) error {
 	data, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dataDir, stateFile), data, 0o600)
+}
+
+// IzinOnayli, kullanıcının eklenti için istenen izinlerin hepsini daha önce
+// onaylayıp onaylamadığını söyler. İzin istemeyen eklenti için her zaman
+// true'dur. Eklenti bir güncellemede yeni bir izin isterse yeniden sorulur.
+func IzinOnayli(dataDir, eklenti string, istenen []string) bool {
+	if len(istenen) == 0 {
+		return true
+	}
+	onayli := map[string]bool{}
+	for _, iz := range loadState(dataDir).Izinler[eklenti] {
+		onayli[iz] = true
+	}
+	for _, iz := range istenen {
+		if !onayli[iz] {
+			return false
+		}
+	}
+	return true
+}
+
+// OnayliIzinler, eklenti için onaylanmış izinlerdir.
+func OnayliIzinler(dataDir, eklenti string) []string {
+	return loadState(dataDir).Izinler[eklenti]
+}
+
+// IzinOnayla, eklenti için onaylanan izinleri (öncekilerin yerine) kaydeder.
+func IzinOnayla(dataDir, eklenti string, izinler []string) error {
+	if dataDir == "" {
+		return nil
+	}
+	st := loadState(dataDir)
+	if st.Izinler == nil {
+		st.Izinler = map[string][]string{}
+	}
+	st.Izinler[eklenti] = append([]string(nil), izinler...)
+	return writeState(dataDir, st)
+}
+
+// IzinleriGeriAl, eklentinin izin onayını siler; bir sonraki açılışta
+// kullanıcıya yeniden sorulur.
+func IzinleriGeriAl(dataDir, eklenti string) error {
+	if dataDir == "" {
+		return nil
+	}
+	st := loadState(dataDir)
+	if _, ok := st.Izinler[eklenti]; !ok {
+		return nil
+	}
+	delete(st.Izinler, eklenti)
+	return writeState(dataDir, st)
+}
+
+// Uyumlu, eklentinin bu AND'ın eklenti API'siyle çalışıp çalışamayacağını
+// söyler: manifest'teki min_api, AND'ın APIVersion'ından büyükse eklenti
+// daha yeni bir AND ister.
+func Uyumlu(p Plugin) error {
+	if p.Manifest.MinAPI > pluginapi.APIVersion {
+		return fmt.Errorf("%s daha yeni bir AND istiyor (eklenti API %d, bu AND %d); AND'ı güncelle",
+			p.Label(), p.Manifest.MinAPI, pluginapi.APIVersion)
+	}
+	return nil
 }
 
 // discoverEklentiler her alt dizinde plugin.json + and-plugin-<isim>[.exe] arar.
@@ -238,6 +309,9 @@ func sanitizeManifest(m *pluginapi.Manifest) {
 	m.Description = sanitizeManifestText(m.Description)
 	m.Author = sanitizeManifestText(m.Author)
 	m.Category = sanitizeManifestText(m.Category)
+	// Tanınmayan izin adları hiçbir şeye yetki vermez; onay ekranında da
+	// gösterilmesinler diye burada atılır.
+	m.Permissions = pluginapi.BilinenIzinler(m.Permissions)
 }
 
 func sanitizeManifestText(s string) string {

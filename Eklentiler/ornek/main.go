@@ -48,6 +48,7 @@ var manifest = pluginapi.Manifest{
 	Version:     "1.1.0",
 	Description: "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici referansı",
 	Author:      "AND",
+	Permissions: []string{pluginapi.IzinForum, pluginapi.IzinModerasyon, pluginapi.IzinDM},
 }
 
 // ─── Giriş noktası ────────────────────────────────────────────────────────────

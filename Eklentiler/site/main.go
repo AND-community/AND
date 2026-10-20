@@ -29,6 +29,7 @@ var manifest = pluginapi.Manifest{
 	Version:     "1.2.0",
 	Description: "Kendi çok sayfalı kişisel sitenizi oluşturun, düzenleyin ve yayınlayın",
 	Author:      "AND",
+	Permissions: []string{pluginapi.IzinSite},
 }
 
 func main() {

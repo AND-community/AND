@@ -574,18 +574,22 @@ go build -o and-plugin-meklentim ./Eklentiler/meklentim
 # AND bir sonraki başlatmada eklentiyi otomatik keşfeder
 ```
 
+Eklentiler yalnızca istedikleri izinlerle çalışır: `plugin.json`'daki `permissions` alanı (ör.
+`["dm", "file"]`) ilk açılışta kullanıcıya sorulur; herkese açık içeriği okumak izin istemez. İzin
+listesi ve uç noktaları için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
+
 ---
 
 ## Ekosistem
 
-**AND Arama Motoru** (`AND arama motoru/`, AND'ın Go modülünün dışında, ayrı bir bağımsız program), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın kaynak kodunu import etmez, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — yalnızca **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan, iki ayrı program.
+**AND Arama Motoru** (`arama-motoru/`, aynı depoda ama kendi Go modülüyle ayrı, bağımsız bir program), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın kaynak kodunu import etmez, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — yalnızca **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan, iki ayrı program.
 
 Aynı aileden olduklarını gösteren ortak noktalar:
 - Aynı ANSI 256 renk paleti (accent/hata/başarı/soluk tonları — bkz. `internal/tui/styles.go`'daki `colorAccent` vb.) ve aynı "AND" blok-harf logosu.
 - Kimlik türetme şeması bire bir aynı (BIP-39 mnemonic → Ed25519), ama iki program birbirinden TAMAMEN bağımsız kimliklere sahiptir.
 - Forum/sohbet/kişisel-site protokollerinin imza payload biçimleri ve GossipSub konu adları bire bir aynı — bu yüzden Arama Motoru, AND'ın ürettiği içeriği doğrulayıp indeksleyebilir.
 
-Ayrıntılar için `AND arama motoru/README.md`'ye bak.
+Ayrıntılar için [arama-motoru/README.md](arama-motoru/README.md)'ye bak.
 
 ---
 

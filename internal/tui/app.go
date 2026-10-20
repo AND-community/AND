@@ -39,6 +39,7 @@ const (
 	screenChat
 	screenChatProfile
 	screenSettings
+	screenIzin // eklenti izin onayı (bkz. izin.go)
 )
 
 type chatMsg struct {
@@ -104,9 +105,8 @@ type appModel struct {
 	identity *stdcrypto.Identity
 	node     *network.Node
 
-	plugins  []pluginmgr.Plugin
-	apiAddr  string
-	apiToken string
+	plugins []pluginmgr.Plugin
+	apiAddr string
 
 	forumStore   *forum.Forum
 	profileStore *profile.Store
@@ -188,6 +188,9 @@ type appModel struct {
 	// "Orman teması uygulandı") — Bilgi sekmesinin profileNotice'ından ayrı.
 	settingsNotice string
 
+	// izinIstegi, onay ekranında (screenIzin) bekleyen eklenti başlatmasıdır.
+	izinIstegi *izinIstegi
+
 	// settingsDiskStatsAt/DBSize/Bans cache syncSettingsVP's disk-derived
 	// "Depolama" fields (os.Stat/os.ReadDir) — see settingsDiskStats. Without
 	// this, every keystroke in Settings (and the 5s peerTickMsg while it's
@@ -228,7 +231,7 @@ type appModel struct {
 type themeChangedMsg struct{ theme ThemeConfig }
 
 func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr, apiToken string,
+	plugins []pluginmgr.Plugin, apiAddr string,
 	forumStore *forum.Forum, profileStore *profile.Store, siteStore *site.Store, dataDir string,
 	chatStore *chatlog.Store, mod *moderation.Moderator, modTopic *network.Topic,
 	updateCh <-chan UpdateReadyMsg, themeCh <-chan pluginapi.ThemeReq) error {
@@ -236,7 +239,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 	loadAndApplyTheme(dataDir)
 	ui.FrameTag = updater.Version
 
-	m := newAppModel(ctx, id, node, plugins, apiAddr, apiToken, forumStore, profileStore, siteStore, dataDir, chatStore, mod, modTopic)
+	m := newAppModel(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dataDir, chatStore, mod, modTopic)
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
 
 	if updateCh != nil {
@@ -295,7 +298,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 }
 
 func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
-	plugins []pluginmgr.Plugin, apiAddr, apiToken string,
+	plugins []pluginmgr.Plugin, apiAddr string,
 	forumStore *forum.Forum, profileStore *profile.Store, siteStore *site.Store, dataDir string, chatStore *chatlog.Store,
 	mod *moderation.Moderator, modTopic *network.Topic) appModel {
 
@@ -377,7 +380,6 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		node:            node,
 		plugins:         plugins,
 		apiAddr:         apiAddr,
-		apiToken:        apiToken,
 		forumStore:      forumStore,
 		profileStore:    profileStore,
 		siteStore:       siteStore,
@@ -713,20 +715,13 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m appModel) launchPlugin(name string, extraEnv []string) (tea.Model, tea.Cmd) {
-	for i := range m.plugins {
-		if m.plugins[i].Name() != name {
-			continue
-		}
-		cmd := m.plugins[i].Launch(m.apiAddr, m.apiToken, m.dataDir, extraEnv...)
-		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return pluginExitMsg{name: name, err: err}
-		})
-	}
-	return m, nil
+	return m.eklentiAc(m.eklentiIndeksi(name), extraEnv)
 }
 
 func (m appModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.screen {
+	case screenIzin:
+		return m.handleIzinKey(msg)
 	case screenMenu:
 		return m.handleMenuKey(msg)
 	case screenChat:
@@ -790,13 +785,7 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsIdx = 0
 			m.syncSettingsVP()
 		case pl != nil:
-			if !pl.Enabled {
-				return m, nil
-			}
-			cmd := pl.Launch(m.apiAddr, m.apiToken, m.dataDir)
-			return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-				return pluginExitMsg{name: pl.Name(), err: err}
-			})
+			return m.eklentiAc(m.eklentiIndeksi(pl.Name()), nil)
 		}
 	}
 	return m, nil
@@ -1178,6 +1167,8 @@ func (m appModel) View() string {
 		return m.viewChatProfile()
 	case screenSettings:
 		return m.viewSettings()
+	case screenIzin:
+		return m.viewIzin()
 	default:
 		return m.viewMenu()
 	}
@@ -1415,13 +1406,19 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.restyleInputs()
 				m.settingsNotice = t.ThemeName + " teması uygulandı"
 			} else if i := m.settingsIdx - onek; i < len(list) {
-				pl := &m.plugins[list[i]]
-				if pl.Enabled {
-					cmd := pl.Launch(m.apiAddr, m.apiToken, m.dataDir)
-					m.syncSettingsVP()
-					return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-						return pluginExitMsg{name: pl.Name(), err: err}
-					})
+				m.syncSettingsVP()
+				return m.eklentiAc(list[i], nil)
+			}
+		case "r":
+			// Eklentinin izin onayını geri al: bir sonraki açılışta yeniden sorulur.
+			if i := m.settingsIdx - onek; i >= 0 && i < len(list) {
+				pl := m.plugins[list[i]]
+				if len(pl.Manifest.Permissions) > 0 && pluginmgr.IzinOnayli(m.dataDir, pl.Name(), pl.Manifest.Permissions) {
+					if err := pluginmgr.IzinleriGeriAl(m.dataDir, pl.Name()); err != nil {
+						m.settingsNotice = "İzinler geri alınamadı: " + err.Error()
+					} else {
+						m.settingsNotice = pluginui.Safe(pl.Label()) + " için verilen izinler geri alındı; bir sonraki açılışta yeniden sorulacak"
+					}
 				}
 			}
 		}
@@ -1737,6 +1734,9 @@ func (m appModel) eklentiSatiri(w int, secili bool, pl pluginmgr.Plugin) string 
 	if secili && mf.Description != "" {
 		satir += "    " + ui.S.Muted.Render(ui.Truncate(pluginui.Safe(mf.Description), w-4)) + "\n"
 	}
+	if secili && mf.Category != "theme" {
+		satir += "    " + ui.S.Muted.Render(ui.Truncate(m.izinOzeti(pl), w-4)) + "\n"
+	}
 	return satir
 }
 
@@ -1983,7 +1983,7 @@ func (m appModel) viewSettings() string {
 		hints = []ui.Hint{ui.H("↑↓", "kaydır"), ui.H("b/s/w", "bio/durum/bağlantı"), ui.H("t", "etiketler"),
 			ui.H("v", "GitHub doğrula"), ui.H("m", "kurtarma kodu"), sekme, geri}
 	case m.settingsTab == 1:
-		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("space", "aç/kapat"), sekme, geri}
+		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("space", "aç/kapat"), ui.H("r", "izinleri geri al"), sekme, geri}
 	default:
 		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("enter", "uygula"), ui.H("space", "eklentiyi aç/kapat"), sekme, geri}
 	}
