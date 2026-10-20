@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -372,7 +373,7 @@ func run() error {
 	restartCh := make(chan struct{}, 1)
 	// AND_AUTO_UPDATE=0 ile kapatılabilir; varsayılan (tanımsız/başka değer) açıktır.
 	if os.Getenv("AND_AUTO_UPDATE") != "0" {
-		go autoUpdate(ctx, updateCh, restartCh)
+		go autoUpdate(ctx, updateCh, restartCh, eklentiHedefleri(plugins))
 	}
 
 	// Tam ekran TUI açıkken terminale yazılan her satır ekranı bozar:
@@ -393,7 +394,20 @@ func run() error {
 	return nil
 }
 
-func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restartCh chan<- struct{}) {
+// eklentiHedefleri, otomatik güncellemenin AND ile birlikte güncelleyeceği
+// kurulu eklentilerdir.
+func eklentiHedefleri(plugins []pluginmgr.Plugin) []updater.EklentiHedefi {
+	out := make([]updater.EklentiHedefi, 0, len(plugins))
+	for _, p := range plugins {
+		out = append(out, updater.EklentiHedefi{Ad: p.Name(), ExeYolu: p.ExePath})
+	}
+	return out
+}
+
+// autoUpdate, yeni bir sürüm varsa AND'ı ve aynı sürümde yayınlanan
+// eklentileri günceller. Hatalar log'a yazılır: TUI açıkken log and.log'a
+// gider, stderr'e yazmak tam ekran arayüzü bozardı.
+func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restartCh chan<- struct{}, eklentiler []updater.EklentiHedefi) {
 	select {
 	case <-ctx.Done():
 		return
@@ -408,11 +422,18 @@ func autoUpdate(ctx context.Context, updateCh chan<- tui.UpdateReadyMsg, restart
 	applyCtx, cancel2 := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel2()
 	if err := updater.Apply(applyCtx, info); err != nil {
-		fmt.Fprintln(os.Stderr, "updater:", err)
+		log.Printf("updater: %v", err)
 		return
 	}
+	// Eklentiler AND'la aynı sürümden güncellenir; böylece eklenti API'si ile
+	// eklentiler birbirinden kopmaz. Bir eklentinin güncellenememesi AND'ın
+	// güncellemesini geri almaz.
+	guncellenen, hatalar := updater.ApplyPlugins(applyCtx, info, eklentiler)
+	for _, e := range hatalar {
+		log.Printf("updater: eklenti: %v", e)
+	}
 	select {
-	case updateCh <- tui.UpdateReadyMsg{Version: info.TagName}:
+	case updateCh <- tui.UpdateReadyMsg{Version: info.TagName, Eklentiler: len(guncellenen)}:
 	default:
 	}
 	select {

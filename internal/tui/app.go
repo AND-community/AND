@@ -50,7 +50,12 @@ type chatMsg struct {
 }
 type chatClosedMsg struct{}
 
-type UpdateReadyMsg struct{ Version string }
+// UpdateReadyMsg, yeni sürümün indirildiğini bildirir; Eklentiler, aynı
+// sürümle güncellenen eklenti sayısıdır.
+type UpdateReadyMsg struct {
+	Version    string
+	Eklentiler int
+}
 
 type peerTickMsg time.Time
 
@@ -469,6 +474,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case UpdateReadyMsg:
 		m.updateNotice = msg.Version + " indirildi — çıkışta otomatik yenilenir"
+		if msg.Eklentiler > 0 {
+			m.updateNotice = fmt.Sprintf("%s ve %d eklenti indirildi — çıkışta otomatik yenilenir", msg.Version, msg.Eklentiler)
+		}
 		return m, nil
 
 	case themeChangedMsg:

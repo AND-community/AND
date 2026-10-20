@@ -100,7 +100,7 @@ func Apply(ctx context.Context, info *ReleaseInfo) error {
 	// Adresler GitHub API yanıtından gelir; yalnızca HTTPS üzerinden ve
 	// GitHub'ın kendi alan adlarından indirilir.
 	for _, a := range info.Assets {
-		if (a.Name == name || a.Name == checksumAssetName || a.Name == signatureAssetName) && !guvenliIndirmeAdresi(a.BrowserDownloadURL) {
+		if (a.Name == name || a.Name == checksumAssetName || a.Name == signatureAssetName) && !indirmeAdresiGuvenli(a.BrowserDownloadURL) {
 			return fmt.Errorf("güvenilmeyen indirme adresi: %s", a.BrowserDownloadURL)
 		}
 	}
@@ -208,26 +208,10 @@ func imzaDogrula(ctx context.Context, info *ReleaseInfo, sums []byte) error {
 // bir kayıt bulunamazsa doğrulama BAŞARISIZ sayılır (fail-closed) — eski
 // (bu alanı henüz üretmeyen) bir release'e karşı sessizce atlanmaz.
 func verifyChecksum(ctx context.Context, info *ReleaseInfo, assetName, filePath string) error {
-	var sumsURL string
-	for _, a := range info.Assets {
-		if a.Name == checksumAssetName {
-			sumsURL = a.BrowserDownloadURL
-			break
-		}
-	}
-	if sumsURL == "" {
-		return fmt.Errorf("bu sürümde %s bulunamadı", checksumAssetName)
-	}
-	raw, err := fetchSmall(ctx, sumsURL, 1<<16) // SHA256SUMS.txt küçük bir metin dosyasıdır
+	sums, err := ozetleriAl(ctx, info)
 	if err != nil {
-		return fmt.Errorf("%s indirilemedi: %w", checksumAssetName, err)
+		return err
 	}
-	if UpdateSigningKeyHex != "" {
-		if err := imzaDogrula(ctx, info, raw); err != nil {
-			return err
-		}
-	}
-	sums := parseChecksums(raw)
 	want, ok := sums[assetName]
 	if !ok {
 		return fmt.Errorf("%s içinde %s için kayıt yok", checksumAssetName, assetName)
@@ -240,6 +224,36 @@ func verifyChecksum(ctx context.Context, info *ReleaseInfo, assetName, filePath 
 		return fmt.Errorf("özet uyuşmuyor (beklenen %s, hesaplanan %s) — dosya bozuk ya da değiştirilmiş olabilir", want, got)
 	}
 	return nil
+}
+
+// ozetleriAl, sürümün SHA256SUMS.txt'sini indirir; derlemeye bir imza anahtarı
+// gömülüyse önce imzasını doğrular. Dönen eşleme dosya adı → beklenen özettir.
+// AND'ın kendisi ve eklentiler aynı doğrulanmış özet dosyasına karşı denetlenir.
+func ozetleriAl(ctx context.Context, info *ReleaseInfo) (map[string]string, error) {
+	sumsURL := assetURL(info, checksumAssetName)
+	if sumsURL == "" {
+		return nil, fmt.Errorf("bu sürümde %s bulunamadı", checksumAssetName)
+	}
+	raw, err := fetchSmall(ctx, sumsURL, 1<<16) // SHA256SUMS.txt küçük bir metin dosyasıdır
+	if err != nil {
+		return nil, fmt.Errorf("%s indirilemedi: %w", checksumAssetName, err)
+	}
+	if UpdateSigningKeyHex != "" {
+		if err := imzaDogrula(ctx, info, raw); err != nil {
+			return nil, err
+		}
+	}
+	return parseChecksums(raw), nil
+}
+
+// assetURL, sürümde adı verilen dosyanın indirme adresidir; yoksa "".
+func assetURL(info *ReleaseInfo, name string) string {
+	for _, a := range info.Assets {
+		if a.Name == name {
+			return a.BrowserDownloadURL
+		}
+	}
+	return ""
 }
 
 // fetchSmall, url'deki küçük bir dosyayı (en fazla limit bayt) indirir.

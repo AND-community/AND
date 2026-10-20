@@ -133,6 +133,10 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   `UPDATE_SIGNING_KEY` sırrındadır. Genel anahtar dosyası varken sır eksikse ya da eşleşmiyorsa sürüm
   yayınlanmaz; böylece imzasız, dolayısıyla güncellenemeyen bir sürüm çıkmaz. Kurulum komutları
   `.github/workflows/release.yml`'deki "Özet dosyasını imzala" adımındadır.
+- AND güncellenince aynı sürümle yayınlanan eklentiler de güncellenir; her eklenti dosyası ve manifest'i
+  aynı (imzası doğrulanmış) `SHA256SUMS.txt`'ye karşı denetlenir. Sürümde dosyası olmayan eklentilere
+  (ör. üçüncü taraf) dokunulmaz; doğrulanamayan bir eklenti eski haliyle kalır. Yeni sürüm yeni bir izin
+  isterse kullanıcıya bir sonraki açılışta yeniden sorulur.
 - Sürüm imzalama genel anahtarı (Ed25519, hex):
   `40f36782755018ac90475013594691b41886813ab842148d537b4f44fddd89a4`. Bir sürümün
   `SHA256SUMS.txt.sig` dosyasını bu anahtarla kendin de doğrulayabilirsin. Anahtar değişirse bu
