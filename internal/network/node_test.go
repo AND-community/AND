@@ -89,10 +89,14 @@ func TestPubSub_PublishAndReceive(t *testing.T) {
 	}
 	defer topicB.Close()
 
-	// Give GossipSub's mesh a moment to form after the topic join before
-	// publishing, otherwise the message can be sent before B is a known
-	// subscriber.
-	time.Sleep(500 * time.Millisecond)
+	// Sabit bir süre uyumak yerine iki tarafın birbirinin aboneliğini görmesi
+	// beklenir: yük altında GossipSub aboneliği o süreden geç duyurabilir.
+	if err := topicA.AboneyiBekle(ctx, nodeB.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := topicB.AboneyiBekle(ctx, nodeA.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
 
 	const want = "hello from node A"
 	if err := topicA.Publish(ctx, []byte(want)); err != nil {

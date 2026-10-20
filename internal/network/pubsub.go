@@ -3,9 +3,12 @@ package network
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/lucian95511/and/protokol"
 )
@@ -20,6 +23,13 @@ func NewPubSub(ctx context.Context, h host.Host) (*pubsub.PubSub, error) {
 		pubsub.WithMaxMessageSize(64*1024),
 		pubsub.WithMessageSigning(true),
 		pubsub.WithStrictSignatureVerification(true),
+		// Düğümün KENDİ iletileri (konu, yanıt, sohbet, ban) konuya abone
+		// olan tüm eşlere gider, yalnızca mesh'tekilere değil. go-libp2p-pubsub
+		// 0.16'da bu varsayılan olarak kapalı; kapalıyken mesh ilk heartbeat'te
+		// (~1 sn) kurulana kadar yayımlanan ileti hiçbir eşe ulaşmaz — ör. bir
+		// eşe yeni bağlanmışken yazılan konu kaybolur. AND ağı küçük olduğundan
+		// maliyeti düşüktür; GossipSub v1.1 de kendi iletileri için bunu önerir.
+		pubsub.WithFloodPublish(true),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("network: start pubsub: %w", err)
@@ -77,6 +87,26 @@ func (t *Topic) Messages(ctx context.Context) <-chan []byte {
 
 func (t *Topic) Close() {
 	t.sub.Cancel()
+}
+
+// AboneyiBekle, p'nin bu konuya abone olduğu bu düğüm tarafından görülene
+// kadar bekler. GossipSub bir iletiyi yalnızca aboneliğini bildiği eşlere
+// iletir; bağlandıktan hemen sonra yayımlanan ileti, karşı tarafın aboneliği
+// henüz duyulmadıysa ona hiç ulaşmaz. Sabit bir süre uyumak yerine bu
+// beklenir (testler yük altındayken o süre yetmeyebilir).
+func (t *Topic) AboneyiBekle(ctx context.Context, p peer.ID) error {
+	tik := time.NewTicker(20 * time.Millisecond)
+	defer tik.Stop()
+	for {
+		if slices.Contains(t.topic.ListPeers(), p) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("network: %s konuya abone görünmedi: %w", p, ctx.Err())
+		case <-tik.C:
+		}
+	}
 }
 
 // NewSubscriber, AYNI zaten-join-edilmiş pubsub topic'i üzerinde BAĞIMSIZ

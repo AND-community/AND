@@ -299,7 +299,14 @@ func TestIssueModDelete_FounderPath_AppliesLocallyAndPublishes(t *testing.T) {
 		t.Fatalf("JoinTopic (B): %v", err)
 	}
 	t.Cleanup(topicB.Close)
-	time.Sleep(300 * time.Millisecond)
+	// Sabit bir süre uyumak yerine iki tarafın birbirinin aboneliğini görmesi
+	// beklenir: yük altında GossipSub aboneliği o süreden geç duyurabilir.
+	if err := topicA.AboneyiBekle(ctx, nodeB.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := topicB.AboneyiBekle(ctx, nodeA.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
 
 	fA, err := New(idA, topicA, filepath.Join(t.TempDir(), "forum.db"))
 	if err != nil {

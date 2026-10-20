@@ -85,7 +85,14 @@ func twoConnectedTopics(t *testing.T, topicName string) (topicA, topicB *network
 	t.Cleanup(topicB.Close)
 
 	// GossipSub mesh'inin (peer keşfi + grafting) oturması için kısa bir süre.
-	time.Sleep(300 * time.Millisecond)
+	// Sabit bir süre uyumak yerine iki tarafın birbirinin aboneliğini görmesi
+	// beklenir: yük altında GossipSub aboneliği o süreden geç duyurabilir.
+	if err := topicA.AboneyiBekle(ctx, nodeB.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := topicB.AboneyiBekle(ctx, nodeA.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
 
 	return topicA, topicB, ctx
 }

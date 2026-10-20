@@ -88,7 +88,14 @@ func TestHandleMessage_PostFromModeratorBannedAuthorRejected(t *testing.T) {
 		t.Fatalf("JoinTopic (B): %v", err)
 	}
 	t.Cleanup(modTopicB.Close)
-	time.Sleep(300 * time.Millisecond) // gossipsub mesh'inin oturması için
+	// Sabit bir süre uyumak yerine iki tarafın birbirinin aboneliğini görmesi
+	// beklenir: yük altında GossipSub aboneliği o süreden geç duyurabilir.
+	if err := modTopicA.AboneyiBekle(ctx, nodeB.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := modTopicB.AboneyiBekle(ctx, nodeA.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
 
 	modB.Start(ctx, modTopicB)
 
@@ -221,7 +228,14 @@ func TestSyncWithPeer_PostFromModeratorBannedAuthorRejected(t *testing.T) {
 		t.Fatalf("JoinTopic (B): %v", err)
 	}
 	t.Cleanup(modTopicB.Close)
-	time.Sleep(300 * time.Millisecond)
+	// Sabit bir süre uyumak yerine iki tarafın birbirinin aboneliğini görmesi
+	// beklenir: yük altında GossipSub aboneliği o süreden geç duyurabilir.
+	if err := modTopicA.AboneyiBekle(ctx, nodeB.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if err := modTopicB.AboneyiBekle(ctx, nodeA.Host.ID()); err != nil {
+		t.Fatal(err)
+	}
 
 	modB.Start(ctx, modTopicB)
 
