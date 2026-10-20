@@ -1,0 +1,38 @@
+# Local, per-device kimlik/veri dosyaları — varsayılan veri dizini ~/.and-arama-motoru
+# olsa da, geliştirme sırasında -veri-dir ile depo içine yönlendirilebilir; never commit.
+kimlik.json
+bilinen_peerler.json
+tema.json
+gunluk.log
+gunluk.log.old
+
+# Arama indeksi (SQLite + WAL/journal dosyaları).
+*.db
+*.db-wal
+*.db-journal
+*.db-shm
+
+# Build artifacts.
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace.
+go.work
+go.work.sum
+
+# Editor / OS noise.
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+.env
+
+# Yerel derlemeler (ör. macOS için uzantısız ikili).
+/and-arama-motoru
