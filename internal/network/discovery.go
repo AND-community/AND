@@ -21,11 +21,13 @@ import (
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const Rendezvous = "and-community/1.0.0"
+const Rendezvous = protokol.Rendezvous
 
-const mdnsServiceTag = "and-community-mdns"
+const mdnsServiceTag = protokol.MDNSEtiketi
 
 const (
 	dhtRefreshInterval        = 30 * time.Second

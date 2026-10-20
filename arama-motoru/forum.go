@@ -24,9 +24,11 @@ import (
 
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const forumSyncProtokolu = "/and/sync/1.0.0"
+const forumSyncProtokolu = protokol.ForumSenkronProtokolu
 const forumSyncZamanAsimi = 30 * time.Second
 const maxForumSyncYanitBayt = 48 * 1024 * 1024
 

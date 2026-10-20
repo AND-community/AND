@@ -6,11 +6,13 @@ import (
 
 	"github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
+
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
-	ForumTopic = "github.com/lucian95511/and/forum"
-	ChatTopic  = "github.com/lucian95511/and/chat"
+	ForumTopic = protokol.ForumKonusu
+	ChatTopic  = protokol.SohbetKonusu
 )
 
 func NewPubSub(ctx context.Context, h host.Host) (*pubsub.PubSub, error) {

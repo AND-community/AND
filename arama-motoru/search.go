@@ -53,9 +53,11 @@ import (
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const aramaProtokolu = "/and-arama-motoru/1.0.0"
+const aramaProtokolu = protokol.AramaProtokolu
 const aramaZamanAsimi = 20 * time.Second
 const maxAramaIstekBayt = 4 * 1024
 const maxAramaYanitBayt = 4 * 1024 * 1024

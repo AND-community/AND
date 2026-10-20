@@ -10,6 +10,8 @@ import (
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
@@ -22,7 +24,7 @@ const (
 // forum history. When a peer connects, we open a stream, send them the
 // post IDs we already have, and they reply with any posts/replies we're
 // missing — catching us up on everything we missed while offline.
-const SyncProtocol = "/and/sync/1.0.0"
+const SyncProtocol = protokol.ForumSenkronProtokolu
 
 // syncTimeout bounds how long a single sync exchange may take.
 const syncTimeout = 30 * time.Second

@@ -26,9 +26,11 @@ import (
 
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const siteSyncProtokolu = "/and/sitesync/1.0.0"
+const siteSyncProtokolu = protokol.SiteSenkronProtokolu
 const siteSyncZamanAsimi = 30 * time.Second
 const maxSiteSyncYanitBayt = 32 * 1024 * 1024
 

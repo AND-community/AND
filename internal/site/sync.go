@@ -17,6 +17,8 @@ import (
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
@@ -26,7 +28,7 @@ const (
 
 // SyncProtocol is the libp2p stream protocol AND nodes use to exchange
 // personal-site history.
-const SyncProtocol = "/and/sitesync/1.0.0"
+const SyncProtocol = protokol.SiteSenkronProtokolu
 
 const syncTimeout = 30 * time.Second
 

@@ -29,16 +29,18 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-// AND'ın internal/network paketiyle bire bir aynı olmalı — aksi halde bu
-// program AND ağındaki eşleri hiç bulamaz.
+// Değerler AND ile paylaşılan protokol paketinden gelir: AND'la bire bir aynı
+// olmasalar bu program AND ağındaki eşleri hiç bulamazdı.
 const (
-	forumTopicAdi  = "github.com/lucian95511/and/forum"
-	chatTopicAdi   = "github.com/lucian95511/and/chat"
-	siteTopicAdi   = "github.com/lucian95511/and/site/1.0.0"
-	rendezvous     = "and-community/1.0.0"
-	mdnsServisEtik = "and-community-mdns"
+	forumTopicAdi  = protokol.ForumKonusu
+	chatTopicAdi   = protokol.SohbetKonusu
+	siteTopicAdi   = protokol.SiteKonusu
+	rendezvous     = protokol.Rendezvous
+	mdnsServisEtik = protokol.MDNSEtiketi
 )
 
 var varsayilanDinlemeAdresleri = []string{

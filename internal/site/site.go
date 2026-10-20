@@ -35,10 +35,11 @@ import (
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/timewin"
+	"github.com/lucian95511/and/protokol"
 )
 
 // SiteTopic is the GossipSub topic page publish/delete messages travel on.
-const SiteTopic = "github.com/lucian95511/and/site/1.0.0"
+const SiteTopic = protokol.SiteKonusu
 
 // Alan boyut/sayı sınırları — forum'un title/body limitleriyle aynı ruhta.
 // Exported so the TUI can align input CharLimits/textarea limits and live

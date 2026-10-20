@@ -20,10 +20,11 @@ import (
 	"time"
 
 	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/protokol"
 )
 
-const DMProtocol = "/and/dm/1.0.0"
-const FileProtocol = "/and/file/2.0.0"
+const DMProtocol = protokol.DMProtokolu
+const FileProtocol = protokol.DosyaProtokolu
 
 // MaxFileBytes is the maximum raw file size accepted for transfer (20 GB).
 const MaxFileBytes = 20 * 1024 * 1024 * 1024

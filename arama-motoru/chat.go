@@ -16,9 +16,11 @@ import (
 
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const chatSyncProtokolu = "/and/chatsync/1.0.0"
+const chatSyncProtokolu = protokol.SohbetSenkronProtokolu
 const chatSyncZamanAsimi = 30 * time.Second
 const maxChatSyncYanitBayt = 16 * 1024 * 1024
 

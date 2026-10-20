@@ -21,9 +21,11 @@ import (
 	lp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
+
+	"github.com/lucian95511/and/protokol"
 )
 
-const ModerationTopic = "github.com/lucian95511/and/moderation/1.0.0"
+const ModerationTopic = protokol.ModerasyonKonusu
 
 const FounderKeyFile = "founder.key"
 

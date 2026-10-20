@@ -118,7 +118,7 @@ yazimonerisi.go   — Levenshtein tabanlı "şunu mu demek istediniz?"
 main.go           — bayrak ayrıştırma, yaşam döngüsü, sıralı kapanış
 ```
 
-Genel kural: bu proje AND'ın kaynak kodunu **import etmez** (Go paket görünürlük kuralları buna izin vermez) ve AND'ı alt-süreç olarak da **çalıştırmaz** — protokol uyumluluğu tamamen elle senkronize tutulan bağımsız kodla sağlanır.
+Genel kural: bu proje AND'ın iç (`internal/`) paketlerini **kullanmaz** ve AND'ı alt-süreç olarak da **çalıştırmaz**. AND'la paylaşılan tek kod, standart kütüphane dışında bağımlılığı olmayan `protokol` paketidir (konu adları, protokol kimlikleri, kategoriler). İleti ve imza biçimlerinin uyumu `protokol/testdata/` örnekleriyle test edilir: AND'ın ileti biçimini değiştiren biri örnekleri `AND_ALTIN_GUNCELLE=1` ile yeniden üretir ve bu projenin `protokol_altin_test.go` testleri yeni örnekleri doğrulayana kadar burayı da günceller.
 
 ---
 

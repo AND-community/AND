@@ -10,6 +10,8 @@ import (
 	libp2phost "github.com/libp2p/go-libp2p/core/host"
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
@@ -21,7 +23,7 @@ const (
 // history, mirroring internal/forum's SyncProtocol/RegisterSync/SyncWithPeer
 // shape exactly but for chat messages instead of posts/replies — see that
 // package's sync.go for the reference pattern this was built from.
-const SyncProtocol = "/and/chatsync/1.0.0"
+const SyncProtocol = protokol.SohbetSenkronProtokolu
 
 const syncTimeout = 30 * time.Second
 

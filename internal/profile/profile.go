@@ -27,10 +27,11 @@ import (
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/timewin"
+	"github.com/lucian95511/and/protokol"
 )
 
 // ProfileTopic is the GossipSub topic profile updates are published on.
-const ProfileTopic = "github.com/lucian95511/and/profile/1.0.0"
+const ProfileTopic = protokol.ProfilKonusu
 
 // Alan boyut/say sınırları — forum'un title/body limitleriyle aynı ruhta.
 // Exported so the TUI can align input CharLimits and live counters with the
