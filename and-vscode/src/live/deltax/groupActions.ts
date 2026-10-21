@@ -5,18 +5,37 @@ import { createGroup, deleteGroup, readGroup, saveGroup } from "../../groupProje
 import { GroupItem, ProjectItem } from "../../groupsTreeView";
 import { listAllProjects } from "../../projectLocator";
 import { Grup, Proje, Uye } from "../../types";
+import { gecerliPeerID } from "../dmCore";
 import { requireClient } from "../editorActions";
 import { LiveClient } from "../liveClient";
 import { PeerInfo } from "../liveTypes";
-import { inviteCandidates, isAdmin, isAuthorized, isFounder, setAdmin } from "./groupOps";
+import { inviteCandidates, isAdmin, isAuthorized, isFounder, isMember, setAdmin } from "./groupOps";
 import { fetchSelfUye } from "./identity";
 import { broadcastRoster, push, requestPull, sendCloseNotice, sendInvite, sendLeaveNotice } from "./protocol";
+import { davetEden } from "./zarfIsleyici";
 
 // keys.go'daki grup paneli komutlarının (i üye davet et / y yönetici ata /
 // x gruptan çık-kapat / a-enter Gönder / Çek İste) VS Code komut karşılığı.
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Davet edilecek Peer ID'deki sorun; sorun yoksa undefined. */
+function inviteInputError(peerId: string, grup: Grup, selfPeer: string): string | undefined {
+  if (!peerId) {
+    return "Peer ID boş olamaz";
+  }
+  if (!gecerliPeerID(peerId)) {
+    return "Bu bir Peer ID değil (12D3KooW… ile başlar)";
+  }
+  if (peerId === selfPeer) {
+    return "Kendini davet edemezsin";
+  }
+  if (isMember(grup, peerId)) {
+    return "Bu kişi zaten grubun üyesi";
+  }
+  return undefined;
 }
 
 interface MemberPick extends vscode.QuickPickItem {
@@ -122,19 +141,53 @@ export function registerGroupActions(context: vscode.ExtensionContext, ext: Delt
     }
     if (!peerId) {
       peerId = await vscode.window.showInputBox({
-        prompt: "Davet edilecek Peer ID",
-        validateInput: (v) => (v.trim() ? undefined : "Peer ID boş olamaz"),
+        prompt: "Davet edilecek Peer ID (kişi kendi ID'sini AND'ın Kimlik ekranından paylaşabilir)",
+        validateInput: (v) => inviteInputError(v.trim(), grup, self.peer_id),
       });
     }
+    peerId = peerId?.trim();
     if (!peerId) {
       return;
     }
+    const invalid = inviteInputError(peerId, grup, self.peer_id);
+    if (invalid) {
+      void vscode.window.showErrorMessage(invalid);
+      return;
+    }
+    // Kabul bu kayda göre tanınır; gönderim bitmeden yazılır (bkz. davetGonderiliyor).
+    ext.deltaxSync.davetGonderiliyor(grup.id, peerId);
     try {
-      await sendInvite(client, peerId.trim(), grup, self);
-      ext.deltaxSync.recordSentInvite(grup.id, peerId.trim());
-      void vscode.window.showInformationMessage("Davet gönderildi.");
+      await sendInvite(client, peerId, grup, self);
+      void vscode.window.showInformationMessage("Davet gönderildi. Kişi çevrimdışıysa AND daveti bekletir, bağlandığında iletir.");
     } catch (err) {
       void vscode.window.showErrorMessage(`Davet gönderilemedi: ${describeError(err)}`);
+    }
+  });
+
+  reg("deltax.showInvites", async () => {
+    const pending = ext.deltaxSync.bekleyenDavetler();
+    if (pending.length === 0) {
+      void vscode.window.showInformationMessage("Bekleyen davet yok.");
+      ext.treeProvider.refresh();
+      return;
+    }
+    const invite = await vscode.window.showQuickPick(
+      pending.map((d) => ({
+        label: d.payload.grup_ad,
+        description: `davet eden: ${davetEden(d)}`,
+        detail: `${d.payload.uyeler.length} üye, ${new Date(d.alindi).toLocaleString()} geldi`,
+        d,
+      })),
+      { placeHolder: "Yanıtlanacak davet" }
+    );
+    if (!invite) {
+      return;
+    }
+    const choice = await vscode.window.showQuickPick(["Kabul et", "Reddet"], {
+      placeHolder: `"${invite.d.payload.grup_ad}" daveti`,
+    });
+    if (choice) {
+      await ext.deltaxSync.davetiYanitla(invite.d, choice === "Kabul et");
     }
   });
 
@@ -197,24 +250,25 @@ export function registerGroupActions(context: vscode.ExtensionContext, ext: Delt
     if (!self) {
       return;
     }
-    const founder = isFounder(grup, self.peer_id);
-    const warning = founder
+    // DeltaX'teki gibi: kurucu ya da bir yönetici grubu kapatır, sıradan üye ayrılır.
+    const closes = isAuthorized(grup, self.peer_id);
+    const warning = closes
       ? `"${grup.ad}" grubunu kapatmak üzeresin. Tüm üyelere bildirilir ve grup kalıcı olarak kapanır.`
       : `"${grup.ad}" grubundan ayrılmak üzeresin. Kurucuya ve yöneticilere bildirilir, üye listesinden çıkarılırsın.`;
-    const confirmLabel = founder ? "Grubu Kapat" : "Gruptan Çık";
+    const confirmLabel = closes ? "Grubu Kapat" : "Gruptan Çık";
     const choice = await vscode.window.showWarningMessage(warning, { modal: true }, confirmLabel);
     if (choice !== confirmLabel) {
       return;
     }
-    const errors = founder ? await sendCloseNotice(client, grup, self) : await sendLeaveNotice(client, grup, self);
+    const errors = closes ? await sendCloseNotice(client, grup, self) : await sendLeaveNotice(client, grup, self);
     deleteGroup(ext.root, grup.id);
     ext.treeProvider.refresh();
     if (errors.length > 0) {
       void vscode.window.showWarningMessage(
-        `${founder ? "Grup kapatıldı" : "Gruptan ayrıldın"}, ancak ${errors.length} üyeye bildirim ulaşmadı.`
+        `${closes ? "Grup kapatıldı" : "Gruptan ayrıldın"}, ancak ${errors.length} üyeye bildirim ulaşmadı.`
       );
     } else {
-      void vscode.window.showInformationMessage(founder ? "Grup kapatıldı." : "Gruptan ayrıldın.");
+      void vscode.window.showInformationMessage(closes ? "Grup kapatıldı." : "Gruptan ayrıldın.");
     }
   });
 

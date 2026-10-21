@@ -1,5 +1,44 @@
 # Değişiklik Günlüğü
 
+## 0.8.0
+
+**Mesajlar artık kaybolmuyor; Doğrudan mesaj sekmesi gerçek bir sohbet ekranı oldu.**
+
+Düzeltilen hatalar:
+
+- **Adı olan birinden gelen DeltaX grup mesajları yok sayılıyordu.** Uzantı göndereni AND'ın
+  görünen ad alanından (`"ali (12D3KooW…)"`) okuyordu. Payload'daki Peer ID bununla hiç eşleşmediği
+  için, adını ayarlamış bir kurucunun daveti, üye listesi, kabul ya da kapatma bildirimi sessizce
+  düşüyordu. Artık AND'ın bağlantıdan doğruladığı Peer ID kullanılıyor.
+- DeltaX'in grup mesajları Canlı Panel'in DM sekmesinde `AND-PROJEAG/1|eyJ…` satırları olarak
+  görünüyordu. Artık hiç görünmüyorlar.
+- Canlı yoklamada (`/dm/poll`) iki istek arasında gelen DM kayboluyordu. VS Code kapalıyken gelenler
+  de hiç görülmüyordu.
+- Forum kategori listesi AND'ınkinin eksik bir kopyasıydı (34 kategoriden 20'si). Liste AND'la
+  eşitlendi; bir test listeyi `protokol/kategori.go` ile karşılaştırıyor.
+- Grubu kapatma, DeltaX TUI'sindeki gibi yöneticilere de açıldı. Önceden yönetici yalnızca
+  ayrılabiliyordu.
+
+Yenilikler:
+
+- **DM'ler AND'ın DM geçmişinden okunuyor.** Nereye kadar okunduğu bir imleçte tutuluyor ve her
+  turda yalnızca yeni kayıtlar isteniyor. VS Code kapalıyken gelen mesajlar ve grup bildirimleri
+  açılışta işleniyor. Birden çok pencere açıksa mesajları yalnızca biri işliyor. Geçmiş tutmayan eski
+  bir AND'da eski canlı dinlemeye geçiliyor.
+- **Doğrudan mesaj sekmesi:** solda konuşmalar ve okunmamış sayıları, sağda seçili konuşma.
+  Konuşmalar ve okundu bilgisi AND TUI'si ve Özel Chat ile ortak; durum çubuğu rozeti AND'ın ana
+  menüsündeki sayıyı gösteriyor. Çevrimdışı alıcıya giden mesaj **bekliyor** görünüyor, o
+  bağlandığında gidiyor.
+- **DeltaX:** davet ve yanıtı, üye listesi, ayrılma ve kapatma giden kutusuyla gidiyor. Çok alıcılı
+  gönderimler paralel. Gönderilen davetler 30 gün saklanıyor; VS Code kapalıyken gelen bir kabul de
+  tanınıyor. Ret, davet edene bildiriliyor.
+- **Bekleyen davetler:** davet bildirimini kapatınca davet kaybolmuyor. Gruplar görünümünün başında
+  "Bekleyen davetler" satırı ve "DeltaX: Bekleyen Davetler" komutu var. 30 günden eski davetler ve
+  bir saatten eski çek istekleri işlenmiyor.
+- Davet ederken Peer ID biçimi, kendini davet etme ve mevcut üyeyi davet etme denetleniyor.
+- Zarf işleme `vscode`'dan bağımsız modüllere taşındı (`zarfIsleyici.ts`, `davetler.ts`, `dmCore.ts`,
+  `dmMerkezi.ts`, `lider.ts`) ve testlendi: 74 → 97 test.
+
 ## 0.7.1
 
 - DeltaX **üye davet** listesi artık yalnızca AND düğümlerini önerir. Bağlı eşlerin çoğu genel DHT

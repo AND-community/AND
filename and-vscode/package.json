@@ -2,7 +2,7 @@
   "name": "and-vscode",
   "displayName": "AND",
   "description": "AND ekosistemiyle tam uyumlu VS Code entegrasyonu: DeltaX sürüm kontrolü (gruplar, projeler, commit/dal/birleştirme), AND açıkken canlı Forum/DM/Sohbet/Ağ paneli ve kişisel site sayfalarını editörde düzenleyip yayınlama.",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "icon": "resources/icon.png",
   "publisher": "Lucian95511",
   "license": "AGPL-3.0-only",
@@ -130,6 +130,12 @@
         "title": "Üye Davet Et",
         "category": "DeltaX",
         "icon": "$(person-add)"
+      },
+      {
+        "command": "deltax.showInvites",
+        "title": "Bekleyen Davetler",
+        "category": "DeltaX",
+        "icon": "$(mail)"
       },
       {
         "command": "deltax.manageAdmins",

@@ -76,9 +76,15 @@ function boot() {
   const root = new FakeEl();
   const posted: unknown[] = [];
   let onMessage: Listener = () => {};
+  // Gezinme rayındaki düğmeler: betik sekme değişimini bunlara tıklanınca öğrenir.
+  const nav = [...html.matchAll(/<button data-tab="([a-z]+)"/g)].map(([, tab]) => {
+    const b = new FakeEl();
+    b.dataset.tab = tab;
+    return b;
+  });
   const document = {
     getElementById: el,
-    querySelectorAll: () => [],
+    querySelectorAll: (sel: string) => (sel === "#nav button" ? nav : []),
     createElement: () => new FakeEl(),
     documentElement: { style: root.style },
   };
@@ -93,7 +99,8 @@ function boot() {
   );
   const send = (data: unknown) => onMessage({ data });
   const enter = (id: string) => els[id].listeners.keydown[0]({ key: "Enter", shiftKey: false, preventDefault() {} });
-  return { html, els, el, root, posted, send, enter };
+  const openTab = (tab: string) => nav.find((b) => b.dataset.tab === tab)!.click();
+  return { html, els, el, root, posted, send, enter, openTab };
 }
 
 test("panel: açılışta yenileme ister, CSP dışarıdan betik/stil yüklemez", () => {
@@ -101,7 +108,7 @@ test("panel: açılışta yenileme ister, CSP dışarıdan betik/stil yüklemez"
   assert.deepEqual(posted, [{ type: "refreshAll" }]);
   assert.match(html, /default-src 'none'/);
   assert.doesNotMatch(html, /<script src=|<link /);
-  for (const id of ["connBadge", "refreshBtn", "identityBody", "peersBody", "chatList", "chatInput", "chatSend", "dmPeer", "dmInput", "dmSend", "postCategory", "postCreate", "viewPostBtn", "siteNewBtn", "siteBody", "fileSendBtn", "consentBody", "receivedFilesBody", "themeName"]) {
+  for (const id of ["connBadge", "refreshBtn", "identityBody", "peersBody", "chatList", "chatInput", "chatSend", "dmNewPeer", "dmNewBtn", "dmConvs", "dmCount", "dmHead", "dmInput", "dmSend", "postCategory", "postCreate", "viewPostBtn", "siteNewBtn", "siteBody", "fileSendBtn", "consentBody", "receivedFilesBody", "themeName"]) {
     assert.ok(html.includes(`id="${id}"`), `${id} eksik`);
   }
 });
@@ -167,7 +174,7 @@ test("panel: sohbet geçmişi canlı akışla birleşir, yinelenmez, sıralanır
   assert.ok(last.innerHTML.includes("&lt;script&gt;"));
 });
 
-test("panel: Enter gönderir; boş mesaj ve alıcısız DM gönderilmez", () => {
+test("panel: Enter gönderir; boş mesaj ve konuşma seçilmeden DM gönderilmez", () => {
   const { els, el, posted, enter } = boot();
   posted.length = 0;
   el("chatInput").value = "merhaba";
@@ -180,9 +187,87 @@ test("panel: Enter gönderir; boş mesaj ve alıcısız DM gönderilmez", () => 
   enter("dmInput");
   assert.equal(posted.length, 1);
   assert.match(els.banner.className, /err/);
-  el("dmPeer").value = " p1 ";
+  el("dmNewPeer").value = " p1 ";
+  enter("dmNewPeer");
+  assert.ok(els.dmHead.innerHTML.includes("Yeni konuşma"), "yeni konuşma başlığı görünmeli");
   enter("dmInput");
   assert.deepEqual(posted[1], { type: "sendDM", peerId: "p1", message: "selam" });
+});
+
+const ALI = "12D3KooWAzizAbCdEfGhJkLmNpQrStUvWxYz123456789abcdefg";
+const VELI = "12D3KooWVedatAbCdEfGhJkLmNpQrStUvWxYz123456789abcde";
+
+function dmData(okunmamisAli = 2) {
+  return {
+    type: "dmData",
+    data: {
+      konusmalar: [
+        {
+          peerId: ALI,
+          ad: "ali <b>",
+          okunmamis: okunmamisAli,
+          mesajlar: [
+            { metin: "selam", at: "2026-10-21T10:00:00Z", giden: false },
+            { metin: "AND-PROJEAG/1|eyJ0aXAiOiJkYXZldCJ9", at: "2026-10-21T10:00:01Z", giden: false },
+            { metin: "naber <i>", at: "2026-10-21T10:01:00Z", giden: false },
+          ],
+        },
+        {
+          peerId: VELI,
+          ad: "",
+          okunmamis: 0,
+          mesajlar: [
+            { metin: "eski", at: "2026-10-14T09:00:00Z", giden: true, basarisiz: true },
+            { metin: "yarın?", at: "2026-10-21T09:00:00Z", giden: true, bekliyor: true },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+test("panel: DM konuşmaları ve okunmamış sayıları; makine mesajı gösterilmez", () => {
+  const { els, send } = boot();
+  send(dmData());
+  const list = els.dmConvs.innerHTML;
+  assert.equal(els.dmCount.textContent, "2", "gezinmede toplam okunmamış");
+  assert.ok(list.includes("ali &lt;b&gt;") && !list.includes("ali <b>"), "ad kaçırılmalı");
+  assert.ok(list.includes("12D3KooWVeda…"), "adı olmayan eş kısaltılmış Peer ID ile görünmeli");
+  assert.ok(list.includes("naber &lt;i&gt;"), "son mesaj önizlemesi");
+  assert.ok(list.includes("Sen: yarın?"), "kendi son mesajın önizlemesi");
+  assert.doesNotMatch(list, /AND-PROJEAG/);
+});
+
+test("panel: konuşma seçilince akış gösterilir; okundu yalnızca DM sekmesi açıkken bildirilir", () => {
+  const { els, el, posted, send, openTab } = boot();
+  send(dmData());
+  posted.length = 0;
+  els.dmConvs.lastQuery[0].click(); // ali
+  const texts = el("dmList").children.map((li) => li.innerHTML);
+  assert.equal(texts.length, 2, "makine mesajı akışta yer almamalı");
+  assert.ok(texts[1].includes("naber &lt;i&gt;"));
+  assert.deepEqual(posted, [], "DM sekmesi açık değilken okundu bildirilmemeli");
+  openTab("dm");
+  assert.deepEqual(posted, [{ type: "dmOpen", peerId: ALI }]);
+  send(dmData(0));
+  assert.equal(posted.length, 1, "okunmamış kalmayınca yeniden bildirilmemeli");
+  assert.equal(els.dmCount.textContent, "");
+
+  els.dmConvs.lastQuery[1].click(); // veli: giden kutusu durumları
+  const veli = el("dmList").children.map((li) => li.innerHTML);
+  assert.ok(veli[0].includes('<span class="state err">gönderilemedi</span>'));
+  assert.ok(veli[1].includes('<span class="state">bekliyor</span>'));
+  assert.equal(el("dmList").children[0].className, "msg own");
+
+  el("dmInput").value = "tamam";
+  els.dmSend.click();
+  assert.deepEqual(posted[posted.length - 1], { type: "sendDM", peerId: VELI, message: "tamam" });
+});
+
+test("panel: geçmiş tutmayan AND'da açıklama değişir", () => {
+  const { els, send } = boot();
+  send({ type: "dmData", data: { konusmalar: [], gecmisYok: true } });
+  assert.match(els.dmLede.textContent, /geçmişi tutmuyor/);
 });
 
 test("panel: konu ayrıntısı ve yanıt", () => {

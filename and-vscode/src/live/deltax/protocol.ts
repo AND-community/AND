@@ -3,16 +3,28 @@ import * as os from "os";
 import * as path from "path";
 import { collectAncestors } from "../../commitStore";
 import { Grup, Proje, Uye } from "../../types";
+import { MAKINE_ONEKI } from "../dmCore";
+import { SendDMReq, SendFileReq } from "../liveTypes";
 import { encrypt } from "./crypto";
-import { LiveClient } from "../liveClient";
 import { buildPack, packFileName } from "./packSync";
 
 // sync.go'nun "grup üyeleri arasında merkezi ağdan bağımsız özel
 // senkronizasyon" protokolünün (zarf + davet/roster/push/pull mesajları)
 // TypeScript karşılığı. DM'ler AND'ın /api/v1/dm/* üzerinden, paketler
 // /api/v1/file/* üzerinden gönderilir (bkz. LiveClient).
+//
+// Grup durumunu değiştiren mesajlar (davet ve yanıtı, üye listesi, ayrılma,
+// kapatma) giden kutusuyla gider: alıcı çevrimdışıysa AND bekletir ve
+// bağlandığında iletir. Push bildirimi ve çek isteği doğrudan gider; dosya
+// aktarımı iki tarafın da çevrimiçi olmasını gerektirir.
 
-export const PROTOCOL_PREFIX = "AND-PROJEAG/1|";
+export const PROTOCOL_PREFIX = `${MAKINE_ONEKI}1|`;
+
+/** DeltaX'in AND'dan kullandığı gönderim uçları (LiveClient bunu karşılar; testler sahtesini kullanır). */
+export interface DeltaXIstemcisi {
+  sendDM(req: SendDMReq): Promise<void>;
+  sendFile(req: SendFileReq): Promise<void>;
+}
 
 export type EnvelopeType = "davet" | "uye_guncelle" | "davet_yanit" | "push_bildir" | "pull_istek" | "ayril" | "grup_kapat";
 
@@ -92,70 +104,66 @@ function invitePayloadFrom(g: Grup, gonderen: Uye): InvitePayload {
 // ─── Davetler ───────────────────────────────────────────────────────────────
 
 /** davetGonder */
-export async function sendInvite(client: LiveClient, targetPeer: string, g: Grup, self: Uye): Promise<void> {
+export async function sendInvite(client: DeltaXIstemcisi, targetPeer: string, g: Grup, self: Uye): Promise<void> {
   const text = encodeEnvelope({ tip: "davet", grup_id: g.id, payload: invitePayloadFrom(g, self) });
-  await client.sendDM({ peer_id: targetPeer, message: text });
+  await client.sendDM({ peer_id: targetPeer, message: text, queue_if_offline: true });
 }
 
 /** davetYanitGonder */
-export async function sendInviteResponse(client: LiveClient, targetPeer: string, grupId: string, accept: boolean, self: Uye): Promise<void> {
+export async function sendInviteResponse(
+  client: DeltaXIstemcisi,
+  targetPeer: string,
+  grupId: string,
+  accept: boolean,
+  self: Uye
+): Promise<void> {
   const payload: InviteResponsePayload = { kabul: accept, uye: self };
   const text = encodeEnvelope({ tip: "davet_yanit", grup_id: grupId, payload });
-  await client.sendDM({ peer_id: targetPeer, message: text });
+  await client.sendDM({ peer_id: targetPeer, message: text, queue_if_offline: true });
 }
 
 /** uyeGuncellemesiYayinla — güncel üye/yönetici listesini kendisi hariç tüm üyelere yeniden gönderir. */
-export async function broadcastRoster(client: LiveClient, g: Grup, self: Uye): Promise<Error[]> {
+export async function broadcastRoster(client: DeltaXIstemcisi, g: Grup, self: Uye): Promise<Error[]> {
   const text = encodeEnvelope({ tip: "uye_guncelle", grup_id: g.id, payload: invitePayloadFrom(g, self) });
-  const errors: Error[] = [];
-  for (const u of g.uyeler) {
-    if (u.peer_id === self.peer_id) {
-      continue;
-    }
-    try {
-      await client.sendDM({ peer_id: u.peer_id, message: text });
-    } catch (err) {
-      errors.push(new Error(`${u.ad}: ${describeError(err)}`));
-    }
-  }
-  return errors;
+  return sendToAll(client, g.uyeler, self.peer_id, text);
 }
 
 /** ayrilBildir — üyenin ayrıldığını kurucuya ve tüm yöneticilere bildirir. */
-export async function sendLeaveNotice(client: LiveClient, g: Grup, self: Uye): Promise<Error[]> {
+export async function sendLeaveNotice(client: DeltaXIstemcisi, g: Grup, self: Uye): Promise<Error[]> {
   const payload: LeavePayload = { uye: self };
   const text = encodeEnvelope({ tip: "ayril", grup_id: g.id, payload });
-  const targets: Uye[] = [{ ad: g.kurucu_ad, peer_id: g.kurucu_peer }, ...(g.yoneticiler ?? [])];
-  const errors: Error[] = [];
-  for (const h of targets) {
-    if (!h.peer_id || h.peer_id === self.peer_id) {
-      continue;
-    }
-    try {
-      await client.sendDM({ peer_id: h.peer_id, message: text });
-    } catch (err) {
-      errors.push(new Error(`${h.ad}: ${describeError(err)}`));
-    }
-  }
-  return errors;
+  return sendToAll(client, [{ ad: g.kurucu_ad, peer_id: g.kurucu_peer }, ...(g.yoneticiler ?? [])], self.peer_id, text);
 }
 
 /** grupKapatBildir — grubun kapatıldığını kendisi hariç tüm üyelere bildirir. */
-export async function sendCloseNotice(client: LiveClient, g: Grup, self: Uye): Promise<Error[]> {
+export async function sendCloseNotice(client: DeltaXIstemcisi, g: Grup, self: Uye): Promise<Error[]> {
   const payload: CloseGroupPayload = { gonderen: self };
   const text = encodeEnvelope({ tip: "grup_kapat", grup_id: g.id, payload });
-  const errors: Error[] = [];
-  for (const u of g.uyeler) {
-    if (u.peer_id === self.peer_id) {
+  return sendToAll(client, g.uyeler, self.peer_id, text);
+}
+
+/**
+ * herkeseGonder — metni hedeflere (kendisi ve tekrarlar hariç) giden kutusu
+ * üzerinden, paralel gönderir: ulaşılamayan bir üyeye doğrudan gönderim
+ * denemesi (AND'da sıraya almadan önce birkaç saniye sürer) ötekileri
+ * bekletmez.
+ */
+async function sendToAll(client: DeltaXIstemcisi, targets: Uye[], selfPeer: string, text: string): Promise<Error[]> {
+  const seen = new Set(["", selfPeer]);
+  const jobs: Promise<Error | undefined>[] = [];
+  for (const t of targets) {
+    if (seen.has(t.peer_id)) {
       continue;
     }
-    try {
-      await client.sendDM({ peer_id: u.peer_id, message: text });
-    } catch (err) {
-      errors.push(new Error(`${u.ad}: ${describeError(err)}`));
-    }
+    seen.add(t.peer_id);
+    jobs.push(
+      client.sendDM({ peer_id: t.peer_id, message: text, queue_if_offline: true }).then(
+        () => undefined,
+        (err) => new Error(`${t.ad}: ${describeError(err)}`)
+      )
+    );
   }
-  return errors;
+  return (await Promise.all(jobs)).filter((e): e is Error => e !== undefined);
 }
 
 // ─── Gönder (push) / Çek (pull) ─────────────────────────────────────────────
@@ -167,7 +175,7 @@ export async function sendCloseNotice(client: LiveClient, g: Grup, self: Uye): P
  * hariç tutulur.
  */
 export async function push(
-  client: LiveClient,
+  client: DeltaXIstemcisi,
   root: string,
   g: Grup,
   p: Proje,
@@ -208,8 +216,8 @@ export async function push(
   return objectCount;
 }
 
-/** pullIste */
-export async function requestPull(client: LiveClient, target: Uye, g: Grup, p: Proje, self: Uye): Promise<void> {
+/** pullIste — doğrudan gider: yanıtı (paket gönderimi) iki tarafın da çevrimiçi olmasını gerektirir. */
+export async function requestPull(client: DeltaXIstemcisi, target: Uye, g: Grup, p: Proje, self: Uye): Promise<void> {
   const payload: PullRequestPayload = { dal: p.aktif_dal, bilinen_hash: p.dallar[p.aktif_dal] ?? "", isteyen: self };
   const text = encodeEnvelope({ tip: "pull_istek", grup_id: g.id, proje_id: p.id, payload });
   await client.sendDM({ peer_id: target.peer_id, message: text });

@@ -43,17 +43,27 @@ aynı `gruplar/`/`projeler/` JSON'larını ve aynı `AND-PROJEAG/1` DM protokol�
 | Özellik | Nasıl |
 |---|---|
 | Yeni grup oluştur | Etkinlik çubuğu → DeltaX görünümü başlığı → "Yeni Grup" (`deltax.createGroup`) |
-| Üye davet et | Grup sağ tık → "Üye Davet Et" (`deltax.inviteMember`, yalnızca kurucu/yönetici) — bilinen eşler arasından seç ya da Peer ID'yi elle gir |
-| Gelen daveti kabul/reddet | Davet DM'i geldiğinde otomatik bildirim, "Kabul Et"/"Reddet" |
+| Üye davet et | Grup sağ tık → "Üye Davet Et" (`deltax.inviteMember`, yalnızca kurucu/yönetici) — bilinen eşler arasından seç ya da Peer ID'yi elle gir. Kişi çevrimdışıysa AND daveti bekletir, bağlandığında iletir |
+| Gelen daveti kabul/reddet | Davet geldiğinde bildirim, "Kabul Et"/"Reddet". Bildirimi kapatırsan davet kaybolmaz: gruplar görünümünün başındaki **Bekleyen davetler** satırından ya da "DeltaX: Bekleyen Davetler" (`deltax.showInvites`) ile yanıtlanır |
 | Yönetici ata/kaldır | Grup sağ tık → "Yönetici Ata/Kaldır" (`deltax.manageAdmins`, yalnızca kurucu) |
-| Gruptan çık / grubu kapat | Grup sağ tık → "Gruptan Çık / Grubu Kapat" (`deltax.leaveOrCloseGroup`) — kurucuysan grup kalıcı olarak kapanır, değilsen yalnızca sen ayrılırsın |
+| Gruptan çık / grubu kapat | Grup sağ tık → "Gruptan Çık / Grubu Kapat" (`deltax.leaveOrCloseGroup`) — kurucu ya da yöneticiysen grup kalıcı olarak kapanır, değilsen yalnızca sen ayrılırsın |
 | Gönder (push) | Proje sağ tık → "Gönder (Push)" (`deltax.pushProject`) — tek bir çevrimiçi üyeye ya da "Çevrimiçi herkese" |
 | Çek iste (pull) | Proje sağ tık → "Çek İste (Pull)" (`deltax.pullFromMember`) — hedef üye çevrimiçiyse otomatik Gönder yapar |
 | Gelen paketi uygulama | Otomatik — bilinen bir grup üyesinden gelen `.pack` sessizce kabul edilip nesne deposuna uygulanır, `proje.uzaklar` güncellenir; ardından "DeltaX: Uzak Dalı Birleştir" ile yereldeki dala birleştirilebilir |
 
-Güven modeli TUI ile birebir aynıdır: davet/roster güncellemeleri yalnızca zaten bilinen kurucu/yönetici
-peer ID'sinden kabul edilir, gelen paketler grup sırrıyla (AES-256-GCM) şifre çözülür ve her nesnenin
-sha256'sı yeniden doğrulanır — bkz. `src/live/deltax/syncService.ts`, `src/live/deltax/packSync.ts`.
+Güven modeli TUI ile birebir aynıdır: yetki kararları yalnızca AND'ın bağlantıdan doğruladığı
+gönderen Peer ID'sine dayanır; davet/roster güncellemeleri yalnızca zaten bilinen kurucu/yönetici
+peer ID'sinden kabul edilir; bir "kabul" yalnızca gerçekten davet gönderilmiş eşten ve 30 gün içinde
+gelirse uygulanır; gelen paketler grup sırrıyla (AES-256-GCM) şifre çözülür ve her nesnenin sha256'sı
+yeniden doğrulanır — bkz. `src/live/deltax/zarfIsleyici.ts`, `src/live/deltax/packSync.ts`.
+
+**Mesajlar kaybolmaz.** Gelen grup mesajları AND'ın DM geçmişinden okunur; nereye kadar işlendiği
+VS Code'un uzantıya ayırdığı depolama alanında tutulur. VS Code kapalıyken gelen bir davet, üye
+listesi, ayrılma ya da kapatma bildirimi açılışta sırayla işlenir; ilk açılışta önceki mesajlar
+işlenmez. Davet ve yanıtı, üye listesi, ayrılma ve kapatma giden kutusuyla gider. Push bildirimi ve
+çek isteği doğrudan gider, çünkü dosya aktarımı iki tarafın da çevrimiçi olmasını gerektirir. Bir
+saatten eski çek istekleri yanıtlanmaz. Birden çok VS Code penceresi açıksa mesajları yalnızca biri
+işler; aynı DM için her pencerede ayrı bildirim çıkmaz.
 
 ---
 
@@ -74,6 +84,13 @@ form öğeleri VS Code temanızı izler. AND'da seçili tema (TUI → Ayarlar �
 işaretinde, etkin bölümde ve birincil düğmelerde kullanılır. Temayı TUI'de değiştirince panel de
 birkaç saniye içinde, Yenile'ye basmadan yeni renklere geçer. Sohbet ve DM kutularında **Enter** gönderir.
 Peer ID ve genel anahtarın yanındaki düğme değeri panoya kopyalar.
+
+**Doğrudan mesaj** sekmesi AND'ın DM geçmişini konuşmalar hâlinde gösterir: solda eşler ve okunmamış
+sayıları, sağda seçili konuşma. Konuşmalar ve okunmamışlar AND TUI'si ve Özel Chat ile ortaktır;
+VS Code'da okuduğun konuşma TUI'nin ana menü rozetinden de düşer, durum çubuğundaki rozet de aynı
+sayıyı gösterir. Karşı taraf çevrimdışıysa mesaj AND'ın giden kutusunda **bekliyor** olarak görünür
+ve o bağlandığında gider; bir hafta içinde gidemezse **gönderilemedi** olur. DeltaX'in DM ile taşınan
+grup mesajları burada hiç görünmez.
 
 ### Nasıl bağlanır — mimari
 
@@ -120,10 +137,13 @@ token'lı erişim) hiçbir şekilde değiştirmez — ikinci dinleyici hiç aç�
   rolüyle çalışır** — bu, AND'ın API'sinin kendi tasarımıdır (bkz. `enforceModeratorRole`),
   uzantı tarafından eklenen bir kısıtlama değildir. Normal bir üye olarak yeni konu açabilir,
   bilinen bir konu ID'sine yanıt yazabilir ve ID'sini bildiğiniz bir konuyu görüntüleyebilirsiniz.
-- DM ve genel sohbet, sunucu tarafında en fazla 5 saniye bekleyen bir long-poll ile alınır; bu
-  döngüler panel kapalıyken de arka planda çalışır (gelen DM/dosya isteği bildirim olarak düşer).
-  Sohbet sekmesi açılışta (ve "Yenile"de) AND'ın kalıcı geçmişinden son 200 mesajı yükler, canlı
-  gelenleri bunlarla tekrarsız birleştirir.
+- DM'ler panel kapalıyken de arka planda AND'ın DM geçmişinden okunur (2 saniyede bir, yalnızca
+  yeni kayıtlar istenir); gelen DM bildirim olarak düşer. VS Code kapalıyken gelenler açılışta tek bir
+  özet bildirimle haber verilir. Geçmiş tutmayan eski bir AND'da canlı dinlemeye (long-poll) geçilir;
+  o zaman yalnızca VS Code açıkken gelenler görünür.
+- Genel sohbet ve dosya istekleri sunucu tarafında en fazla 5 saniye bekleyen bir long-poll ile
+  alınır. Sohbet sekmesi açılışta (ve "Yenile"de) AND'ın kalıcı geçmişinden son 200 mesajı yükler,
+  canlı gelenleri bunlarla tekrarsız birleştirir.
 - Bu katman AND kapalıyken hiçbir şey yapmaz — DeltaX'in yerel dosya tabanlı özellikleri bundan
   etkilenmez.
 
@@ -232,6 +252,10 @@ Canlı panel katmanı (`src/live/`) yukarıdaki DeltaX veri katmanından tamamen
 | `src/live/liveAddr.ts` | `internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go` | Pipe adı / socket yolu türetme (birebir aynı formül) |
 | `src/live/liveClient.ts` | `internal/pluginapi/api.go` (`Client`) | Named pipe/Unix socket üzerinden HTTP istekleri (token yok) |
 | `src/live/liveConnection.ts` | — | Bağlantı durumu, periyodik yeniden deneme |
+| `src/live/backgroundSync.ts` | — | Arka plan akışları: DM geçmişi (imleçle), sohbet/dosya/onay long-poll'ları |
+| `src/live/dmCore.ts` | `Eklentiler/DeltaX/gecmis.go` (`dmImleci`), `protokol/dm.go` | DM imleci, makine mesajı denetimi, konuşma görünümü, okunmamış sayısı; `vscode`'a bağımlı değildir |
+| `src/live/dmMerkezi.ts` | `Eklentiler/ozel_chat` | Panel ve rozet için DM durumu: AND'ın geçmişi ve okundu bilgisi, eski AND'da yerel yedek |
+| `src/live/lider.ts` | — | Birden çok VS Code penceresinden yalnızca birinin DM'leri işlemesi |
 | `src/live/livePanel.ts` | — | Canlı Panel'in uzantı tarafı: webview mesajlarını AND API çağrılarına bağlar, canlı akışları panele iletir |
 | `src/live/panelHtml.ts` | — | Panelin HTML/CSS/betiği (Kimlik/Ağ/Sohbet/DM/Forum/Site/Dosyalar); `vscode`'a bağımlı değildir, sahte DOM ile birim testi vardır |
 | `src/live/themeColor.ts` | `internal/ui/theme.go` (`Presets`) | AND tema renklerini (xterm-256 kodu ya da hex) CSS'e çevirir, vurgu üzerindeki yazı rengini seçer |
@@ -251,7 +275,9 @@ birebir karşılığıdır — DM/dosya taşıması için yukarıdaki `liveClien
 | `src/live/deltax/packSync.ts` | `sync.go` (paket oluşturma/uygulama/gelen paket işleme) | `paketOlustur`/`paketUygula`/`paketGonderenGuvenilirMi`/`pushPaketiIsle` |
 | `src/live/deltax/protocol.ts` | `sync.go` (zarf + davet/roster/push/pull mesajları) | Zarf kodlama/çözme, DM gönderen fonksiyonlar, Gönder/Çek |
 | `src/live/deltax/groupOps.ts` | `store.go` (`Grup` üstündeki yöntemler) | Yetki/üyelik kontrolleri, roster mutasyonu |
-| `src/live/deltax/syncService.ts` | `model.go` (`zarfIsle` + push/consent poll işleyicileri) | Gelen DM/dosya/onay olaylarını protokole göre işler |
+| `src/live/deltax/zarfIsleyici.ts` | `model.go` (`zarfIsle`) | Gelen grup mesajlarını doğrulanmış gönderene göre işler; `vscode`'a bağımlı değildir, testlidir |
+| `src/live/deltax/davetler.ts` | `gecmis.go` (`davetDefteri`), `bekleyen_davetler.json` | Gönderilen davetlerin defteri (30 gün) ve bekleyen gelen davetler |
+| `src/live/deltax/syncService.ts` | `model.go` (push/consent poll işleyicileri) | VS Code katmanı: bildirimler, davet soruları, gelen paket ve onaylar |
 | `src/live/deltax/groupActions.ts` | `keys.go` (grup paneli tuş işleyicileri) | VS Code komutları: grup/davet/yönetici/gönder/çek |
 
 Not: Ağaç/commit nesnelerini yazarken JSON serileştirmesinin Go'nunkiyle bayt bayt aynı olması

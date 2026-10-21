@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { BackgroundSync } from "./backgroundSync";
 import { trackDisposable } from "../disposableBag";
+import { gecerliPeerID } from "./dmCore";
+import { DmMerkezi } from "./dmMerkezi";
 import { LiveClient } from "./liveClient";
 import { LiveConnection } from "./liveConnection";
 import { ChatMsg, RoleInfo, SitePageInfo } from "./liveTypes";
@@ -15,6 +17,15 @@ const CHAT_HISTORY_LIMIT = 200;
 
 /** Panel açıkken AND temasının ne sıklıkla yoklandığı — TUI'de seçilen tema panele bu kadar gecikmeyle yansır. */
 const THEME_POLL_MS = 5000;
+
+/** Panelin DM verisine erişimi (extension.ts sağlar). */
+export interface PanelDM {
+  merkez: DmMerkezi;
+  /** DM'ler değişti: yeni mesaj, gönderim ya da okundu işareti. */
+  onDidChange: vscode.Event<void>;
+  /** Panel bir değişiklik yaptı (gönderim, okundu): rozet ve diğer dinleyiciler güncellensin. */
+  changed(): void;
+}
 
 function recentChat(all: ChatMsg[]): ChatMsg[] {
   return [...all]
@@ -51,7 +62,8 @@ export function showLivePanel(
   conn: LiveConnection,
   sync: BackgroundSync,
   siteFs: SiteFileSystem,
-  context: vscode.ExtensionContext
+  context: vscode.ExtensionContext,
+  dm: PanelDM
 ): void {
   if (panel) {
     panel.reveal();
@@ -108,9 +120,29 @@ export function showLivePanel(
     }
   }, THEME_POLL_MS);
 
+  // Doğrudan mesaj sekmesi AND'ın DM geçmişinden kurulur (TUI ve Özel Chat ile
+  // aynı konuşmalar ve okunmamış sayıları). Giden kutusunda bekleyen mesaj
+  // varken panel görünürse durumu (iletildi/gönderilemedi) birkaç saniyede bir
+  // yenilenir.
+  let dmPending = false;
+  async function pushDM(): Promise<void> {
+    const c = conn.getClient();
+    if (!c) {
+      return;
+    }
+    const d = await dm.merkez.durum(c);
+    dmPending = d.bekleyenVar;
+    void thePanel.webview.postMessage({ type: "dmData", data: { konusmalar: d.konusmalar, gecmisYok: d.gecmisYok } });
+  }
+  const dmTimer = setInterval(() => {
+    if (dmPending && thePanel.visible) {
+      pushDM().catch(() => undefined);
+    }
+  }, THEME_POLL_MS);
+
   const syncSubs = [
     sync.onChatMsg((m) => void thePanel.webview.postMessage({ type: "chatMsg", data: m })),
-    sync.onDMMsg((m) => void thePanel.webview.postMessage({ type: "dmMsg", data: m })),
+    dm.onDidChange(() => void pushDM().catch(() => undefined)),
     sync.onFileMsg((m) => void thePanel.webview.postMessage({ type: "fileMsg", data: m })),
     sync.onConsentReq((m) => void thePanel.webview.postMessage({ type: "consentReq", data: m })),
     siteFs.onDidChangePages((pages) => void thePanel.webview.postMessage({ type: "sitePages", data: sitePagesForWebview(pages) })),
@@ -161,6 +193,11 @@ export function showLivePanel(
           } catch (err) {
             void thePanel.webview.postMessage({ type: "siteUnavailable", message: describeError(err) });
           }
+          try {
+            await pushDM();
+          } catch (err) {
+            void thePanel.webview.postMessage({ type: "error", message: `Mesajlar alınamadı: ${describeError(err)}` });
+          }
           return;
         }
         case "siteRefresh": {
@@ -188,7 +225,20 @@ export function showLivePanel(
           return;
         }
         case "sendDM": {
-          await client!.sendDM({ peer_id: String(msg.peerId), message: String(msg.message) });
+          const peerId = String(msg.peerId ?? "").trim();
+          if (!gecerliPeerID(peerId)) {
+            void thePanel.webview.postMessage({ type: "error", message: "Bu bir Peer ID değil (12D3KooW… ile başlar)." });
+            return;
+          }
+          await dm.merkez.gonder(client!, peerId, String(msg.message));
+          dm.changed();
+          return;
+        }
+        case "dmOpen": {
+          // Yalnızca kullanıcı konuşmayı gerçekten görüyorsa okundu sayılır.
+          if (thePanel.visible && (await dm.merkez.okunduIsaretle(client!, String(msg.peerId)))) {
+            dm.changed();
+          }
           return;
         }
         case "pickFileToSend": {
@@ -258,6 +308,7 @@ export function showLivePanel(
 
   thePanel.onDidDispose(() => {
     clearInterval(themeTimer);
+    clearInterval(dmTimer);
     disposeSub.dispose();
     syncSubs.forEach((s) => s.dispose());
     forgetPanel();

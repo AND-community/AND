@@ -5,6 +5,7 @@ import {
   CreatePostReq,
   CreateReplyReq,
   DMMsg,
+  DMRecord,
   ErrResp,
   FileConsentReq,
   FileMsg,
@@ -134,9 +135,33 @@ export class LiveClient {
     return this.post("/api/v1/dm/send", req);
   }
 
-  /** Sunucu tarafında en fazla 5sn tutan long-poll; sürekli döngüyle çağrılmak üzere tasarlandı. */
+  /**
+   * Sunucu tarafında en fazla 5sn tutan long-poll. Yalnızca istek açıkken
+   * gelenleri görür; mesaj kaçırmamak için getDMHistory kullanılır, bu yalnızca
+   * geçmişi olmayan eski bir AND içindir.
+   */
   pollDM(): Promise<DMMsg[]> {
     return this.get("/api/v1/dm/poll", POLL_TIMEOUT_MS);
+  }
+
+  /**
+   * AND'ın DM geçmişi (gelen ve giden, geliş sırasıyla). from verilirse
+   * yalnızca o kimlikteki kayıt ve sonrakiler gelir; kayıt artık geçmişte
+   * yoksa ya da AND bu süzmeyi bilmiyorsa tamamı gelir. Geçmişi olmayan eski
+   * bir AND'da 404 döner.
+   */
+  getDMHistory(from?: string): Promise<DMRecord[]> {
+    return this.get(from ? `/api/v1/dm/history?from=${encodeURIComponent(from)}` : "/api/v1/dm/history");
+  }
+
+  /** Konuşma başına okundu zamanları (Peer ID → zaman). Okundu bilgisi tutmayan eski bir AND'da 404 döner. */
+  getDMReadMarks(): Promise<Record<string, string>> {
+    return this.get("/api/v1/dm/read");
+  }
+
+  /** peerId ile konuşmanın at'a kadar okunduğunu AND'a bildirir (TUI'deki rozet ve Özel Chat aynı bilgiyi görür). */
+  markDMRead(peerId: string, at: string): Promise<void> {
+    return this.post("/api/v1/dm/read", { peer_id: peerId, at });
   }
 
   sendChat(message: string): Promise<void> {

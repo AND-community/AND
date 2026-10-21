@@ -151,6 +151,21 @@ export function renderHtml(webview: { cspSource: string }): string {
   body.vscode-light .avatar { background: hsl(var(--h) 60% 88%); color: hsl(var(--h) 55% 28%); }
   body.vscode-light .who, body.vscode-light .msg.own .who { color: hsl(var(--h) 55% 32%); }
 
+  .msg .state { font-size: 11px; margin-left: 6px; color: var(--muted); }
+  .msg .state.err { color: var(--vscode-errorForeground, #f14c4c); }
+
+  .dm { display: grid; grid-template-columns: minmax(170px, 240px) minmax(0, 1fr); gap: 20px; }
+  .convs { list-style: none; margin: 10px 0 0; padding: 0; max-height: 60vh; overflow-y: auto; border-top: 1px solid var(--line); }
+  .convs:empty::before { content: attr(data-empty); display: block; padding: 8px 0; color: var(--muted); }
+  .conv { padding: 7px 8px 7px 6px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; cursor: pointer; }
+  .conv:hover { background: var(--vscode-list-hoverBackground); }
+  .conv.sel { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground)); border-left-color: var(--and-accent); }
+  .conv-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .conv-top .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .conv-prev { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dm-head { padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dm-head .mono { margin-left: 6px; }
+
   .composer { display: flex; gap: 8px; align-items: center; }
   .panel { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
   .field { display: grid; gap: 4px; margin-bottom: 12px; }
@@ -188,6 +203,10 @@ export function renderHtml(webview: { cspSource: string }): string {
     .kv dt { min-height: 0; }
     .kv dd { margin-bottom: 10px; }
   }
+  @media (max-width: 760px) {
+    .dm { grid-template-columns: 1fr; gap: 12px; }
+    .convs { max-height: 28vh; }
+  }
 </style>
 </head>
 <body>
@@ -202,7 +221,7 @@ export function renderHtml(webview: { cspSource: string }): string {
       <button data-tab="identity" class="active">${icon("user")}<span>Kimlik</span></button>
       <button data-tab="peers">${icon("network")}<span>Ağ</span><span id="peerCount" class="count"></span></button>
       <button data-tab="chat">${icon("chat")}<span>Sohbet</span></button>
-      <button data-tab="dm">${icon("mail")}<span>Doğrudan mesaj</span></button>
+      <button data-tab="dm">${icon("mail")}<span>Doğrudan mesaj</span><span id="dmCount" class="count"></span></button>
       <button data-tab="forum">${icon("forum")}<span>Forum</span></button>
       <button data-tab="site">${icon("globe")}<span>Site</span><span id="siteCount" class="count"></span></button>
       <button data-tab="files">${icon("file")}<span>Dosyalar</span></button>
@@ -232,12 +251,23 @@ export function renderHtml(webview: { cspSource: string }): string {
     </section>
 
     <section id="tab-dm">
-      <div class="sec-head"><h1>Doğrudan mesaj</h1><p class="lede">Mesaj yalnızca Peer ID'sini girdiğin eşe iletilir.</p></div>
-      <div class="field"><label for="dmPeer">Alıcı</label><input type="text" id="dmPeer" class="mono" placeholder="Peer ID" list="peerIdsList" /></div>
-      <ul class="stream" id="dmList" data-empty="Bu oturumda henüz doğrudan mesaj yok."></ul>
-      <div class="composer">
-        <input type="text" id="dmInput" placeholder="Mesajını yaz…" />
-        <button class="btn primary" id="dmSend">Gönder</button>
+      <div class="sec-head"><h1>Doğrudan mesaj</h1><p class="lede" id="dmLede">Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.</p></div>
+      <div class="dm">
+        <div>
+          <div class="composer">
+            <input type="text" id="dmNewPeer" class="mono" placeholder="Yeni konuşma: Peer ID" list="peerIdsList" />
+            <button class="btn ghost sm" id="dmNewBtn">Aç</button>
+          </div>
+          <ul class="convs" id="dmConvs" data-empty="Henüz konuşma yok."></ul>
+        </div>
+        <div>
+          <div class="dm-head muted" id="dmHead">Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.</div>
+          <ul class="stream" id="dmList" data-empty="Bu konuşmada henüz mesaj yok."></ul>
+          <div class="composer">
+            <input type="text" id="dmInput" placeholder="Mesajını yaz…" />
+            <button class="btn primary" id="dmSend">Gönder</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -332,12 +362,15 @@ export function renderHtml(webview: { cspSource: string }): string {
       vscode.postMessage({ type: 'copyText', text: b.dataset.copy, label: b.dataset.label })));
   }
 
+  let activeTab = 'identity';
   document.querySelectorAll('#nav button').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      activeTab = btn.dataset.tab;
+      if (activeTab === 'dm') dmMarkRead();
     });
   });
 
@@ -356,14 +389,21 @@ export function renderHtml(webview: { cspSource: string }): string {
   });
   onEnter('chatInput', 'chatSend');
   document.getElementById('dmSend').addEventListener('click', () => {
-    const peer = document.getElementById('dmPeer').value.trim();
     const el = document.getElementById('dmInput');
-    if (!peer) { showBanner('Önce alıcının Peer ID’sini gir.', false); return; }
+    if (!dmSelected) { showBanner('Önce bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.', false); return; }
     if (!el.value.trim()) return;
-    vscode.postMessage({ type: 'sendDM', peerId: peer, message: el.value });
+    vscode.postMessage({ type: 'sendDM', peerId: dmSelected, message: el.value });
     el.value = '';
   });
   onEnter('dmInput', 'dmSend');
+  document.getElementById('dmNewBtn').addEventListener('click', () => {
+    const el = document.getElementById('dmNewPeer');
+    const peer = el.value.trim();
+    if (!peer) { showBanner('Konuşmak istediğin kişinin Peer ID’sini gir.', false); return; }
+    el.value = '';
+    dmSelect(peer);
+  });
+  onEnter('dmNewPeer', 'dmNewBtn');
   document.getElementById('postCreate').addEventListener('click', () => {
     const category = document.getElementById('postCategory').value;
     const title = document.getElementById('postTitle').value.trim();
@@ -408,18 +448,79 @@ export function renderHtml(webview: { cspSource: string }): string {
     chatItems.forEach(m => appendMsg('chatList', m.from, m.text, m.sent_at));
   }
 
-  function appendMsg(listId, from, text, ts) {
+  // opts (DM için): own — kendi mesajın; hueKey — renk tonunun anahtarı (ad
+  // yerine Peer ID: aynı adı kullanan iki kişi aynı renge boyanmasın);
+  // state/stateErr — giden kutusu durumu.
+  function appendMsg(listId, from, text, ts, opts) {
+    opts = opts || {};
     const ul = document.getElementById(listId);
-    const own = !!(window.__identity && from === window.__identity.name);
+    const own = 'own' in opts ? !!opts.own : !!(window.__identity && from === window.__identity.name);
     const li = document.createElement('li');
     li.className = 'msg' + (own ? ' own' : '');
-    li.style.setProperty('--h', String(hue(from)));
+    li.style.setProperty('--h', String(hue(opts.hueKey || from)));
     const initial = (String(from).trim().charAt(0) || '?').toLocaleUpperCase('tr');
+    const state = opts.state ? '<span class="state' + (opts.stateErr ? ' err' : '') + '">' + esc(opts.state) + '</span>' : '';
     li.innerHTML = '<span class="avatar" aria-hidden="true">' + esc(initial) + '</span>' +
-      '<div><span class="who">' + esc(from) + '</span><time>' + esc(fmtTime(ts)) + '</time></div>' +
+      '<div><span class="who">' + esc(from) + '</span><time>' + esc(fmtTime(ts)) + '</time>' + state + '</div>' +
       '<div class="text">' + esc(text) + '</div>';
     ul.appendChild(li);
     ul.scrollTop = ul.scrollHeight;
+  }
+
+  // ─── Doğrudan mesaj ───
+  // Konuşmalar ve okunmamış sayıları uzantıdan hazır gelir (AND'ın DM geçmişi
+  // ve okundu bilgisi). Seçili konuşma, DM sekmesi açıkken okunmamış mesaj
+  // içeriyorsa okundu bildirilir.
+  let dmConvs = [];
+  let dmSelected = '';
+
+  function shortId(p) { return p.length > 14 ? p.slice(0, 12) + '…' : p; }
+  function convName(k) { return k && k.ad ? k.ad : shortId(dmSelected); }
+
+  function renderDmList() {
+    const total = dmConvs.reduce((n, k) => n + (k.okunmamis || 0), 0);
+    document.getElementById('dmCount').textContent = total ? String(total) : '';
+    const ul = document.getElementById('dmConvs');
+    ul.innerHTML = dmConvs.map(k => {
+      const last = k.mesajlar[k.mesajlar.length - 1];
+      const preview = last ? (last.giden ? 'Sen: ' : '') + last.metin : '';
+      return '<li class="conv' + (k.peerId === dmSelected ? ' sel' : '') + '" tabindex="0" data-conv="' + esc(k.peerId) + '">' +
+        '<div class="conv-top"><span class="who" style="--h:' + hue(k.peerId) + '">' + esc(k.ad || shortId(k.peerId)) + '</span>' +
+        '<span class="count">' + (k.okunmamis ? k.okunmamis : '') + '</span></div>' +
+        '<div class="conv-prev muted">' + esc(preview) + '</div></li>';
+    }).join('');
+    ul.querySelectorAll('[data-conv]').forEach(li => li.addEventListener('click', () => dmSelect(li.dataset.conv)));
+  }
+
+  function renderDmThread() {
+    const head = document.getElementById('dmHead');
+    document.getElementById('dmList').innerHTML = '';
+    if (!dmSelected) {
+      head.className = 'dm-head muted';
+      head.textContent = 'Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.';
+      return;
+    }
+    const k = dmConvs.find(x => x.peerId === dmSelected);
+    head.className = 'dm-head';
+    head.innerHTML = '<strong>' + esc(k ? convName(k) : 'Yeni konuşma') + '</strong><span class="mono muted">' + esc(dmSelected) + '</span>';
+    (k ? k.mesajlar : []).forEach(m => appendMsg('dmList', m.giden ? 'Sen' : convName(k), m.metin, m.at, {
+      own: m.giden,
+      hueKey: m.giden ? 'ben' : k.peerId,
+      state: m.basarisiz ? 'gönderilemedi' : (m.bekliyor ? 'bekliyor' : ''),
+      stateErr: !!m.basarisiz,
+    }));
+  }
+
+  function dmMarkRead() {
+    const k = dmConvs.find(x => x.peerId === dmSelected);
+    if (activeTab === 'dm' && k && k.okunmamis > 0) vscode.postMessage({ type: 'dmOpen', peerId: dmSelected });
+  }
+
+  function dmSelect(peerId) {
+    dmSelected = peerId;
+    renderDmList();
+    renderDmThread();
+    dmMarkRead();
   }
 
   function renderIdentity(identity, role) {
@@ -562,9 +663,20 @@ export function renderHtml(webview: { cspSource: string }): string {
       case 'siteUnavailable':
         document.getElementById('siteBody').innerHTML = '<p class="muted">Kişisel site sayfaları alınamadı: ' + esc(msg.message) + '</p>';
         break;
-      case 'dmMsg':
-        appendMsg('dmList', msg.data.from, msg.data.text, msg.data.received_at);
+      case 'dmData': {
+        const d = msg.data || {};
+        // Eklentilerin makine mesajları (DeltaX) uzantıda ayıklanır; burada da gösterilmez.
+        dmConvs = (d.konusmalar || []).map(k => Object.assign({}, k, {
+          mesajlar: (k.mesajlar || []).filter(m => String(m.metin).indexOf('AND-PROJEAG/') !== 0),
+        })).filter(k => k.mesajlar.length > 0);
+        document.getElementById('dmLede').textContent = d.gecmisYok
+          ? 'Bu AND sürümü mesaj geçmişi tutmuyor: yalnızca bu oturumda gelen ve gönderilen mesajlar görünür.'
+          : 'Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.';
+        renderDmList();
+        renderDmThread();
+        dmMarkRead();
         break;
+      }
       case 'postDetail':
         renderPostDetail(msg.data);
         break;

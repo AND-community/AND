@@ -209,7 +209,11 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
   });
 
   reg("and.openLivePanel", () => {
-    showLivePanel(ext.liveConnection, ext.backgroundSync, ext.siteFs, context);
+    showLivePanel(ext.liveConnection, ext.backgroundSync, ext.siteFs, context, {
+      merkez: ext.dm,
+      onDidChange: ext.onDidChangeDM,
+      changed: () => ext.dmChanged(),
+    });
     ext.clearUnread();
   });
 }

@@ -63,12 +63,38 @@ export interface CreateReplyReq {
 export interface SendDMReq {
   peer_id: string;
   message: string;
+  /** Alıcıya şu an ulaşılamıyorsa AND mesajı giden kutusunda bekletir ve
+   *  alıcı bağlandığında iletir (7 güne kadar). Eski bir AND yok sayar. */
+  queue_if_offline?: boolean;
 }
 
 export interface DMMsg {
+  /** Görünen ad: gönderenin KENDİ beyan ettiği ad ve Peer ID'sinin kısaltması
+   *  ("ali (12D3KooWAbCd…)") ya da yalnızca Peer ID. Kimlik doğrulaması için
+   *  KULLANILMAMALI — bkz. verified_peer_id. */
   from: string;
+  /** Gönderenin bağlantıdan doğrulanmış tam Peer ID'si. Çok eski bir AND göndermez. */
+  verified_peer_id?: string;
   text: string;
   received_at: string;
+}
+
+/** GET /api/v1/dm/history — bu düğümün gördüğü bir özel mesaj (gelen ya da giden), geliş sırasıyla. */
+export interface DMRecord {
+  /** Konuşulan eş: gelende bağlantıdan doğrulanmış gönderen, gidende alıcı. */
+  peer_id: string;
+  /** Gelende gönderenin beyan ettiği ad (doğrulanmamış). */
+  name?: string;
+  text: string;
+  /** Bu düğümün saatiyle alma/gönderme anı. */
+  at: string;
+  outgoing?: boolean;
+  /** Kaydın kimliği; eski bir AND göndermez. */
+  id?: string;
+  /** Giden kutusunda alıcının bağlanmasını bekliyor. */
+  pending?: boolean;
+  /** Giden kutusunda süresi doldu, gönderilemedi. */
+  failed?: boolean;
 }
 
 export interface SendChatReq {
@@ -140,7 +166,9 @@ export interface ErrResp {
   error: string;
 }
 
-/** forum.go'daki Categories listesiyle birebir aynı — yeni konu oluştururken önerilir. */
+/** AND'ın kapalı forum kategori kümesi, aynı sırayla (protokol/kategori.go'daki
+ * Kategoriler). AND bu listede olmayan kategoriyle gelen konuyu reddeder;
+ * liveTypes.test.ts listeyi Go kaynağıyla karşılaştırır. */
 export const FORUM_CATEGORIES = [
   "Python",
   "C / C++",
@@ -148,18 +176,32 @@ export const FORUM_CATEGORIES = [
   "Go",
   "JavaScript",
   "Java / Kotlin",
+  "C# / .NET",
+  "PHP",
+  "Swift / Objective-C",
   "Yazılım",
   "Web",
   "Mobil",
   "Yapay Zeka",
   "Veritabanı",
   "DevOps",
+  "Bulut Bilişim",
   "Linux",
   "Bilişim",
+  "Ağ ve Sistem Yönetimi",
   "Siber Güvenlik",
   "Donanım",
+  "Gömülü Sistemler / IoT",
+  "Robotik",
+  "Blockchain / Web3",
+  "Algoritma ve Veri Yapıları",
+  "Test ve Kalite",
+  "UI / UX Tasarım",
   "Oyun Geliştirme",
   "Açık Kaynak",
   "Kariyer",
+  "Freelance",
+  "Eğitim Kaynakları",
+  "Etkinlikler ve Duyurular",
   "Genel",
 ];
