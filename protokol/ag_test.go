@@ -21,6 +21,7 @@ func TestAgSabitleriDegismez(t *testing.T) {
 		"AramaProtokolu":         {AramaProtokolu, "/and-arama-motoru/1.0.0"},
 		"Rendezvous":             {Rendezvous, "and-community/1.0.0"},
 		"MDNSEtiketi":            {MDNSEtiketi, "and-community-mdns"},
+		"DeltaXOnEki":            {DeltaXOnEki, "AND-PROJEAG/"},
 	} {
 		if tc[0] != tc[1] {
 			t.Errorf("%s = %q; ağdaki değer %q", ad, tc[0], tc[1])

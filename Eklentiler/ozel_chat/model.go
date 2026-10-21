@@ -15,6 +15,7 @@ import (
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/protokol"
 )
 
 // istemci, eklentinin kullandığı AND API çağrılarıdır (*pluginapi.Client);
@@ -347,7 +348,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil // geçici hata: bir sonraki tikte yeniden denenir
 		}
-		m.gecmis = msg.kayitlar
+		m.gecmis = insanMesajlari(msg.kayitlar)
 		m.okunduIsaretle()
 		return m, nil
 
@@ -356,6 +357,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, yenidenDinle("dm")
 		}
 		for _, d := range msg.mesajlar {
+			if protokol.MakineIletisiMi(d.Text) {
+				continue
+			}
 			m.canliEkle(pluginapi.DMRecord{PeerID: d.VerifiedPeerID, Name: adParcasi(d.From), Text: d.Text, At: m.simdi()})
 		}
 		m.okunduIsaretle()
@@ -493,6 +497,19 @@ func (m model) girdiyeIlet(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dosyaYolu, cmd = m.dosyaYolu.Update(msg)
 	}
 	return m, cmd
+}
+
+// insanMesajlari, eklentilerin makine mesajlarını (ör. DeltaX'in grup
+// protokolü) ayıklar: bunlar DM olarak taşınır ama okunacak metin değildir.
+// AND'ın okunmamış sayısı da onları saymaz.
+func insanMesajlari(kayitlar []pluginapi.DMRecord) []pluginapi.DMRecord {
+	kalan := make([]pluginapi.DMRecord, 0, len(kayitlar))
+	for _, r := range kayitlar {
+		if !protokol.MakineIletisiMi(r.Text) {
+			kalan = append(kalan, r)
+		}
+	}
+	return kalan
 }
 
 func (m *model) canliEkle(r pluginapi.DMRecord) {

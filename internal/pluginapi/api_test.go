@@ -132,10 +132,16 @@ func (m *mockModeration) Revoke(_ context.Context, targetKeyHex string) error {
 type mockDM struct {
 	subs    []chan DMMsg
 	sendErr error
+	// onceden, Subscribe'ın yeni kanala hemen koyduğu mesajlardır (aynı anda
+	// gelen mesajları taklit eder).
+	onceden []DMMsg
 }
 
 func (m *mockDM) Subscribe() chan DMMsg {
 	ch := make(chan DMMsg, 8)
+	for _, msg := range m.onceden {
+		ch <- msg
+	}
 	m.subs = append(m.subs, ch)
 	return ch
 }
@@ -720,6 +726,34 @@ func TestDMPoll_NilBackend(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Errorf("expected empty slice with nil DM backend, got %v", msgs)
+	}
+}
+
+func TestDMPoll_AyniAndaGelenlerBirlikteDoner(t *testing.T) {
+	dm := &mockDM{onceden: []DMMsg{{From: "alice", Text: "bir"}, {From: "alice", Text: "iki"}}}
+	c := startTestServer(t, &mockID{name: "bob"}, &mockForum{}, dm)
+
+	msgs, err := c.PollDM()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 || msgs[0].Text != "bir" || msgs[1].Text != "iki" {
+		t.Fatalf("aynı anda gelen iki mesaj tek yanıtta dönmeli: %+v", msgs)
+	}
+}
+
+func TestGecerliPeerID(t *testing.T) {
+	for s, beklenen := range map[string]bool{
+		"12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp": true,
+		"QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N":       true,
+		"":                 false,
+		"12D3KooW bozuk":   false,
+		"12D3KooWEyoppNCU": false, // kısa
+		"0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl0OIl": false, // base58 dışı
+	} {
+		if got := GecerliPeerID(s); got != beklenen {
+			t.Errorf("GecerliPeerID(%q) = %v; %v beklenirdi", s, got, beklenen)
+		}
 	}
 }
 
@@ -1492,5 +1526,27 @@ func TestDMHistory(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Name != "bob" || !got[1].Outgoing || got[1].Text != "merhaba" {
 		t.Fatalf("geçmiş beklenmedik: %+v", got)
+	}
+}
+
+func TestDMHistoryFrom_KayittanItibarenKeser(t *testing.T) {
+	dm := &historyDM{kayitlar: []DMRecord{{ID: "a", Text: "1"}, {ID: "b", Text: "2"}, {ID: "c", Text: "3"}}}
+	c := startTestServer(t, &mockID{name: "alice"}, &mockForum{}, dm)
+	metin := func(k []DMRecord) (s string) {
+		for _, r := range k {
+			s += r.Text
+		}
+		return s
+	}
+	for _, tc := range []struct{ from, beklenen string }{
+		{"b", "23"},    // kayıt dahil, sonrakiler
+		{"c", "3"},     // son kayıt: yalnızca kendisi
+		{"yok", "123"}, // geçmişten düşmüş: tamamı
+		{"", "123"},
+	} {
+		got, err := c.DMHistoryFrom(tc.from)
+		if err != nil || metin(got) != tc.beklenen {
+			t.Errorf("from=%q: %q (%v); %q beklenirdi", tc.from, metin(got), err, tc.beklenen)
+		}
 	}
 }

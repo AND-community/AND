@@ -16,6 +16,7 @@ import (
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/protokol"
 )
 
 const maxDMReadBytes = 16 * 1024
@@ -32,10 +33,11 @@ type Broker struct {
 	subs []chan pluginapi.DMMsg
 	mod  atomic.Pointer[moderation.Moderator]
 
-	// history, son historyLimit özel mesajdır (gelen ve giden). Deliver
-	// yalnızca o anda dinleyen eklentilere iletir; geçmiş olmadan Özel Chat
-	// kapalıyken gelen her DM sessizce kaybolurdu. KaliciAc çağrıldıysa
-	// şifreli olarak diske de yazılır (bkz. kalici.go).
+	// history, son özel mesajlardır (gelen ve giden; sınırlar için bkz.
+	// sinirla). Deliver yalnızca o anda dinleyen eklentilere iletir; geçmiş
+	// olmadan Özel Chat ya da DeltaX kapalıyken gelen her DM sessizce
+	// kaybolurdu. KaliciAc çağrıldıysa şifreli olarak diske de yazılır (bkz.
+	// kalici.go).
 	history []pluginapi.DMRecord
 
 	// Kalıcılık, giden kutusu ve okundu bilgisi (bkz. kalici.go).
@@ -47,8 +49,12 @@ type Broker struct {
 	gonderiliyor map[peer.ID]bool
 }
 
-// historyLimit, bellekte tutulan en fazla özel mesaj sayısıdır.
+// historyLimit, geçmişte tutulan en fazla insanlar arası mesaj sayısıdır.
 const historyLimit = 500
+
+// makineGecmisLimiti, geçmişte tutulan en fazla makine mesajı (bkz.
+// protokol.MakineIletisiMi) sayısıdır.
+const makineGecmisLimiti = 300
 
 // maxHistoryNameRunes, geçmişe yazılan (gönderenin beyan ettiği) adın en
 // fazla uzunluğudur.
@@ -61,12 +67,44 @@ func (b *Broker) record(m pluginapi.DMRecord) {
 		m.ID = yeniID()
 	}
 	b.mu.Lock()
-	b.history = append(b.history, m)
-	if over := len(b.history) - historyLimit; over > 0 {
-		b.history = append(b.history[:0], b.history[over:]...)
-	}
+	b.history = sinirla(append(b.history, m))
 	b.mu.Unlock()
 	b.kaydet()
+}
+
+// sinirla, geçmişi türüne göre sınırlar: insanlar arası mesajlardan en fazla
+// historyLimit, makine mesajlarından en fazla makineGecmisLimiti kalır;
+// fazlası en eskiden başlayarak düşer. Ayrı sınırlar, DeltaX'in sık üye
+// listesi yayınlarının sohbet mesajlarını geçmişten itmesini (ve çok
+// sohbetin, DeltaX kapalıyken gelen grup mesajlarını silmesini) önler. h
+// yerinde değiştirilir.
+func sinirla(h []pluginapi.DMRecord) []pluginapi.DMRecord {
+	insan, makine := 0, 0
+	for _, r := range h {
+		if protokol.MakineIletisiMi(r.Text) {
+			makine++
+		} else {
+			insan++
+		}
+	}
+	fazlaInsan, fazlaMakine := insan-historyLimit, makine-makineGecmisLimiti
+	if fazlaInsan <= 0 && fazlaMakine <= 0 {
+		return h
+	}
+	kalan := h[:0]
+	for _, r := range h {
+		if protokol.MakineIletisiMi(r.Text) {
+			if fazlaMakine > 0 {
+				fazlaMakine--
+				continue
+			}
+		} else if fazlaInsan > 0 {
+			fazlaInsan--
+			continue
+		}
+		kalan = append(kalan, r)
+	}
+	return kalan
 }
 
 // History, bu oturumdaki özel mesajların bir kopyasını (en eskiden en

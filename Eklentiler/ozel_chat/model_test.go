@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
@@ -139,6 +140,29 @@ func TestKonusmalar_GruplarSiralarVeOkunmamisSayar(t *testing.T) {
 	}
 	if liste[0].ad != "alice" || len(liste[0].mesajlar) != 3 {
 		t.Fatalf("alice konuşması beklenmedik: %+v", liste[0])
+	}
+}
+
+func TestMakineMesajlariGosterilmez(t *testing.T) {
+	t0 := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	makine := protokol.DeltaXOnEki + "1|eyJ0aXAiOiJ1eWVfZ3VuY2VsbGUifQ=="
+	c := &sahteIstemci{gecmis: []pluginapi.DMRecord{
+		{PeerID: alice, Name: "alice", Text: "selam", At: t0},
+		{PeerID: alice, Name: "alice", Text: makine, At: t0.Add(time.Minute)},
+		{PeerID: bob, Name: "bob", Text: makine, At: t0.Add(2 * time.Minute)},
+	}}
+	m := testModeli(t, c)
+	mm, _ := m.Update(gecmisMsg{kayitlar: c.gecmis})
+	m = mm.(model)
+	liste := m.konusmalar()
+	if len(liste) != 1 || liste[0].peerID != alice || len(liste[0].mesajlar) != 1 || liste[0].okunmamis != 1 {
+		t.Fatalf("DeltaX'in makine mesajları konuşma olarak görünmemeli: %+v", liste)
+	}
+
+	// Geçmişi olmayan eski bir AND'da canlı gelenler de süzülür.
+	mm, _ = m.Update(canliDMMsg{mesajlar: []pluginapi.DMMsg{{VerifiedPeerID: bob, From: "bob", Text: makine}}})
+	if liste := mm.(model).konusmalar(); len(liste) != 1 {
+		t.Fatalf("canlı gelen makine mesajı da gösterilmemeli: %+v", liste)
 	}
 }
 

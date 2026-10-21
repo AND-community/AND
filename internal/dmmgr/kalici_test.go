@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/protokol"
 )
 
 func testAnahtari(t *testing.T) []byte {
@@ -166,5 +168,56 @@ func TestOkundu(t *testing.T) {
 	}
 	if got := b.ReadMarks()["p1"]; !got.Equal(t0) {
 		t.Fatalf("okundu zamanı geri gitmemeli: %v", got)
+	}
+}
+
+func TestGecmis_TurBasinaAyriSinir(t *testing.T) {
+	b := newBrokerForTest()
+	t0 := time.Now().UTC()
+	for i := range historyLimit + 50 {
+		at := t0.Add(time.Duration(i) * time.Second)
+		b.record(pluginapi.DMRecord{PeerID: "p", Text: fmt.Sprintf("insan %d", i), At: at})
+		if i < makineGecmisLimiti+20 {
+			b.record(pluginapi.DMRecord{PeerID: "p", Text: fmt.Sprintf("%s1|%d", protokol.DeltaXOnEki, i), At: at})
+		}
+	}
+	var insan, makine []string
+	for _, r := range b.History() {
+		if protokol.MakineIletisiMi(r.Text) {
+			makine = append(makine, r.Text)
+		} else {
+			insan = append(insan, r.Text)
+		}
+	}
+	if len(insan) != historyLimit || len(makine) != makineGecmisLimiti {
+		t.Fatalf("tür başına sınır uygulanmalı: %d insan, %d makine", len(insan), len(makine))
+	}
+	if insan[0] != "insan 50" || makine[0] != protokol.DeltaXOnEki+"1|20" {
+		t.Fatalf("her türde en eskiler düşmeli: %q, %q", insan[0], makine[0])
+	}
+}
+
+func TestOkunmamisSayisi_MakineMesajlariSayilmaz(t *testing.T) {
+	b := newBrokerForTest()
+	t0 := time.Now().UTC()
+	b.record(pluginapi.DMRecord{PeerID: "p1", Text: "selam", At: t0})
+	b.record(pluginapi.DMRecord{PeerID: "p1", Text: protokol.DeltaXOnEki + "1|eyJ9", At: t0})
+	if n := b.OkunmamisSayisi(); n != 1 {
+		t.Fatalf("yalnızca insanın yazdığı mesaj sayılmalı: %d", n)
+	}
+}
+
+func TestGidenKutusu_MakineMesajlariAyriSinir(t *testing.T) {
+	b := New(newTestNode(t))
+	makine := protokol.DeltaXOnEki + "1|eyJ9"
+	for range maxGiden {
+		b.giden = append(b.giden, bekleyenDM{ID: yeniID(), PeerID: "12D3KooWBob", Text: makine, At: time.Now()})
+	}
+	hedef := newTestNode(t).Host.ID().String()
+	if err := b.SendDMQueued(context.Background(), hedef, "ben", makine); err == nil {
+		t.Fatal("makine mesajlarıyla dolu kutu yeni bir makine mesajını reddetmeli")
+	}
+	if err := b.SendDMQueued(context.Background(), hedef, "ben", "selam"); err != nil {
+		t.Fatalf("makine mesajları insanın mesajına ayrılan yeri tüketmemeli: %v", err)
 	}
 }

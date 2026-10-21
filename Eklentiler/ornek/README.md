@@ -282,8 +282,8 @@ esler, err := client.Peers()
 | `POST` | `/api/v1/forum/delete` | Konu sil `{"post_id":"..."}` (moderatör/kurucu) |
 | `POST` | `/api/v1/forum/post` | Yeni konu oluştur |
 | `POST` | `/api/v1/dm/send` | DM gönder `{"peer_id":"...","message":"..."}`; `"queue_if_offline": true` ile alıcı çevrimdışıysa giden kutusuna alınır |
-| `GET` | `/api/v1/dm/poll` | Gelen DM bekle (5 sn. long poll) |
-| `GET` | `/api/v1/dm/history` | Gelen ve giden son 500 DM (AND bunları şifreli saklar); giden kutusundakiler `pending`, gidemeyenler `failed` |
+| `GET` | `/api/v1/dm/poll` | Gelen DM bekle (5 sn. long poll; aynı anda gelenler tek yanıtta döner). Yalnızca istek açıkken gelenleri görür: kaçırmamak için `dm/history` kullanın |
+| `GET` | `/api/v1/dm/history` | Gelen ve giden DM'ler, geliş sırasıyla (AND bunları şifreli saklar; insanlar arası son 500, makine mesajları ayrıca son 300 — bkz. `protokol.MakineIletisiMi`); giden kutusundakiler `pending`, gidemeyenler `failed`. `?from=<id>` yalnızca o kaydı ve sonrakileri döner (kayıt artık yoksa tamamını) — sürekli yoklayan eklentiler için |
 | `GET` `POST` | `/api/v1/dm/read` | Konuşma başına okundu zamanları / `{"peer_id","at"}` ile okundu işaretle |
 | `GET` | `/api/v1/peers` | Bağlı eşler; `"and": true` olanlar AND düğümüdür (DM/dosya gönderilebilir) |
 | `GET` | `/api/v1/version` | Eklenti API sürümü `{"api": 2}`; yoksa AND eskidir (sürüm 1) |

@@ -30,13 +30,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/protokol"
 )
 
 const (
 	// gidenOmru, giden kutusundaki bir mesajın alıcının bağlanmasını en fazla
 	// ne kadar bekleyeceğidir; sonra "gönderilemedi" olarak işaretlenir.
 	gidenOmru = 7 * 24 * time.Hour
-	// maxGiden, giden kutusundaki en fazla mesaj sayısıdır.
+	// maxGiden, giden kutusunda tür başına (insanlar arası / makine mesajı)
+	// en fazla mesaj sayısıdır: DeltaX'in çevrimdışı üyelere sıraya aldığı
+	// üye listesi yayınları kutuyu doldurup sohbet mesajlarını engellemesin.
 	maxGiden = 200
 	// ilkDenemeSuresi, sıraya almadan önce doğrudan göndermenin en fazla ne
 	// kadar deneneceğidir.
@@ -100,10 +103,7 @@ func (b *Broker) KaliciAc(yol string, anahtar []byte) error {
 
 	b.mu.Lock()
 	b.kalici, b.anahtar = yol, anahtar
-	b.history = append(dosya.Gecmis, b.history...)
-	if over := len(b.history) - historyLimit; over > 0 {
-		b.history = append(b.history[:0], b.history[over:]...)
-	}
+	b.history = sinirla(append(dosya.Gecmis, b.history...))
 	b.giden = append(dosya.Giden, b.giden...)
 	if b.okundu == nil {
 		b.okundu = map[string]time.Time{}
@@ -218,7 +218,7 @@ func (b *Broker) SendDMQueued(ctx context.Context, peerIDStr, senderName, messag
 	}
 
 	b.mu.Lock()
-	if len(b.giden) >= maxGiden {
+	if b.gidenSayisiLocked(protokol.MakineIletisiMi(message)) >= maxGiden {
 		b.mu.Unlock()
 		return fmt.Errorf("giden kutusu dolu (%d mesaj); alıcılar bağlandıkça boşalır", maxGiden)
 	}
@@ -251,6 +251,18 @@ func (b *Broker) baglandi(pid peer.ID) {
 		}()
 		b.kuyruguGonder(pid)
 	}()
+}
+
+// gidenSayisiLocked, giden kutusundaki makine mesajı olan (makine=true) ya
+// da olmayan mesajların sayısıdır.
+func (b *Broker) gidenSayisiLocked(makine bool) int {
+	n := 0
+	for _, d := range b.giden {
+		if protokol.MakineIletisiMi(d.Text) == makine {
+			n++
+		}
+	}
+	return n
 }
 
 func (b *Broker) bekleyenVarLocked(pid peer.ID) bool {
@@ -357,13 +369,14 @@ func (b *Broker) ReadMarks() map[string]time.Time {
 }
 
 // OkunmamisSayisi, okundu işaretinden sonra gelen mesaj sayısıdır (ana
-// menüdeki rozet).
+// menüdeki rozet). Eklentilerin makine mesajları sayılmaz: Özel Chat onları
+// göstermediği için okundu da işaretlenemezler.
 func (b *Broker) OkunmamisSayisi() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	n := 0
 	for _, r := range b.history {
-		if !r.Outgoing && r.At.After(b.okundu[r.PeerID]) {
+		if !r.Outgoing && r.At.After(b.okundu[r.PeerID]) && !protokol.MakineIletisiMi(r.Text) {
 			n++
 		}
 	}

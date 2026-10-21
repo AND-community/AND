@@ -108,14 +108,16 @@ and-plugin-ozel-chat  →  POST /api/v1/dm/send  →  AND (dmmgr.Broker)
                                                      Hedef peer
 
 Hedef peer  →  /and/dm/1.0.0 stream handler  →  dmmgr.Broker.Deliver()
-                                                         ↓  bellekteki geçmiş + long-poll
+                                                         ↓  şifreli geçmiş + long-poll
                                               and-plugin-ozel-chat (görünür)
 ```
 
-AND, oturum boyunca gelen ve giden özel mesajları (en fazla 500) yalnızca bellekte tutar ve
+AND, gelen ve giden özel mesajları bu bilgisayarda şifreli saklar (`dm_gecmis.bin`) ve
 `GET /api/v1/dm/history` ile verir. Böylece Özel Chat kapalıyken gelen bir mesaj kaybolmaz;
-ekran açıldığında konuşma listesinde okunmamış olarak görünür. Geçmiş diske yazılmaz, AND
-kapanınca silinir.
+ekran açıldığında konuşma listesinde okunmamış olarak görünür. İnsanlar arası mesajlardan en
+fazla 500, eklentilerin makine mesajlarından (ör. DeltaX'in `AND-PROJEAG/…` grup protokolü;
+bkz. `protokol.MakineIletisiMi`) ayrıca en fazla 300 tutulur; makine mesajları okunmamış
+sayısına katılmaz ve Özel Chat'te görünmez.
 
 ### Veri akışı — dosya aktarımı
 

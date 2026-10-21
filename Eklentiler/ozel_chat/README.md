@@ -45,7 +45,8 @@ kabul eder. Yanıtlanmayan istek 28 saniye sonra düşer ve AND tarafından redd
   mesajı (gelen ve giden) bu bilgisayarda şifreli saklar; Özel Chat kapalıyken ya da AND yeniden
   başlatıldıktan sonra da geçmiş yerindedir ve okunmamışlar işaretli görünür. Bu uç noktası
   olmayan eski bir AND'da eklenti `GET /api/v1/dm/poll` ile canlı dinlemeye geçer: o zaman
-  yalnızca ekran açıkken gelenler görünür.
+  yalnızca ekran açıkken gelenler görünür. DeltaX gibi eklentilerin DM üzerinden taşıdığı
+  makine mesajları (`AND-PROJEAG/…`) gösterilmez ve okunmamış sayılmaz.
 - **Çevrimdışı alıcı:** Karşı taraf o an bağlı değilse mesaj AND'ın giden kutusunda bekler
   ("bekliyor") ve o bağlandığında gider; bir hafta içinde bağlanmazsa "gönderilemedi" olur.
 - **Okundu bilgisi:** AND'da tutulur (`/api/v1/dm/read`); ana menüdeki Özel Chat rozeti de aynı

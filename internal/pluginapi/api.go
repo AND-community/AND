@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -137,10 +138,13 @@ type DMMsg struct {
 	ReceivedAt     time.Time `json:"received_at"`
 }
 
-// DMRecord, bu AND oturumunda görülen bir özel mesajdır (gelen ya da giden)
-// — GET /api/v1/dm/history. /dm/poll yalnızca o anda dinleyen bir eklentiye
+// DMRecord, bu düğümün gördüğü bir özel mesajdır (gelen ya da giden) — GET
+// /api/v1/dm/history. /dm/poll yalnızca o anda dinleyen bir eklentiye
 // iletir; geçmiş, eklenti kapalıyken gelen mesajların kaybolmamasını sağlar.
-// YALNIZCA bellekte tutulur, diske yazılmaz ve AND kapanınca silinir.
+// Kayıtlar geliş sırasıyladır. AND geçmişi kimliğin anahtarından türetilen
+// bir anahtarla şifreleyip diske de yazar (bkz. dmmgr/kalici.go); insanlar
+// arası mesajlar ve eklentilerin makine mesajları (bkz.
+// protokol.MakineIletisiMi) ayrı sınırlarla tutulur.
 type DMRecord struct {
 	// PeerID, konuşulan eştir: gelen mesajda gönderen, giden mesajda alıcı.
 	// Gelende bağlantının kendisinden doğrulanmıştır.
@@ -418,6 +422,11 @@ var reHex = regexp.MustCompile(`^[0-9a-fA-F]{8,128}$`)
 // Burada libp2p'yi içe aktarmak her eklentiye libp2p'yi de taşırdı; tam
 // doğrulamayı arka uç yapar.
 var rePeerID = regexp.MustCompile(`^[1-9A-HJ-NP-Za-km-z]{46,64}$`)
+
+// GecerliPeerID, s'nin bir Peer ID biçiminde olup olmadığıdır — AND'ın
+// kendisinin uyguladığı denetimin aynısı. Eklentiler, kullanıcının yazdığı
+// bir Peer ID'yi göndermeden önce bununla sınayabilir.
+func GecerliPeerID(s string) bool { return rePeerID.MatchString(s) }
 
 func validPostID(id string) bool { return reHex.MatchString(id) }
 
@@ -1133,8 +1142,27 @@ func (s *Server) getDMHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, []DMRecord{})
 		return
 	}
-	writeJSON(w, hb.History())
+	writeJSON(w, gecmisKesiti(hb.History(), r.URL.Query().Get("from")))
 }
+
+// gecmisKesiti, ?from=<kimlik> verildiyse geçmişi o kayıttan (dahil)
+// itibaren keser: sürekli yoklayan bir eklenti (ör. DeltaX) her turda tüm
+// geçmişi almaz. Kayıt geçmişte yoksa (sınırdan düşmüşse) tamamı döner;
+// eklenti hangisi olduğunu, kaydın yanıtta olup olmamasından anlar.
+func gecmisKesiti(h []DMRecord, from string) []DMRecord {
+	if from == "" {
+		return h
+	}
+	for i := len(h) - 1; i >= 0; i-- {
+		if h[i].ID == from {
+			return h[i:]
+		}
+	}
+	return h
+}
+
+// maxDMPollBatch, tek bir /dm/poll yanıtındaki en fazla mesaj sayısıdır.
+const maxDMPollBatch = 32
 
 func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	if s.dm == nil {
@@ -1145,7 +1173,19 @@ func (s *Server) getDMPoll(w http.ResponseWriter, r *http.Request) {
 	defer s.dm.Unsubscribe(ch)
 	select {
 	case msg := <-ch:
-		writeJSON(w, []DMMsg{msg})
+		// Kanalda bekleyenler de bu yanıtla gider: abonelik istek bitince
+		// kapanır ve aynı anda gelen ikinci mesaj bu eklenti için kaybolurdu.
+		msgs := []DMMsg{msg}
+	topla:
+		for len(msgs) < maxDMPollBatch {
+			select {
+			case m := <-ch:
+				msgs = append(msgs, m)
+			default:
+				break topla
+			}
+		}
+		writeJSON(w, msgs)
 	case <-time.After(5 * time.Second):
 		writeJSON(w, []DMMsg{})
 	case <-r.Context().Done():
@@ -1565,6 +1605,18 @@ func IsNotFound(err error) bool {
 func (c *Client) DMHistory() ([]DMRecord, error) {
 	var v []DMRecord
 	return v, c.get("/api/v1/dm/history", &v)
+}
+
+// DMHistoryFrom, DMHistory gibidir ama yalnızca kimliği id olan kaydı ve
+// sonrakileri ister. Kayıt geçmişte yoksa — ya da AND bu süzmeyi
+// bilmiyorsa — tüm geçmiş döner; çağıran, id'li kaydı yanıtta arayarak
+// hangisi olduğunu anlar. id boşsa tüm geçmiş döner.
+func (c *Client) DMHistoryFrom(id string) ([]DMRecord, error) {
+	if id == "" {
+		return c.DMHistory()
+	}
+	var v []DMRecord
+	return v, c.get("/api/v1/dm/history?from="+url.QueryEscape(id), &v)
 }
 
 func (c *Client) PollDM() ([]DMMsg, error) {
