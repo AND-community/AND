@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucian95511/and/dil"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/githubverify"
@@ -87,15 +88,16 @@ const (
 	RoleFounder
 )
 
-// Label returns a short Turkish label for r, e.g. for TUI display.
+// Label returns a short Turkish label for r, e.g. for TUI display. The label
+// is the Turkish source text; the TUI translates it with dil.T.
 func (r Role) Label() string {
 	switch r {
 	case RoleFounder:
-		return "Kurucu"
+		return dil.K("Kurucu")
 	case RoleModerator:
-		return "Moderatör"
+		return dil.K("Moderatör")
 	default:
-		return "Üye"
+		return dil.K("Üye")
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+
+	"github.com/lucian95511/and/dil"
 )
 
 // APIVersion, eklenti API'sinin sürümüdür. Bir eklentinin manifest'indeki
@@ -33,6 +35,7 @@ const (
 )
 
 // IzinBilgisi, onay ekranında bir iznin kullanıcıya nasıl anlatılacağıdır.
+// Baslik ve Aciklama Türkçe kaynak metinlerdir; ekranda dil.T ile çevrilir.
 type IzinBilgisi struct {
 	Ad       string
 	Baslik   string
@@ -41,13 +44,13 @@ type IzinBilgisi struct {
 
 // IzinBilgileri, onay istenebilecek izinlerdir; sırası ekrandaki sıradır.
 var IzinBilgileri = []IzinBilgisi{
-	{IzinDM, "Özel mesajlar", "Özel mesaj geçmişini okuyabilir ve senin adına özel mesaj gönderebilir."},
-	{IzinDosya, "Dosya aktarımı", "Senin adına dosya gönderebilir, gelen dosya isteklerini görüp yanıtlayabilir."},
-	{IzinSohbet, "Genel sohbet", "Genel sohbete senin adına mesaj yazabilir."},
-	{IzinForum, "Forum", "Senin adına konu açabilir ve yanıt yazabilir."},
-	{IzinSite, "Kişisel site", "Kişisel sitende sayfa yayınlayabilir ve silebilir."},
-	{IzinModerasyon, "Moderasyon", "Kurucu ya da moderatörsen senin yetkinle konu silebilir, ban kaldırabilir, moderatör atayabilir."},
-	{IzinTema, "Tema", "AND'ın renk temasını değiştirebilir."},
+	{IzinDM, dil.K("Özel mesajlar"), dil.K("Özel mesaj geçmişini okuyabilir ve senin adına özel mesaj gönderebilir.")},
+	{IzinDosya, dil.K("Dosya aktarımı"), dil.K("Senin adına dosya gönderebilir, gelen dosya isteklerini görüp yanıtlayabilir.")},
+	{IzinSohbet, dil.K("Genel sohbet"), dil.K("Genel sohbete senin adına mesaj yazabilir.")},
+	{IzinForum, dil.K("Forum"), dil.K("Senin adına konu açabilir ve yanıt yazabilir.")},
+	{IzinSite, dil.K("Kişisel site"), dil.K("Kişisel sitende sayfa yayınlayabilir ve silebilir.")},
+	{IzinModerasyon, dil.K("Moderasyon"), dil.K("Kurucu ya da moderatörsen senin yetkinle konu silebilir, ban kaldırabilir, moderatör atayabilir.")},
+	{IzinTema, dil.K("Tema"), dil.K("AND'ın renk temasını değiştirebilir.")},
 }
 
 // IzinBul, adı verilen iznin bilgisini döndürür.

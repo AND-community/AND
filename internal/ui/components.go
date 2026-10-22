@@ -9,6 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/lucian95511/and/dil"
 )
 
 // StyleInput, tek satırlık bir metin kutusunu etkin temaya göre
@@ -221,7 +223,7 @@ func Page(w, h int, body, footer string) string {
 // frameTop, çerçevenin üst kenarıdır: "╭─ AND ───── Klasik teması · v0.1.0 ─╮".
 func frameTop(w int, edge lipgloss.Style) string {
 	left := edge.Render("╭─") + " " + S.Pill.Render("AND") + " "
-	right := S.Muted.Render(P.ThemeName + " teması")
+	right := S.Muted.Render(dil.F("%s teması", dil.T(P.ThemeName)))
 	if FrameTag != "" {
 		right += S.Subtle.Render(" · ") + S.Muted.Render(FrameTag)
 	}

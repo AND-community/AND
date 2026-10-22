@@ -48,6 +48,7 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 | Otomatik güncelleme | GitHub Releases üzerinden arka planda güncelleme |
 | Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`internal/ui`) |
 | Temalar | 6 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Mono) + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
+| Arayüz dilleri | Türkçe (varsayılan), English, Deutsch, Español, Français, Русский; Ayarlar → Dil ya da giriş ekranında `ctrl+l` ile anında değişir — bkz. [Arayüz dili](#arayüz-dili) |
 
 ---
 
@@ -266,6 +267,9 @@ AND başlangıçta `and-plugin-*` adındaki binary'leri otomatik bulur.
 Sonraki açılışlarda yalnızca parolanı girmen yeterlidir.  
 Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux/macOS: `~/.config/and/identity.dat`)
 
+Giriş ekranında `ctrl+l` (ya da `F2`) arayüz dilini değiştirir; seçim kaydedilir ve sonraki
+açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)).
+
 ### Ana menü
 
 AND terminalin tamamını kullanır. Ana menünün üstünde amblem, kimliğin ve kısa sayılar yer alır.
@@ -312,13 +316,14 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 
 ### Ayarlar ekranı
 
-Üç sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye döner.
+Dört sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye döner.
 
 | Sekme | İçerik |
 |---|---|
 | Bilgi | Sürüm, platform, veri dizini; kimlik (ad, genel anahtar, rol, aktivite), kurtarma kodu (`m` ile göster/gizle) ve profil alanları (`b` bio, `s` durum, `w` bağlantı, `t` etiketler, `v` GitHub doğrulama) |
 | Eklentiler | Yüklü eklentilerin adı, sürümü, durumu ve açıklaması; `space` ile aç/kapat |
 | Temalar | Yerleşik temalar (renk örnekleriyle) ve tema eklentileri; `enter` seçili temayı anında uygular |
+| Dil | Arayüz dili; `enter` seçili dili anında uygular ve kaydeder |
 
 ### Görünüm ve temalar
 
@@ -353,6 +358,35 @@ Seçilen tema veri dizinindeki `theme.json` dosyasına yazılır ve eklentilere
 (ör. `and-plugin-pembis`) `POST /api/v1/theme` ile kendi renklerini uygulayabilir. Eski
 sürümler mavi-mor varsayılanı yanlışlıkla "Turkuaz" adıyla kaydediyordu; böyle bir `theme.json`
 otomatik olarak Klasik temaya taşınır.
+
+### Arayüz dili
+
+AND'ın arayüzü altı dildedir: Türkçe (varsayılan), English, Deutsch, Español, Français ve
+Русский. Dil, Ayarlar → Dil sekmesinden ya da giriş ekranında `ctrl+l` (`F2`) ile seçilir; ekran
+hemen yeni dilde çizilir ve seçim veri dizinindeki `dil.json` dosyasına yazılır. `AND_DIL`
+ortam değişkeni (ör. `AND_DIL=en ./and`) kayıtlı seçimi geçersiz kılar. Tarihler (ay adları),
+binlik ayırıcılar ve sayıya bağlı tekil/çoğul biçimler de (Rusçadaki üç biçim dahil) seçilen
+dile göre yazılır.
+
+Yalnızca arayüz çevrilir: forum konuları, kategori değerleri ve sohbet mesajları ağda her zaman
+aynıdır. Örneğin kategori ağda "Yapay Zeka" olarak taşınır, İngilizce arayüzde "Artificial
+Intelligence" diye gösterilir — farklı dillerdeki eşler aynı konuları görür.
+
+Çeviriler `dil` paketinde (yalnızca standart kütüphaneyi kullanır) ve `dil/ceviriler/*.json`
+dosyalarındadır. Türkçe kaynak metin anahtardır; çevirisi olmayan bir metin Türkçe gösterilir.
+Kodda metinler `dil.T("…")`, biçimli olanlar `dil.F("%d konu", n)`, paket düzeyindeki tablolar
+`dil.K("…")` ile işaretlenir. `dil` testleri, kaynaklardaki her işaretli metnin, her forum
+kategorisinin ve paketle gelen eklentilerin ad/açıklamalarının bütün dillerde çevrildiğini ve
+çevirilerin aynı biçim fiillerini (`%s`, `%d`) taşıdığını denetler; `internal/tui` testleri de
+ekranları her dilde çizip tam ekran düzeninin bozulmadığını ve Türkçe metin kalmadığını
+doğrular. Yeni bir metnin eksik çevirilerinin iskeleti şöyle alınır:
+
+```bash
+DIL_ISKELET=eksik.json go test ./dil -run Kapsam
+```
+
+AND, başlattığı eklentilere etkin dili `AND_DIL` ile iletir; eklentiler `dil.OrtamdanAyarla()`
+ile aynı dili kullanabilir ve kendi çevirilerini `dil.Ekle` ile ekleyebilir.
 
 ### Klavye kısayolları — forum
 
@@ -512,6 +546,7 @@ AND eklentileri **bağımsız yürütülebilir binary**'lerdir. Her eklenti ayr�
    | `AND_API_ADDR` | AND'ın localhost HTTP API adresi (ör. `127.0.0.1:48291`) |
    | `AND_DATA_DIR` | AND veri dizini (taslak dosyaları için) |
    | `AND_CATEGORY` | (yalnızca konu_ac) Forumdan seçilen kategori |
+   | `AND_DIL` | Etkin arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`; bkz. [Arayüz dili](#arayüz-dili)) |
 
 4. Eklenti, `AND_API_ADDR` üzerinden AND'a HTTP istekleri göndererek kimlik, forum, DM ve dosya işlemlerini gerçekleştirir.
 5. Eklenti TUI'sı kapandığında AND kontrolü geri alır.
@@ -614,6 +649,7 @@ Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) alt�
 | `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
 | `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
 | `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
+| `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
 | `dm_gecmis.bin` | Özel mesaj geçmişi, giden kutusu ve okundu bilgisi; kimlikten türetilen anahtarla AES-256-GCM şifreli (`AND_DM_GECMISI=0` ile yalnızca bellekte tutulur) |
 | `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider. 5 MB'ı aşınca açılışta sıfırlanır |
 

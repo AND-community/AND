@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -100,14 +101,14 @@ func (m appModel) homeCompactHero(w int) string {
 func (m appModel) homeIdentity() []string {
 	name := m.identity.Name()
 	if name == "" {
-		name = "anonim"
+		name = dil.T("anonim")
 	}
 	out := []string{ui.S.Name.Render(pluginui.Safe(name))}
 	if m.node != nil {
 		durum := esDurumu(m.peerCount())
 		// Bağlı eşlerin çoğu genel DHT düğümüdür; asıl önemli olan AND düğümleri.
 		if m.peerCount() > 0 {
-			durum += ui.S.Subtle.Render("  ·  ") + ui.S.Muted.Render(fmt.Sprintf("%d AND düğümü", m.andEsSayisi()))
+			durum += ui.S.Subtle.Render("  ·  ") + ui.S.Muted.Render(dil.F("%d AND düğümü", m.andEsSayisi()))
 		}
 		out = append(out, ui.S.Muted.Render(kisaPeerID(m.node.Host.ID().String())), durum)
 	}
@@ -121,7 +122,7 @@ func senkronDurumu() string {
 	}
 	st := SyncStatus()
 	if st.LastSuccess.IsZero() {
-		return "bekleniyor"
+		return dil.T("bekleniyor")
 	}
 	return forumNeZaman(st.LastSuccess)
 }
@@ -146,24 +147,18 @@ func (m appModel) homeStats() []string {
 		return ui.S.Muted.Render(etiket) + "  " + ui.S.Bold.Render(deger)
 	}
 	out := []string{
-		satir("Forum", binlik(konu)+" konu"),
-		satir("Sohbet", binlik(len(m.chatLines))+" mesaj"),
-		satir("Eklentiler", fmt.Sprintf("%d / %d açık", acik, toplam)),
+		satir(dil.T("Forum"), dil.N(konu, "%s konu", binlik(konu))),
+		satir(dil.T("Sohbet"), dil.N(len(m.chatLines), "%s mesaj", binlik(len(m.chatLines)))),
+		satir(dil.T("Eklentiler"), dil.F("%d / %d açık", acik, toplam)),
 	}
 	if s := senkronDurumu(); s != "" {
-		out = append(out, satir("Son senkron", s))
+		out = append(out, satir(dil.T("Son senkron"), s))
 	}
 	return out
 }
 
-// binlik, sayıyı Türkçe binlik ayırıcıyla yazar (1.204).
-func binlik(n int) string {
-	s := fmt.Sprint(n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "." + s[i:]
-	}
-	return s
-}
+// binlik, sayıyı etkin dilin binlik ayırıcısıyla yazar (Türkçede 1.204).
+func binlik(n int) string { return dil.Binlik(n) }
 
 // homeTree, gruplanmış menü ağacıdır; seçili satır tam genişlikte vurgulanır.
 // h > 0 ise ağaç en fazla h satır tutar: önce gruplar arasındaki boş satırlar
@@ -186,7 +181,9 @@ func (m appModel) homeTree(w, h int) string {
 			if sonGrup != "" && bosluk {
 				r = append(r, "")
 			}
-			r = append(r, ui.S.Muted.Bold(true).Render("▾ "+grup))
+			// Öğe ve dal adları kimliktir (handleMenuKey onlara bakar); yalnızca
+			// gösterimde çevrilir. Eklenti adları da katalogda varsa çevrilir.
+			r = append(r, ui.S.Muted.Bold(true).Render("▾ "+dil.T(grup)))
 			sonGrup = grup
 		}
 		if i == m.menuIndex {
@@ -201,9 +198,9 @@ func (m appModel) homeTree(w, h int) string {
 			segs[0] = ui.C(dal, colorAccent)
 		}
 		if pl := m.pluginByIdx[i]; pl != nil && !pl.Enabled {
-			segs = append(segs, ui.C(item, colorMuted), ui.M("  kapalı"))
+			segs = append(segs, ui.C(dil.T(item), colorMuted), ui.M(dil.T("  kapalı")))
 		} else {
-			segs = append(segs, ui.T(item))
+			segs = append(segs, ui.T(dil.T(item)))
 			if pl != nil && pl.Name() == "ozel_chat" {
 				if n := okunmamisDM(); n > 0 {
 					segs = append(segs, ui.C(fmt.Sprintf("  ● %d", n), colorAccent))
@@ -225,11 +222,11 @@ func (m appModel) homeFooter(w int) string {
 	if m.updateNotice != "" {
 		b.WriteString(ui.Notice(ui.KindSuccess, m.updateNotice) + "\n")
 	}
-	hints := []ui.Hint{ui.H("↑↓", "gezin"), ui.H("enter", "aç")}
+	hints := []ui.Hint{ui.H("↑↓", dil.T("gezin")), ui.H("enter", dil.T("aç"))}
 	if m.menuIndex < len(m.pluginByIdx) && m.pluginByIdx[m.menuIndex] != nil {
-		hints = append(hints, ui.H("space", "eklentiyi aç/kapat"))
+		hints = append(hints, ui.H("space", dil.T("eklentiyi aç/kapat")))
 	}
-	hints = append(hints, ui.H("q", "çıkış"))
+	hints = append(hints, ui.H("q", dil.T("çıkış")))
 	b.WriteString(ui.KeyHints(w, hints...))
 	return b.String()
 }
@@ -260,7 +257,7 @@ func (m appModel) homeDetailSide(w, h int) string {
 	cubuklu := func(baslik, aciklama string, satirlar []homeSayi) {
 		b.WriteString(ui.Section(baslik) + "\n" + ui.S.Muted.Render(aciklama) + "\n\n")
 		if len(satirlar) == 0 {
-			b.WriteString(ui.S.Muted.Render("Henüz veri yok."))
+			b.WriteString(ui.S.Muted.Render(dil.T("Henüz veri yok.")))
 			return
 		}
 		enCok := satirlar[0].n
@@ -275,7 +272,7 @@ func (m appModel) homeDetailSide(w, h int) string {
 	}
 
 	if m.pluginByIdx[m.menuIndex] != nil {
-		b.WriteString(ui.Section("Yüklü eklentiler") + "\n\n")
+		b.WriteString(ui.Section(dil.T("Yüklü eklentiler")) + "\n\n")
 		for _, pl := range m.plugins {
 			if pl.Label() == "" {
 				continue // forumdan açılan gizli eklentiler (ör. konu_ac)
@@ -284,7 +281,7 @@ func (m appModel) homeDetailSide(w, h int) string {
 			if !pl.Enabled {
 				nokta = ui.S.Subtle.Render("○")
 			}
-			b.WriteString(ui.Spread(w, nokta+" "+pluginui.Safe(pl.Label()), ui.S.Muted.Render(pl.Manifest.Version)) + "\n")
+			b.WriteString(ui.Spread(w, nokta+" "+dil.T(pluginui.Safe(pl.Label())), ui.S.Muted.Render(pl.Manifest.Version)) + "\n")
 		}
 		return b.String()
 	}
@@ -295,12 +292,12 @@ func (m appModel) homeDetailSide(w, h int) string {
 			sayilar := m.forumStore.CategoryCounts()
 			for _, kat := range forum.Categories {
 				if n := sayilar[kat]; n > 0 {
-					satirlar = append(satirlar, homeSayi{ad: kat, n: n, renk: ui.P.Text})
+					satirlar = append(satirlar, homeSayi{ad: dil.T(kat), n: n, renk: ui.P.Text})
 				}
 			}
 		}
 		sort.SliceStable(satirlar, func(i, j int) bool { return satirlar[i].n > satirlar[j].n })
-		cubuklu("Kategoriler", "En çok konusu olanlar", satirlar)
+		cubuklu(dil.T("Kategoriler"), dil.T("En çok konusu olanlar"), satirlar)
 	case "Sohbet":
 		say := map[string]*homeSayi{}
 		var sira []*homeSayi
@@ -325,18 +322,18 @@ func (m appModel) homeDetailSide(w, h int) string {
 			satirlar[i] = *s
 		}
 		sort.SliceStable(satirlar, func(i, j int) bool { return satirlar[i].n > satirlar[j].n })
-		cubuklu("En çok yazanlar", "Yüklü sohbet geçmişinde", satirlar)
+		cubuklu(dil.T("En çok yazanlar"), dil.T("Yüklü sohbet geçmişinde"), satirlar)
 	case "Ayarlar":
-		b.WriteString(ui.Section("Temalar") + "\n" + ui.S.Muted.Render("Ayarlar → Temalar'dan seçilir") + "\n\n")
+		b.WriteString(ui.Section(dil.T("Temalar")) + "\n" + ui.S.Muted.Render(dil.T("Ayarlar → Temalar'dan seçilir")) + "\n\n")
 		for _, t := range ui.Presets {
 			ornek := ""
 			for _, c := range []string{t.Accent, t.SelBG, t.Name, t.Badge} {
 				ornek += lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Render("██") + " "
 			}
-			ad := t.ThemeName + strings.Repeat(" ", max(12-lipgloss.Width(t.ThemeName), 0))
+			ad := dil.T(t.ThemeName) + strings.Repeat(" ", max(12-lipgloss.Width(dil.T(t.ThemeName)), 0))
 			satir := ad + "  " + ornek
 			if t.ThemeName == ActiveThemeName {
-				satir = ui.S.Bold.Render(ad) + "  " + ornek + ui.S.Success.Render(" ● etkin")
+				satir = ui.S.Bold.Render(ad) + "  " + ornek + ui.S.Success.Render(dil.T(" ● etkin"))
 			}
 			b.WriteString(satir + "\n")
 		}
@@ -369,29 +366,29 @@ func (m appModel) homeDetailMain(w, h int) string {
 	kalan := func() int { return h - lipgloss.Height(strings.TrimRight(b.String(), "\n")) }
 
 	if pl := m.pluginByIdx[m.menuIndex]; pl != nil {
-		durum := ui.S.Success.Render("● açık")
+		durum := ui.S.Success.Render(dil.T("● açık"))
 		if !pl.Enabled {
-			durum = ui.S.Muted.Render("○ kapalı")
+			durum = ui.S.Muted.Render(dil.T("○ kapalı"))
 		}
-		baslik(label, durum)
-		desc := pl.Manifest.Description
+		baslik(dil.T(label), durum)
+		desc := dil.T(pl.Manifest.Description)
 		if desc == "" {
-			desc = "Bu eklenti bir açıklama vermiyor."
+			desc = dil.T("Bu eklenti bir açıklama vermiyor.")
 		}
 		aciklama(desc)
-		const lw = 10
+		lw := etiketGenisligi(10, "Sürüm", "Yazar", "Program")
 		if pl.Manifest.Version != "" {
-			b.WriteString(ui.KV(lw, "Sürüm", "v"+strings.TrimPrefix(pl.Manifest.Version, "v")) + "\n")
+			b.WriteString(ui.KV(lw, dil.T("Sürüm"), "v"+strings.TrimPrefix(pl.Manifest.Version, "v")) + "\n")
 		}
 		if pl.Manifest.Author != "" {
-			b.WriteString(ui.KV(lw, "Yazar", pluginui.Safe(pl.Manifest.Author)) + "\n")
+			b.WriteString(ui.KV(lw, dil.T("Yazar"), pluginui.Safe(pl.Manifest.Author)) + "\n")
 		}
-		b.WriteString(ui.KV(lw, "Program", ui.Truncate(pl.ExePath, w-lw)) + "\n\n")
-		if pl.Enabled {
-			b.WriteString(ui.S.Muted.Render("enter ile aç, space ile kapat. Kapalı eklentiler menüde soluk görünür."))
-		} else {
-			b.WriteString(ui.S.Muted.Render("space ile aç. Kapalıyken başlatılmaz ve AND'ın API'sine erişemez."))
+		b.WriteString(ui.KV(lw, dil.T("Program"), ui.Truncate(pl.ExePath, w-lw)) + "\n\n")
+		ipucu := dil.T("enter ile aç, space ile kapat. Kapalı eklentiler menüde soluk görünür.")
+		if !pl.Enabled {
+			ipucu = dil.T("space ile aç. Kapalıyken başlatılmaz ve AND'ın API'sine erişemez.")
 		}
+		b.WriteString(ui.S.Muted.Render(ui.Wrap(ipucu, ui.Measure(w))))
 		return b.String()
 	}
 
@@ -400,13 +397,13 @@ func (m appModel) homeDetailMain(w, h int) string {
 		konular := m.sonKonular()
 		sag := ""
 		if m.forumStore != nil {
-			sag = ui.S.Muted.Render(fmt.Sprintf("%d kategori", len(forum.Categories)))
+			sag = ui.S.Muted.Render(dil.F("%d kategori", len(forum.Categories)))
 		}
-		baslik("Forum", sag)
-		aciklama("Kategorilere ayrılmış konular. Bir konu yayınlandığı anda eşlere yayılır ve 5 gün sonra kendiliğinden silinir.")
-		b.WriteString(ui.Section("Son konular") + "\n")
+		baslik(dil.T("Forum"), sag)
+		aciklama(dil.T("Kategorilere ayrılmış konular. Bir konu yayınlandığı anda eşlere yayılır ve 5 gün sonra kendiliğinden silinir."))
+		b.WriteString(ui.Section(dil.T("Son konular")) + "\n")
 		if len(konular) == 0 {
-			b.WriteString(ui.S.Muted.Render("Henüz konu yok. Forum'a girip ilk konuyu açabilirsin."))
+			b.WriteString(ui.S.Muted.Render(dil.T("Henüz konu yok. Forum'a girip ilk konuyu açabilirsin.")))
 			break
 		}
 		b.WriteString("\n")
@@ -415,11 +412,11 @@ func (m appModel) homeDetailMain(w, h int) string {
 			b.WriteString(m.homeKonuSatiri(w, k) + "\n\n")
 		}
 	case "Sohbet":
-		baslik("Sohbet", ui.S.Muted.Render("genel kanal"))
-		aciklama("Herkese açık genel kanal. Mesajlar imzalıdır ama şifreli değildir; ağdaki herkes okuyabilir.")
-		b.WriteString(ui.Section("Son mesajlar") + "\n")
+		baslik(dil.T("Sohbet"), ui.S.Muted.Render(dil.T("genel kanal")))
+		aciklama(dil.T("Herkese açık genel kanal. Mesajlar imzalıdır ama şifreli değildir; ağdaki herkes okuyabilir."))
+		b.WriteString(ui.Section(dil.T("Son mesajlar")) + "\n")
 		if len(m.chatLines) == 0 {
-			b.WriteString(ui.S.Muted.Render("Henüz mesaj yok. İlk mesajı sen yaz."))
+			b.WriteString(ui.S.Muted.Render(dil.T("Henüz mesaj yok. İlk mesajı sen yaz.")))
 			break
 		}
 		n := min(len(m.chatLines), max(kalan(), 1))
@@ -427,25 +424,25 @@ func (m appModel) homeDetailMain(w, h int) string {
 			b.WriteString(m.homeSohbetSatiri(w, i) + "\n")
 		}
 	case "Ayarlar":
-		baslik("Ayarlar", "")
-		aciklama("Kimliğin ve profilin, yüklü eklentiler ve temalar.")
-		const lw = 14
+		baslik(dil.T("Ayarlar"), "")
+		aciklama(dil.T("Kimliğin ve profilin, yüklü eklentiler ve temalar."))
+		lw := etiketGenisligi(14, "Tema", "Sürüm", "Eklentiler", "Veri dizini")
 		acik := 0
 		for _, pl := range m.plugins {
 			if pl.Enabled {
 				acik++
 			}
 		}
-		b.WriteString(ui.KV(lw, "Tema", ActiveThemeName) + "\n")
-		b.WriteString(ui.KV(lw, "Sürüm", updater.Version) + "\n")
-		b.WriteString(ui.KV(lw, "Eklentiler", fmt.Sprintf("%d yüklü, %d açık", len(m.plugins), acik)) + "\n")
-		b.WriteString(ui.KV(lw, "Veri dizini", ui.Truncate(m.dataDir, w-lw)) + "\n\n")
-		b.WriteString(ui.S.Muted.Render("Temayı değiştirmek için Ayarlar → Temalar."))
+		b.WriteString(ui.KV(lw, dil.T("Tema"), dil.T(ActiveThemeName)) + "\n")
+		b.WriteString(ui.KV(lw, dil.T("Sürüm"), updater.Version) + "\n")
+		b.WriteString(ui.KV(lw, dil.T("Eklentiler"), dil.F("%d yüklü, %d açık", len(m.plugins), acik)) + "\n")
+		b.WriteString(ui.KV(lw, dil.T("Veri dizini"), ui.Truncate(m.dataDir, w-lw)) + "\n\n")
+		b.WriteString(ui.S.Muted.Render(dil.T("Temayı değiştirmek için Ayarlar → Temalar.")))
 	case "Çıkış":
-		baslik("Çıkış", "")
-		aciklama("AND'ı kapatır. Konular, sohbet geçmişi ve kimliğin bu bilgisayarda kalır; bir sonraki açılışta ağa yeniden bağlanırsın.")
+		baslik(dil.T("Çıkış"), "")
+		aciklama(dil.T("AND'ı kapatır. Konular, sohbet geçmişi ve kimliğin bu bilgisayarda kalır; bir sonraki açılışta ağa yeniden bağlanırsın."))
 	default:
-		baslik(label, "")
+		baslik(dil.T(label), "")
 	}
 	return b.String()
 }
@@ -464,11 +461,11 @@ func (m appModel) sonKonular() []*forum.Post {
 // kategori, yazar (kendi renginde), zaman ve yanıt sayısı.
 func (m appModel) homeKonuSatiri(w int, k *forum.Post) string {
 	sep := ui.S.Subtle.Render("  ·  ")
-	meta := ui.S.Muted.Render(pluginui.Safe(k.Category)) + sep +
+	meta := ui.S.Muted.Render(dil.T(pluginui.Safe(k.Category))) + sep +
 		lipgloss.NewStyle().Foreground(ui.AuthorColor(k.AuthorKey)).Render(ui.Truncate(pluginui.Safe(k.AuthorName), 20)) + sep +
 		ui.S.Muted.Render(forumNeZaman(k.CreatedAt))
 	if n := m.forumStore.ReplyCount(k.ID); n > 0 {
-		meta += sep + ui.S.Muted.Render(fmt.Sprintf("%d yanıt", n))
+		meta += sep + ui.S.Muted.Render(dil.F("%d yanıt", n))
 	}
 	return ui.S.Accent.Render("▸ ") + ui.S.Bold.Render(ui.Truncate(pluginui.Safe(k.Title), w-2)) +
 		"\n  " + ui.Truncate(meta, w-2)

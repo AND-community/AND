@@ -16,6 +16,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
@@ -95,10 +96,10 @@ const (
 // somewhere.
 func roleBadgeText(ps *profile.Store, authorKey string) string {
 	if ps == nil {
-		return profile.RoleMember.Label()
+		return dil.T(profile.RoleMember.Label())
 	}
 	role := ps.RoleOf(authorKey)
-	label := role.Label()
+	label := dil.T(role.Label())
 	if role == profile.RoleMember {
 		return label
 	}
@@ -186,7 +187,8 @@ type appModel struct {
 	banNoticeErr    bool
 
 	settingsIdx  int
-	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar
+	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar 3=Dil
+	dilIdx       int // Dil sekmesinde seçili dil (dil.Diller içinde)
 	settingsVP   viewport.Model
 	showMnemonic bool
 	// settingsNotice, Eklentiler/Temalar sekmelerinin geri bildirimi (ör.
@@ -308,23 +310,23 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	mod *moderation.Moderator, modTopic *network.Topic) appModel {
 
 	chatIn := textinput.New()
-	chatIn.Placeholder = "mesaj…"
+	chatIn.Placeholder = dil.T("mesaj…")
 	chatIn.CharLimit = 500
 
 	bioIn := textinput.New()
-	bioIn.Placeholder = "kendinden kısaca bahset…"
+	bioIn.Placeholder = dil.T("kendinden kısaca bahset…")
 	bioIn.CharLimit = profile.MaxBioBytes
 
 	statusIn := textinput.New()
-	statusIn.Placeholder = "şu an ne yapıyorsun?…"
+	statusIn.Placeholder = dil.T("şu an ne yapıyorsun?…")
 	statusIn.CharLimit = profile.MaxStatusBytes
 
 	linkIn := textinput.New()
-	linkIn.Placeholder = "github.com/kullanici-adi"
+	linkIn.Placeholder = dil.T("github.com/kullanici-adi")
 	linkIn.CharLimit = profile.MaxLinkBytes
 
 	banIn := textinput.New()
-	banIn.Placeholder = "sebep…"
+	banIn.Placeholder = dil.T("sebep…")
 	banIn.CharLimit = 256
 
 	for _, in := range []*textinput.Model{&chatIn, &bioIn, &statusIn, &linkIn, &banIn} {
@@ -337,9 +339,9 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	// başlıklarını nerede çizeceğini belirler — Enter/Space tuş işleyicileri
 	// (handleMenuKey) hâlâ etiket string'ine ya da pluginByIdx'e bakar,
 	// gruplamadan bağımsızdır.
-	items := []string{"Forum", "Sohbet"}
+	items := []string{dil.K("Forum"), dil.K("Sohbet")}
 	byIdx := []*pluginmgr.Plugin{nil, nil}
-	groups := []string{"Topluluk", "Topluluk"}
+	groups := []string{dil.K("Topluluk"), dil.K("Topluluk")}
 	for i := range plugins {
 		if plugins[i].Label() == "" || plugins[i].Manifest.Category == "theme" {
 			continue
@@ -347,11 +349,11 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		items = append(items, plugins[i].Label())
 		pl := &plugins[i]
 		byIdx = append(byIdx, pl)
-		groups = append(groups, "Eklentiler")
+		groups = append(groups, dil.K("Eklentiler"))
 	}
-	items = append(items, "Ayarlar", "Çıkış")
+	items = append(items, dil.K("Ayarlar"), dil.K("Çıkış"))
 	byIdx = append(byIdx, nil, nil)
-	groups = append(groups, "Sistem", "Sistem")
+	groups = append(groups, dil.K("Sistem"), dil.K("Sistem"))
 
 	// Sohbet geçmişi artık chatStore'un SQLite'a kalıcılaştırdığı,
 	// peer'lar arası senkronize edilen mesajlardan yükleniyor — bkz.
@@ -473,9 +475,9 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case UpdateReadyMsg:
-		m.updateNotice = msg.Version + " indirildi — çıkışta otomatik yenilenir"
+		m.updateNotice = dil.F("%s indirildi — çıkışta otomatik yenilenir", msg.Version)
 		if msg.Eklentiler > 0 {
-			m.updateNotice = fmt.Sprintf("%s ve %d eklenti indirildi — çıkışta otomatik yenilenir", msg.Version, msg.Eklentiler)
+			m.updateNotice = dil.F("%s ve %d eklenti indirildi — çıkışta otomatik yenilenir", msg.Version, msg.Eklentiler)
 		}
 		return m, nil
 
@@ -554,10 +556,10 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case profileSavedMsg:
 		if msg.err != nil {
-			m.profileNotice = "Kaydedilemedi: " + msg.err.Error()
+			m.profileNotice = dil.T("Kaydedilemedi: ") + msg.err.Error()
 			m.profileNoticeErr = true
 		} else {
-			m.profileNotice = "Profil kaydedildi"
+			m.profileNotice = dil.T("Profil kaydedildi")
 			m.profileNoticeErr = false
 		}
 		m.syncSettingsVP()
@@ -578,7 +580,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.githubCancel = nil
 			m.githubCtx = nil
-			m.profileNotice = "GitHub bağlantısı başlatılamadı: " + msg.err.Error()
+			m.profileNotice = dil.T("GitHub bağlantısı başlatılamadı: ") + msg.err.Error()
 			m.profileNoticeErr = true
 			m.syncSettingsVP()
 			return m, nil
@@ -630,10 +632,10 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.githubCancel = nil
 		m.githubCtx = nil
 		if msg.err != nil {
-			m.profileNotice = "GitHub bağlanamadı: " + msg.err.Error()
+			m.profileNotice = dil.T("GitHub bağlanamadı: ") + msg.err.Error()
 			m.profileNoticeErr = true
 		} else {
-			m.profileNotice = "GitHub bağlandı: @" + msg.username
+			m.profileNotice = dil.T("GitHub bağlandı: @") + msg.username
 			m.profileNoticeErr = false
 		}
 		m.syncSettingsVP()
@@ -974,7 +976,7 @@ func (m appModel) issueChatBan() (tea.Model, tea.Cmd) {
 	m.banConfirming = false
 	m.banReasonInput.Blur()
 	m.chatProfilIsBanned = true
-	m.banNotice = fmt.Sprintf("%s banlandı (%s)", pluginui.Safe(m.chatProfilAd), label)
+	m.banNotice = dil.F("%s banlandı (%s)", pluginui.Safe(m.chatProfilAd), label)
 	m.banNoticeErr = false
 	return m, chatBildirimTemizle()
 }
@@ -1004,7 +1006,7 @@ func (m appModel) issueChatUnban() (tea.Model, tea.Cmd) {
 		return m, chatBildirimTemizle()
 	}
 	m.chatProfilIsBanned = false
-	m.banNotice = fmt.Sprintf("%s adlı kullanıcının banı kaldırıldı", pluginui.Safe(m.chatProfilAd))
+	m.banNotice = dil.F("%s adlı kullanıcının banı kaldırıldı", pluginui.Safe(m.chatProfilAd))
 	m.banNoticeErr = false
 	return m, chatBildirimTemizle()
 }
@@ -1056,7 +1058,7 @@ func (m appModel) sendChat() (tea.Model, tea.Cmd) {
 
 	sent, err := m.chatStore.Send(m.ctx, text)
 	if err != nil {
-		m.chatNotice = "Gönderilemedi: " + err.Error()
+		m.chatNotice = dil.T("Gönderilemedi: ") + err.Error()
 	} else {
 		m.chatNotice = ""
 	}
@@ -1187,7 +1189,7 @@ func (m appModel) View() string {
 func (m appModel) kimlikDurumu() string {
 	name := m.identity.Name()
 	if name == "" {
-		name = "anonim"
+		name = dil.T("anonim")
 	}
 	ad := ui.S.Name.Render(pluginui.Safe(name))
 	if m.node == nil {
@@ -1200,10 +1202,10 @@ func (m appModel) viewChat() string {
 	iw := icGenislik(m.width)
 
 	var b strings.Builder
-	b.WriteString(ui.Header(iw, []string{"Sohbet", "Genel kanal"}, m.kimlikDurumu()) + "\n")
+	b.WriteString(ui.Header(iw, []string{dil.T("Sohbet"), dil.T("Genel kanal")}, m.kimlikDurumu()) + "\n")
 	// Genel kanal herkese açık bir GossipSub konusudur: mesajlar imzalıdır
 	// ama uçtan uca ŞİFRELİ DEĞİLDİR — burada öyle iddia edilmemeli.
-	b.WriteString(ui.S.Muted.Render("Herkese açık kanal · mesajlar imzalı, eşler arasında senkronize") + "\n\n")
+	b.WriteString(ui.S.Muted.Render(dil.T("Herkese açık kanal · mesajlar imzalı, eşler arasında senkronize")) + "\n\n")
 
 	if len(m.chatLines) == 0 {
 		pad := m.chatViewport.Height/2 - 1
@@ -1211,12 +1213,12 @@ func (m appModel) viewChat() string {
 			pad = 0
 		}
 		b.WriteString(strings.Repeat("\n", pad))
-		b.WriteString(lipgloss.PlaceHorizontal(iw, lipgloss.Center, ui.S.Muted.Render("Henüz mesaj yok — ilk mesajı sen yaz.")))
+		b.WriteString(lipgloss.PlaceHorizontal(iw, lipgloss.Center, ui.S.Muted.Render(dil.T("Henüz mesaj yok — ilk mesajı sen yaz."))))
 		b.WriteString(strings.Repeat("\n", max(m.chatViewport.Height-pad-1, 0)))
 	} else {
 		b.WriteString(m.chatViewport.View())
 		if !m.chatViewport.AtBottom() {
-			b.WriteString("\n" + ui.S.Muted.Render("  ↓ daha yeni mesajlar"))
+			b.WriteString("\n" + ui.S.Muted.Render(dil.T("  ↓ daha yeni mesajlar")))
 		}
 	}
 
@@ -1226,7 +1228,7 @@ func (m appModel) viewChat() string {
 	if m.chatNotice != "" {
 		f.WriteString(ui.Notice(ui.KindError, m.chatNotice) + "\n")
 	}
-	f.WriteString(ui.KeyHints(iw, ui.H("↑↓", "mesaj seç"), ui.H("ctrl+p", "yazarın profili"), ui.H("enter", "gönder"), ui.H("esc", "ana menü")))
+	f.WriteString(ui.KeyHints(iw, ui.H("↑↓", dil.T("mesaj seç")), ui.H("ctrl+p", dil.T("yazarın profili")), ui.H("enter", dil.T("gönder")), ui.H("esc", dil.T("ana menü"))))
 	return ui.Page(m.width, m.height, b.String(), f.String())
 }
 
@@ -1237,10 +1239,10 @@ func (m appModel) viewChatProfile() string {
 	iw := icGenislik(m.width)
 
 	var b strings.Builder
-	b.WriteString(ui.Header(iw, []string{"Sohbet", "Profil", pluginui.Safe(m.chatProfilAd)}, m.kimlikDurumu()) + "\n\n")
+	b.WriteString(ui.Header(iw, []string{dil.T("Sohbet"), dil.T("Profil"), pluginui.Safe(m.chatProfilAd)}, m.kimlikDurumu()) + "\n\n")
 	b.WriteString(m.chatViewport.View())
 	if !m.chatViewport.AtBottom() {
-		b.WriteString("\n" + ui.S.Muted.Render("  ↓ daha fazla"))
+		b.WriteString("\n" + ui.S.Muted.Render(dil.T("  ↓ daha fazla")))
 	}
 
 	if m.banConfirming {
@@ -1259,7 +1261,7 @@ func (m appModel) viewChatProfile() string {
 		}
 		f.WriteString(ui.Notice(kind, m.banNotice) + "\n")
 	}
-	f.WriteString(ui.KeyHints(iw, profilKisayollari(m.banConfirming, m.unbanConfirming, m.chatProfilCanBan, m.chatProfilIsBanned, "sohbete dön")...))
+	f.WriteString(ui.KeyHints(iw, profilKisayollari(m.banConfirming, m.unbanConfirming, m.chatProfilCanBan, m.chatProfilIsBanned, dil.T("sohbete dön"))...))
 	return ui.Page(m.width, m.height, b.String(), f.String())
 }
 
@@ -1268,15 +1270,15 @@ func (m appModel) viewChatProfile() string {
 func profilKisayollari(banOnay, unbanOnay, banlayabilir, banli bool, geri string) []ui.Hint {
 	switch {
 	case banOnay:
-		return []ui.Hint{ui.H("←→", "süre seç"), ui.H("enter", "banla"), ui.H("esc", "vazgeç")}
+		return []ui.Hint{ui.H("←→", dil.T("süre seç")), ui.H("enter", dil.T("banla")), ui.H("esc", dil.T("vazgeç"))}
 	case unbanOnay:
-		return []ui.Hint{ui.H("e", "banı kaldır"), ui.H("esc", "vazgeç")}
+		return []ui.Hint{ui.H("e", dil.T("banı kaldır")), ui.H("esc", dil.T("vazgeç"))}
 	}
-	hints := []ui.Hint{ui.H("↑↓", "kaydır")}
+	hints := []ui.Hint{ui.H("↑↓", dil.T("kaydır"))}
 	if banlayabilir {
-		hints = append(hints, ui.H("b", "banla"))
+		hints = append(hints, ui.H("b", dil.T("banla")))
 		if banli {
-			hints = append(hints, ui.H("u", "banı kaldır"))
+			hints = append(hints, ui.H("u", dil.T("banı kaldır")))
 		}
 	}
 	return append(hints, ui.H("esc", geri))
@@ -1306,6 +1308,7 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleProfileEditKey(msg)
 	}
 
+	oncekiTab := m.settingsTab
 	switch msg.String() {
 	case "ctrl+c":
 		m.quitting = true
@@ -1322,18 +1325,34 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsNotice = ""
 		}
 	case "right", "l":
-		if m.settingsTab < 2 {
+		if m.settingsTab < settingsTabSayisi-1 {
 			m.settingsTab++
 			m.settingsIdx = 0
 			m.settingsNotice = ""
 		}
 	case "tab":
-		m.settingsTab = (m.settingsTab + 1) % 3
+		m.settingsTab = (m.settingsTab + 1) % settingsTabSayisi
 		m.settingsIdx = 0
 		m.settingsNotice = ""
 	}
+	if m.settingsTab == 3 && oncekiTab != 3 {
+		m.dilIdx = dilSirasi(dil.Etkin()) // sekmeye girerken etkin dil seçili gelsin
+	}
 
 	switch m.settingsTab {
+	case 3: // Dil
+		switch msg.String() {
+		case "up", "k":
+			if m.dilIdx > 0 {
+				m.dilIdx--
+			}
+		case "down", "j":
+			if m.dilIdx < len(dil.Diller)-1 {
+				m.dilIdx++
+			}
+		case "enter":
+			m.diliUygula(dil.Diller[m.dilIdx].Kod)
+		}
 	case 0: // Bilgi — sadece scroll
 		switch msg.String() {
 		case "up", "k":
@@ -1412,7 +1431,7 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				applyThemeColors(t)
 				SaveTheme(m.dataDir, t)
 				m.restyleInputs()
-				m.settingsNotice = t.ThemeName + " teması uygulandı"
+				m.settingsNotice = dil.F("%s teması uygulandı", dil.T(t.ThemeName))
 			} else if i := m.settingsIdx - onek; i < len(list) {
 				m.syncSettingsVP()
 				return m.eklentiAc(list[i], nil)
@@ -1423,9 +1442,9 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				pl := m.plugins[list[i]]
 				if len(pl.Manifest.Permissions) > 0 && pluginmgr.IzinOnayli(m.dataDir, pl.Name(), pl.Manifest.Permissions) {
 					if err := pluginmgr.IzinleriGeriAl(m.dataDir, pl.Name()); err != nil {
-						m.settingsNotice = "İzinler geri alınamadı: " + err.Error()
+						m.settingsNotice = dil.T("İzinler geri alınamadı: ") + err.Error()
 					} else {
-						m.settingsNotice = pluginui.Safe(pl.Label()) + " için verilen izinler geri alındı; bir sonraki açılışta yeniden sorulacak"
+						m.settingsNotice = dil.F("%s için verilen izinler geri alındı; bir sonraki açılışta yeniden sorulacak", dil.T(pluginui.Safe(pl.Label())))
 					}
 				}
 			}
@@ -1468,7 +1487,7 @@ func (m *appModel) refreshSettingsDiskStats() {
 
 	m.settingsBansCountStr = ""
 	if entries, err := os.ReadDir(filepath.Join(m.dataDir, "bans")); err == nil {
-		m.settingsBansCountStr = fmt.Sprintf("%d kayıt", len(entries))
+		m.settingsBansCountStr = dil.F("%d kayıt", len(entries))
 	}
 }
 
@@ -1477,7 +1496,10 @@ func (m *appModel) syncSettingsVP() {
 	if w <= 0 {
 		w = icGenislik(m.width)
 	}
-	const labelW = 18
+	// Etiket sütunu Türkçede 18; daha uzun çevirilerde genişler.
+	labelW := etiketGenisligi(18, "Sürüm", "Platform", "Veri dizini", "Ad", "Genel anahtar", "Rol", "Aktivite",
+		"Kurtarma kodu", "Bio", "Durum", "Bağlantı", "Etiketler", "Peer ID", "Bağlantı durumu", "Adres",
+		"Sohbet geçmişi", "Yasaklar", "Ağ", "Forum", "Toplam konu", "Toplam yanıt")
 	girinti := strings.Repeat(" ", labelW)
 	row := func(k, v string) string { return ui.KV(labelW, k, v) + "\n" }
 	// ipucu, bir alanın altındaki "x ile düzenle" türü küçük açıklamadır.
@@ -1498,15 +1520,15 @@ func (m *appModel) syncSettingsVP() {
 		myKey := hex.EncodeToString(m.identity.PublicKey())
 
 		if m.profileEdit == profileFieldTags {
-			b.WriteString(ui.Section("Etiketlerini seç") + "\n")
-			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("En fazla %d etiket — profilinde ilgi alanların olarak görünür.", profile.MaxTags)) + "\n\n")
+			b.WriteString(ui.Section(dil.T("Etiketlerini seç")) + "\n")
+			b.WriteString(ui.S.Muted.Render(dil.F("En fazla %d etiket — profilinde ilgi alanların olarak görünür.", profile.MaxTags)) + "\n\n")
 			const headerLines = 3
 			for i, cat := range forum.Categories {
 				isaret := ui.C("○ ", ui.P.Subtle)
 				if m.tagSelected[cat] {
 					isaret = ui.C("● ", colorAccent)
 				}
-				b.WriteString(ui.Row(w, i == m.tagIdx, isaret, ui.T(cat)) + "\n")
+				b.WriteString(ui.Row(w, i == m.tagIdx, isaret, ui.T(dil.T(cat))) + "\n")
 			}
 			if m.profileNotice != "" {
 				b.WriteString("\n" + bildirim(m.profileNotice, m.profileNoticeErr) + "\n")
@@ -1525,48 +1547,48 @@ func (m *appModel) syncSettingsVP() {
 			break
 		}
 
-		b.WriteString(ui.Section("Sistem") + "\n")
-		b.WriteString(row("Sürüm", updater.Version+ui.S.Muted.Render("  ·  alfa")))
-		b.WriteString(row("Platform", runtime.GOOS+"/"+runtime.GOARCH))
-		b.WriteString(row("Veri dizini", ui.Truncate(m.dataDir, w-labelW)))
+		b.WriteString(ui.Section(dil.T("Sistem")) + "\n")
+		b.WriteString(row(dil.T("Sürüm"), updater.Version+ui.S.Muted.Render(dil.T("  ·  alfa"))))
+		b.WriteString(row(dil.T("Platform"), runtime.GOOS+"/"+runtime.GOARCH))
+		b.WriteString(row(dil.T("Veri dizini"), ui.Truncate(m.dataDir, w-labelW)))
 		b.WriteString("\n")
 
-		b.WriteString(ui.Section("Kimlik") + "\n")
+		b.WriteString(ui.Section(dil.T("Kimlik")) + "\n")
 		name := m.identity.Name()
 		if name == "" {
-			name = "(adsız)"
+			name = dil.T("(adsız)")
 		}
-		b.WriteString(row("Ad", ui.S.Name.Render(pluginui.Safe(name))))
+		b.WriteString(row(dil.T("Ad"), ui.S.Name.Render(pluginui.Safe(name))))
 		pubHex := hex.EncodeToString(m.identity.PublicKey())
-		b.WriteString(row("Genel anahtar", pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
+		b.WriteString(row(dil.T("Genel anahtar"), pubHex[:16]+"…"+pubHex[len(pubHex)-8:]))
 		if m.profileStore != nil {
-			b.WriteString(row("Rol", roleBadgeText(m.profileStore, myKey)))
+			b.WriteString(row(dil.T("Rol"), roleBadgeText(m.profileStore, myKey)))
 		}
 		if m.forumStore != nil {
 			postCount, replyCount, joinDate := m.forumStore.AuthorStats(myKey)
-			stat := fmt.Sprintf("%d konu · %d yanıt", postCount, replyCount)
+			stat := dil.F("%d konu · %d yanıt", postCount, replyCount)
 			if !joinDate.IsZero() {
-				stat += ui.S.Muted.Render("  ·  ilk görülme " + turkceTarih(joinDate.Local()))
+				stat += ui.S.Muted.Render(dil.T("  ·  ilk görülme ") + yerelTarih(joinDate.Local()))
 			}
-			b.WriteString(row("Aktivite", stat))
+			b.WriteString(row(dil.T("Aktivite"), stat))
 		}
 		if mnemo := m.identity.RecoveryCode(); mnemo != "" {
 			if m.showMnemonic {
 				satirlar := strings.Split(ui.Wrap(mnemo, w-labelW), "\n")
-				b.WriteString(row("Kurtarma kodu", ui.S.Warning.Bold(true).Render(satirlar[0])))
+				b.WriteString(row(dil.T("Kurtarma kodu"), ui.S.Warning.Bold(true).Render(satirlar[0])))
 				for _, s := range satirlar[1:] {
 					b.WriteString(girinti + ui.S.Warning.Bold(true).Render(s) + "\n")
 				}
-				b.WriteString(ipucu("m ile gizle · kimseyle paylaşma"))
+				b.WriteString(ipucu(dil.T("m ile gizle · kimseyle paylaşma")))
 			} else {
-				b.WriteString(row("Kurtarma kodu", ui.S.Muted.Render("•••• •••• •••• ••••")))
-				b.WriteString(ipucu("m ile göster"))
+				b.WriteString(row(dil.T("Kurtarma kodu"), ui.S.Muted.Render("•••• •••• •••• ••••")))
+				b.WriteString(ipucu(dil.T("m ile göster")))
 			}
 		}
 		b.WriteString("\n")
 
 		if m.profileStore != nil {
-			b.WriteString(ui.Section("Profil") + "\n")
+			b.WriteString(ui.Section(dil.T("Profil")) + "\n")
 
 			fieldRow := func(label string, field profileField, key, storedVal string, input textinput.Model, maxBytes int) {
 				if m.profileEdit == field {
@@ -1577,15 +1599,15 @@ func (m *appModel) syncSettingsVP() {
 					if used > maxBytes {
 						sayac = ui.S.Error
 					}
-					b.WriteString(girinti + sayac.Render(fmt.Sprintf("%d/%d bayt", used, maxBytes)) + ui.S.Subtle.Render("  ·  enter kaydet · esc iptal") + "\n")
+					b.WriteString(girinti + sayac.Render(dil.F("%d/%d bayt", used, maxBytes)) + ui.S.Subtle.Render(dil.T("  ·  enter kaydet · esc iptal")) + "\n")
 					return
 				}
 				if storedVal == "" {
-					b.WriteString(row(label, ui.S.Muted.Render("belirtilmemiş")))
+					b.WriteString(row(label, ui.S.Muted.Render(dil.T("belirtilmemiş"))))
 				} else {
 					b.WriteString(row(label, storedVal))
 				}
-				b.WriteString(ipucu(key + " ile düzenle"))
+				b.WriteString(ipucu(dil.F("%s ile düzenle", key)))
 			}
 
 			p := m.profileStore.Get(myKey)
@@ -1593,20 +1615,24 @@ func (m *appModel) syncSettingsVP() {
 			if p != nil {
 				bio, status, link = pluginui.Safe(p.Bio), pluginui.Safe(p.Status), pluginui.Safe(p.Link)
 				if len(p.Tags) > 0 {
-					tags = pluginui.Safe(strings.Join(p.Tags, ", "))
+					adlar := make([]string, len(p.Tags))
+					for i, t := range p.Tags {
+						adlar[i] = dil.T(pluginui.Safe(t)) // etiketler kategori adlarıdır
+					}
+					tags = strings.Join(adlar, ", ")
 				}
 			}
 
-			fieldRow("Bio", profileFieldBio, "b", bio, m.bioInput, profile.MaxBioBytes)
-			fieldRow("Durum", profileFieldStatus, "s", status, m.statusInput, profile.MaxStatusBytes)
-			fieldRow("Bağlantı", profileFieldLink, "w", link, m.linkInput, profile.MaxLinkBytes)
+			fieldRow(dil.T("Bio"), profileFieldBio, "b", bio, m.bioInput, profile.MaxBioBytes)
+			fieldRow(dil.T("Durum"), profileFieldStatus, "s", status, m.statusInput, profile.MaxStatusBytes)
+			fieldRow(dil.T("Bağlantı"), profileFieldLink, "w", link, m.linkInput, profile.MaxLinkBytes)
 
 			if tags == "" {
-				b.WriteString(row("Etiketler", ui.S.Muted.Render("belirtilmemiş")))
+				b.WriteString(row(dil.T("Etiketler"), ui.S.Muted.Render(dil.T("belirtilmemiş"))))
 			} else {
-				b.WriteString(row("Etiketler", tags))
+				b.WriteString(row(dil.T("Etiketler"), tags))
 			}
-			b.WriteString(ipucu("t ile düzenle"))
+			b.WriteString(ipucu(dil.T("t ile düzenle")))
 
 			// GitHub — metin girişi değil: bir hesap adı yazmak onu
 			// KANITLAMAZ, bu yüzden burada bir textinput yok. Değer
@@ -1620,17 +1646,17 @@ func (m *appModel) syncSettingsVP() {
 			}
 			switch {
 			case m.githubLinking && m.githubUserCode != "":
-				b.WriteString(row("GitHub", "Kod: "+ui.S.Title.Render(m.githubUserCode)))
-				b.WriteString(ipucu(m.githubVerificationURI + " adresinde onayla"))
-				b.WriteString(ipucu("onay bekleniyor… (esc ile iptal)"))
+				b.WriteString(row("GitHub", dil.T("Kod: ")+ui.S.Title.Render(m.githubUserCode)))
+				b.WriteString(ipucu(dil.F("%s adresinde onayla", m.githubVerificationURI)))
+				b.WriteString(ipucu(dil.T("onay bekleniyor… (esc ile iptal)")))
 			case m.githubLinking:
-				b.WriteString(row("GitHub", ui.S.Muted.Render("kod alınıyor…")))
+				b.WriteString(row("GitHub", ui.S.Muted.Render(dil.T("kod alınıyor…"))))
 			case githubUser != "":
-				b.WriteString(row("GitHub", ui.S.Success.Render("@"+githubUser)+ui.S.Muted.Render("  doğrulandı")))
-				b.WriteString(ipucu("v ile yeniden bağla"))
+				b.WriteString(row("GitHub", ui.S.Success.Render("@"+githubUser)+ui.S.Muted.Render(dil.T("  doğrulandı"))))
+				b.WriteString(ipucu(dil.T("v ile yeniden bağla")))
 			default:
-				b.WriteString(row("GitHub", ui.S.Muted.Render("bağlanmamış")))
-				b.WriteString(ipucu("v ile GitHub hesabını doğrula"))
+				b.WriteString(row("GitHub", ui.S.Muted.Render(dil.T("bağlanmamış"))))
+				b.WriteString(ipucu(dil.T("v ile GitHub hesabını doğrula")))
 			}
 
 			if m.profileNotice != "" {
@@ -1639,80 +1665,90 @@ func (m *appModel) syncSettingsVP() {
 			b.WriteString("\n")
 		}
 
-		b.WriteString(ui.Section("Ağ") + "\n")
+		b.WriteString(ui.Section(dil.T("Ağ")) + "\n")
 		if m.node != nil {
-			b.WriteString(row("Peer ID", kisaPeerID(m.node.Host.ID().String())))
-			b.WriteString(row("Bağlantı", esDurumu(m.peerCount())))
+			b.WriteString(row(dil.T("Peer ID"), kisaPeerID(m.node.Host.ID().String())))
+			b.WriteString(row(dil.T("Bağlantı durumu"), esDurumu(m.peerCount())))
 			addrs := m.node.Host.Network().ListenAddresses()
 			if len(addrs) > 0 {
-				b.WriteString(row("Adres", addrs[0].String()))
+				b.WriteString(row(dil.T("Adres"), addrs[0].String()))
 				for _, a := range addrs[1:] {
 					b.WriteString(girinti + a.String() + "\n")
 				}
 			}
 		} else {
-			b.WriteString(row("Ağ", ui.S.Muted.Render("başlatılmadı")))
+			b.WriteString(row(dil.T("Ağ"), ui.S.Muted.Render(dil.T("başlatılmadı"))))
 		}
 		b.WriteString("\n")
 
-		b.WriteString(ui.Section("Depolama") + "\n")
+		b.WriteString(ui.Section(dil.T("Depolama")) + "\n")
 		m.refreshSettingsDiskStats()
 		dbSize := m.settingsDBSizeStr
 		if dbSize == "" {
-			dbSize = ui.S.Muted.Render("yok")
+			dbSize = ui.S.Muted.Render(dil.T("yok"))
 		}
 		b.WriteString(row("forum.db", dbSize))
-		b.WriteString(row("Sohbet geçmişi", fmt.Sprintf("%d mesaj", len(m.chatLines))+ui.S.Muted.Render("  ·  forum.db içinde, senkronize")))
+		b.WriteString(row(dil.T("Sohbet geçmişi"), dil.F("%d mesaj", len(m.chatLines))+ui.S.Muted.Render(dil.T("  ·  forum.db içinde, senkronize"))))
 		if m.settingsBansCountStr != "" {
-			b.WriteString(row("Yasaklar", m.settingsBansCountStr))
+			b.WriteString(row(dil.T("Yasaklar"), m.settingsBansCountStr))
 		}
 		b.WriteString("\n")
 
-		b.WriteString(ui.Section("Forum") + "\n")
+		b.WriteString(ui.Section(dil.T("Forum")) + "\n")
 		if m.forumStore != nil {
 			posts := m.forumStore.AllInMemoryPosts()
 			replies := 0
 			for _, p := range posts {
 				replies += m.forumStore.ReplyCount(p.ID)
 			}
-			b.WriteString(row("Toplam konu", fmt.Sprintf("%d", len(posts))))
-			b.WriteString(row("Toplam yanıt", fmt.Sprintf("%d", replies)))
+			b.WriteString(row(dil.T("Toplam konu"), fmt.Sprintf("%d", len(posts))))
+			b.WriteString(row(dil.T("Toplam yanıt"), fmt.Sprintf("%d", replies)))
 		} else {
-			b.WriteString(row("Forum", ui.S.Muted.Render("başlatılmadı")))
+			b.WriteString(row(dil.T("Forum"), ui.S.Muted.Render(dil.T("başlatılmadı"))))
 		}
 
 	case 1: // ── Eklentiler ────────────────────────────────────
 		list := m.settingsPluginList()
 		if len(list) == 0 {
-			b.WriteString(ui.S.Muted.Render("Yüklü eklenti yok — and-plugin-* dosyaları AND ile aynı dizine konur.") + "\n")
+			b.WriteString(ui.S.Muted.Render(dil.T("Yüklü eklenti yok — and-plugin-* dosyaları AND ile aynı dizine konur.")) + "\n")
 			break
 		}
 		for localIdx, globalIdx := range list {
 			b.WriteString(m.eklentiSatiri(w, localIdx == m.settingsIdx, m.plugins[globalIdx]))
 		}
 
+	case 3: // ── Dil ───────────────────────────────────────────
+		b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Arayüz dili. Seçim hemen uygulanır ve kaydedilir; eklentiler bir sonraki açılışlarında bu dili kullanır."), ui.Measure(w))) + "\n\n")
+		for i, d := range dil.Diller {
+			segs := []ui.Seg{{Text: fmt.Sprintf("%-10s", d.Ad), Bold: d.Kod == dil.Etkin()}, ui.M("  " + d.Kod)}
+			if d.Kod == dil.Etkin() {
+				segs = append(segs, ui.Seg{Text: "   " + dil.T("● etkin"), Color: ui.P.Success, Fixed: true})
+			}
+			b.WriteString(ui.Row(w, i == m.dilIdx, segs...) + "\n")
+		}
+
 	case 2: // ── Temalar ───────────────────────────────────────
-		b.WriteString(ui.S.Muted.Render("Yerleşik temalar") + "\n")
+		b.WriteString(ui.S.Muted.Render(dil.T("Yerleşik temalar")) + "\n")
 		// Renk örnekleri doğru değerlendirilebilsin diye bu listede seçim
 		// zemini KULLANILMAZ (tema kendi seçim rengini gösterirken o zemin
 		// örneği yutardı) — seçili tema vurgu çubuğu ve kalın adla belirtilir.
 		ornek := func(renk string) string { return lipgloss.NewStyle().Foreground(lipgloss.Color(renk)).Render("██") }
 		for i, t := range ui.Presets {
-			isaret, ad := "  ", ui.S.Text.Render(fmt.Sprintf("%-14s", t.ThemeName))
+			isaret, ad := "  ", ui.S.Text.Render(fmt.Sprintf("%-14s", dil.T(t.ThemeName)))
 			if i == m.settingsIdx {
 				isaret = ui.S.Accent.Render("▌ ")
-				ad = ui.S.Bold.Render(fmt.Sprintf("%-14s", t.ThemeName))
+				ad = ui.S.Bold.Render(fmt.Sprintf("%-14s", dil.T(t.ThemeName)))
 			}
 			satir := isaret + ad + ornek(t.Accent) + " " + ornek(t.SelBG) + " " + ornek(t.Name) + " " + ornek(t.Badge)
 			if t.ThemeName == ActiveThemeName {
-				satir += "   " + ui.S.Success.Render("● etkin")
+				satir += "   " + ui.S.Success.Render(dil.T("● etkin"))
 			}
 			b.WriteString(satir + "\n")
 		}
-		b.WriteString("\n" + ui.S.Muted.Render("Tema eklentileri") + "\n")
+		b.WriteString("\n" + ui.S.Muted.Render(dil.T("Tema eklentileri")) + "\n")
 		list := m.settingsPluginList()
 		if len(list) == 0 {
-			b.WriteString(ui.S.Subtle.Render("  Yüklü tema eklentisi yok.") + "\n")
+			b.WriteString(ui.S.Subtle.Render(dil.T("  Yüklü tema eklentisi yok.")) + "\n")
 		}
 		for localIdx, globalIdx := range list {
 			b.WriteString(m.eklentiSatiri(w, len(ui.Presets)+localIdx == m.settingsIdx, m.plugins[globalIdx]))
@@ -1730,17 +1766,17 @@ func (m appModel) eklentiSatiri(w int, secili bool, pl pluginmgr.Plugin) string 
 	if label == "" {
 		label = mf.Name
 	}
-	durum := ui.C("● etkin ", colorOK)
+	durum := ui.C(dil.T("● etkin "), colorOK)
 	if !pl.Enabled {
-		durum = ui.M("○ kapalı")
+		durum = ui.M(dil.T("○ kapalı"))
 	}
 	ver := ""
 	if mf.Version != "" {
 		ver = "v" + mf.Version
 	}
-	satir := ui.Row(w, secili, ui.Seg{Text: fmt.Sprintf("%-24s", pluginui.Safe(label)), Bold: secili}, durum, ui.M("   "+ver)) + "\n"
+	satir := ui.Row(w, secili, ui.Seg{Text: fmt.Sprintf("%-24s", dil.T(pluginui.Safe(label))), Bold: secili}, durum, ui.M("   "+ver)) + "\n"
 	if secili && mf.Description != "" {
-		satir += "    " + ui.S.Muted.Render(ui.Truncate(pluginui.Safe(mf.Description), w-4)) + "\n"
+		satir += "    " + ui.S.Muted.Render(ui.Truncate(dil.T(pluginui.Safe(mf.Description)), w-4)) + "\n"
 	}
 	if secili && mf.Category != "theme" {
 		satir += "    " + ui.S.Muted.Render(ui.Truncate(m.izinOzeti(pl), w-4)) + "\n"
@@ -1853,7 +1889,7 @@ func (m appModel) handleTagPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case len(m.tagSelected) < profile.MaxTags:
 			m.tagSelected[cat] = true
 		default:
-			m.profileNotice = fmt.Sprintf("en fazla %d etiket seçebilirsin", profile.MaxTags)
+			m.profileNotice = dil.F("en fazla %d etiket seçebilirsin", profile.MaxTags)
 			m.profileNoticeErr = true
 		}
 	case "ctrl+s":
@@ -1924,7 +1960,7 @@ func (m appModel) startGitHubLink() (tea.Model, tea.Cmd) {
 	m.githubCtx = ctx
 	m.githubCancel = cancel
 	m.githubLastAttempt = time.Now()
-	m.profileNotice = "GitHub kodu alınıyor…"
+	m.profileNotice = dil.T("GitHub kodu alınıyor…")
 	m.profileNoticeErr = false
 	m.syncSettingsVP()
 	return m, func() tea.Msg {
@@ -1951,7 +1987,7 @@ func (m appModel) handleGitHubLinkKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.githubVerificationURI = ""
 		m.githubCancel = nil
 		m.githubCtx = nil
-		m.profileNotice = "GitHub bağlantısı iptal edildi"
+		m.profileNotice = dil.T("GitHub bağlantısı iptal edildi")
 		m.profileNoticeErr = false
 		m.syncSettingsVP()
 		return m, nil
@@ -1963,13 +1999,13 @@ func (m appModel) viewSettings() string {
 	iw := icGenislik(m.width)
 
 	var b strings.Builder
-	b.WriteString(ui.Header(iw, []string{"Ayarlar"}, ui.S.Muted.Render(ActiveThemeName+" teması")) + "\n")
-	b.WriteString(ui.Tabs(m.settingsTab, "Bilgi", "Eklentiler", "Temalar") + "\n\n")
+	b.WriteString(ui.Header(iw, []string{dil.T("Ayarlar")}, ui.S.Muted.Render(dil.F("%s teması", dil.T(ActiveThemeName)))) + "\n")
+	b.WriteString(ui.Tabs(m.settingsTab, dil.T("Bilgi"), dil.T("Eklentiler"), dil.T("Temalar"), dil.T("Dil")) + "\n\n")
 
 	b.WriteString(m.settingsVP.View())
 	b.WriteString("\n")
 	if !m.settingsVP.AtBottom() {
-		b.WriteString(ui.S.Muted.Render("  ↓ daha fazla") + "\n")
+		b.WriteString(ui.S.Muted.Render(dil.T("  ↓ daha fazla")) + "\n")
 	}
 	var f strings.Builder
 	if m.settingsNotice != "" {
@@ -1977,23 +2013,25 @@ func (m appModel) viewSettings() string {
 	}
 	f.WriteString(ui.Divider(iw) + "\n")
 
-	sekme := ui.H("←→", "sekme")
-	geri := ui.H("esc", "ana menü")
+	sekme := ui.H("←→", dil.T("sekme"))
+	geri := ui.H("esc", dil.T("ana menü"))
 	var hints []ui.Hint
 	switch {
 	case m.settingsTab == 0 && m.githubLinking:
-		hints = []ui.Hint{ui.H("esc", "iptal")}
+		hints = []ui.Hint{ui.H("esc", dil.T("iptal"))}
 	case m.settingsTab == 0 && m.profileEdit == profileFieldTags:
-		hints = []ui.Hint{ui.H("↑↓", "gezin"), ui.H("space", "işaretle"), ui.H("ctrl+s", "kaydet"), ui.H("esc", "iptal")}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("gezin")), ui.H("space", dil.T("işaretle")), ui.H("ctrl+s", dil.T("kaydet")), ui.H("esc", dil.T("iptal"))}
 	case m.settingsTab == 0 && m.profileEdit != profileFieldNone:
-		hints = []ui.Hint{ui.H("enter", "kaydet"), ui.H("esc", "iptal")}
+		hints = []ui.Hint{ui.H("enter", dil.T("kaydet")), ui.H("esc", dil.T("iptal"))}
 	case m.settingsTab == 0:
-		hints = []ui.Hint{ui.H("↑↓", "kaydır"), ui.H("b/s/w", "bio/durum/bağlantı"), ui.H("t", "etiketler"),
-			ui.H("v", "GitHub doğrula"), ui.H("m", "kurtarma kodu"), sekme, geri}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("kaydır")), ui.H("b/s/w", dil.T("bio/durum/bağlantı")), ui.H("t", dil.T("etiketler")),
+			ui.H("v", dil.T("GitHub doğrula")), ui.H("m", dil.T("kurtarma kodu")), sekme, geri}
 	case m.settingsTab == 1:
-		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("space", "aç/kapat"), ui.H("r", "izinleri geri al"), sekme, geri}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("space", dil.T("aç/kapat")), ui.H("r", dil.T("izinleri geri al")), sekme, geri}
+	case m.settingsTab == 3:
+		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("enter", dil.T("uygula")), sekme, geri}
 	default:
-		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("enter", "uygula"), ui.H("space", "eklentiyi aç/kapat"), sekme, geri}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("enter", dil.T("uygula")), ui.H("space", dil.T("eklentiyi aç/kapat")), sekme, geri}
 	}
 	f.WriteString(ui.KeyHints(iw, hints...))
 	return ui.Page(m.width, m.height, b.String(), f.String())

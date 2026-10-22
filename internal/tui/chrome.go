@@ -5,10 +5,9 @@ package tui
 // yalnızca TUI'ye özgü ince bir katman.
 
 import (
-	"fmt"
-
 	"github.com/libp2p/go-libp2p/core/protocol"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/chatlog"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/peersync"
@@ -76,7 +75,7 @@ func kisaPeerID(pid string) string {
 // bir HATA değildir — bu yüzden kırmızı değil uyarı renginde.
 func esDurumu(n int) string {
 	if n == 0 {
-		return ui.S.Warning.Render("◌ ağa bağlanıyor…")
+		return ui.S.Warning.Render(dil.T("◌ ağa bağlanıyor…"))
 	}
-	return ui.Dot(true) + " " + fmt.Sprintf("%d eş bağlı", n)
+	return ui.Dot(true) + " " + dil.F("%d eş bağlı", n)
 }

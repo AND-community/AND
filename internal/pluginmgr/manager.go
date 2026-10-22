@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -27,6 +28,8 @@ func (p *Plugin) Launch(apiAddr, apiToken, dataDir string, extraEnv ...string) *
 		"AND_API_ADDR="+apiAddr,
 		"AND_API_TOKEN="+apiToken,
 		"AND_DATA_DIR="+dataDir,
+		// Eklenti arayüzünü AND'ın etkin dilinde açar (bkz. dil.OrtamdanAyarla).
+		dil.OrtamDegiskeni+"="+dil.Etkin(),
 	)
 	cmd.Env = append(cmd.Env, extraEnv...)
 	return cmd

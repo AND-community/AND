@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/dmmgr"
@@ -145,6 +146,10 @@ func run() error {
 	}
 	identityFile := filepath.Join(dir, "identity.dat")
 
+	// Arayüz dili: AND_DIL, yoksa Ayarlar'da (ya da giriş ekranında) seçilen,
+	// yoksa Türkçe.
+	dil.Baslat(dir)
+
 	id, err := tui.Login(identityFile, dir)
 	if err != nil {
 		return err
@@ -159,7 +164,7 @@ func run() error {
 		return fmt.Errorf("load founder key: %w", err)
 	}
 	if isFounder {
-		fmt.Fprintln(os.Stderr, "[AND] Bu düğüm kurucu kimliğiyle çalışıyor.")
+		fmt.Fprintln(os.Stderr, dil.T("[AND] Bu düğüm kurucu kimliğiyle çalışıyor."))
 	}
 
 	founderPeerID := deriveFounderPeerID(moderation.FounderPubKeyHex)
@@ -372,7 +377,7 @@ func run() error {
 	// kendi anahtarını alır (bkz. tui.EklentiAnahtari).
 	apiAddr, _, err := apiSrv.Start(ctx)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "plugin API sunucusu başlatılamadı:", err)
+		fmt.Fprintln(os.Stderr, dil.T("plugin API sunucusu başlatılamadı:"), err)
 		apiAddr = ""
 	} else {
 		tui.EklentiAnahtari = apiSrv.EklentiAnahtari
@@ -398,7 +403,7 @@ func run() error {
 
 	select {
 	case <-restartCh:
-		fmt.Fprintln(os.Stderr, "Yeni sürüm yeniden başlatılıyor...")
+		fmt.Fprintln(os.Stderr, dil.T("Yeni sürüm yeniden başlatılıyor..."))
 		_ = updater.SelfRestart()
 	default:
 	}
@@ -529,7 +534,7 @@ type forumAdapter struct {
 func (a *forumAdapter) DeletePost(ctx context.Context, postID, reason string) error {
 	canAct, cert := resolveOwnModAuthority(a.dir, a.mod, a.isFounder, a.myPubHex)
 	if !canAct {
-		return fmt.Errorf("forum: moderatör yetkisi bulunamadı")
+		return errors.New(dil.T("forum: moderatör yetkisi bulunamadı"))
 	}
 	return a.store.IssueModDelete(ctx, postID, reason, a.isFounder, cert)
 }
@@ -656,7 +661,7 @@ func (a *modAdapter) AllBans() ([]pluginapi.BanEntryInfo, error) {
 func (a *modAdapter) Unban(ctx context.Context, authorKey string) error {
 	canAct, cert := resolveOwnModAuthority(a.dir, a.mod, a.isFounder, a.myPubHex)
 	if !canAct {
-		return fmt.Errorf("moderasyon: yetkiniz yok")
+		return errors.New(dil.T("moderasyon: yetkiniz yok"))
 	}
 	return moderation.IssueUnbanFor(ctx, a.mod, a.modTopic, a.identity.PrivateKey(), authorKey, a.isFounder, cert)
 }
@@ -689,7 +694,7 @@ func (a *modAdapter) GrantedMods() ([]pluginapi.GrantedModInfo, error) {
 
 func (a *modAdapter) Grant(ctx context.Context, targetKeyHex string, duration time.Duration, permanent bool) (string, error) {
 	if !a.isFounder {
-		return "", fmt.Errorf("moderasyon: yalnızca kurucu moderatör atayabilir")
+		return "", errors.New(dil.T("moderasyon: yalnızca kurucu moderatör atayabilir"))
 	}
 	var expires time.Time
 	if !permanent {
@@ -701,7 +706,7 @@ func (a *modAdapter) Grant(ctx context.Context, targetKeyHex string, duration ti
 
 func (a *modAdapter) Revoke(ctx context.Context, targetKeyHex string) error {
 	if !a.isFounder {
-		return fmt.Errorf("moderasyon: yalnızca kurucu moderatör yetkisini iptal edebilir")
+		return errors.New(dil.T("moderasyon: yalnızca kurucu moderatör yetkisini iptal edebilir"))
 	}
 	rev := moderation.SignRevoke(a.identity.PrivateKey(), targetKeyHex)
 	return a.mod.IssueRevoke(ctx, a.modTopic, rev)

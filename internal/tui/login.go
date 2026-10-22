@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
@@ -53,6 +54,9 @@ type loginModel struct {
 	passphrase string
 	cancelled  bool
 
+	// dataDir, dil seçiminin kaydedileceği AND veri dizinidir.
+	dataDir string
+
 	width, height int
 }
 
@@ -66,6 +70,7 @@ func Login(path, dataDir string) (*stdcrypto.Identity, error) {
 	}
 
 	m := newLoginModel(path, register)
+	m.dataDir = dataDir
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
@@ -87,7 +92,7 @@ func newLoginModel(path string, register bool) loginModel {
 
 	if register {
 		name := textinput.New()
-		name.Placeholder = "görünen adın"
+		name.Placeholder = dil.T("görünen adın")
 		name.CharLimit = 32
 		name.Width = girisKartW - 4
 		name.Focus()
@@ -95,7 +100,7 @@ func newLoginModel(path string, register bool) loginModel {
 	}
 
 	pass := textinput.New()
-	pass.Placeholder = "şifre"
+	pass.Placeholder = dil.T("şifre")
 	pass.EchoMode = textinput.EchoPassword
 	pass.EchoCharacter = '•'
 	pass.Width = girisKartW - 4
@@ -106,7 +111,7 @@ func newLoginModel(path string, register bool) loginModel {
 
 	if register {
 		confirm := textinput.New()
-		confirm.Placeholder = "şifre (tekrar)"
+		confirm.Placeholder = dil.T("şifre (tekrar)")
 		confirm.EchoMode = textinput.EchoPassword
 		confirm.EchoCharacter = '•'
 		confirm.Width = girisKartW - 4
@@ -127,9 +132,12 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
+		switch msg.String() {
+		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
+		case "ctrl+l", "f2":
+			return m.dilDegistir(), nil
 		}
 		// esc her aşamada kısayol satırının söylediğini yapar: formda çıkış,
 		// kurtarma kodunda forma, doğrulamada koda dönüş, ad sorusunda atlama.
@@ -199,9 +207,9 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 		passphrase := m.inputs[0].Value()
 		id, err := stdcrypto.LoadEncrypted(m.path, passphrase)
 		if err != nil {
-			m.err = fmt.Errorf("kimlik dosyası açılamadı: %w", err)
+			m.err = fmt.Errorf(dil.T("kimlik dosyası açılamadı: %w"), err)
 			if errors.Is(err, stdcrypto.ErrWrongPassphrase) {
-				m.err = errors.New("şifre yanlış, tekrar dene")
+				m.err = errors.New(dil.T("şifre yanlış, tekrar dene"))
 			}
 			m.inputs[0].SetValue("")
 			return m, nil
@@ -210,7 +218,7 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 		m.passphrase = passphrase
 		if id.Name() == "" {
 			nameInput := textinput.New()
-			nameInput.Placeholder = "görünen adın"
+			nameInput.Placeholder = dil.T("görünen adın")
 			nameInput.CharLimit = 32
 			nameInput.Width = girisKartW - 4
 			nameInput.Focus()
@@ -229,21 +237,21 @@ func (m loginModel) submitForm() (tea.Model, tea.Cmd) {
 
 	switch {
 	case name == "":
-		m.err = errors.New("görünen ad boş olamaz")
+		m.err = errors.New(dil.T("görünen ad boş olamaz"))
 		m.focus = fieldName
 		return m.refocus(), nil
 	case passphrase == "":
-		m.err = errors.New("şifre boş olamaz")
+		m.err = errors.New(dil.T("şifre boş olamaz"))
 		m.focus = fieldPass
 		return m.refocus(), nil
 	case len([]rune(passphrase)) < 8:
-		m.err = errors.New("şifre en az 8 karakter olmalı")
+		m.err = errors.New(dil.T("şifre en az 8 karakter olmalı"))
 		m.inputs[fieldPass].SetValue("")
 		m.inputs[fieldConfirm].SetValue("")
 		m.focus = fieldPass
 		return m.refocus(), nil
 	case passphrase != confirm:
-		m.err = errors.New("şifreler eşleşmiyor")
+		m.err = errors.New(dil.T("şifreler eşleşmiyor"))
 		m.inputs[fieldPass].SetValue("")
 		m.inputs[fieldConfirm].SetValue("")
 		m.focus = fieldPass
@@ -271,7 +279,7 @@ func (m loginModel) goToVerify() (tea.Model, tea.Cmd) {
 	}
 	target := words[idx]
 	vi := textinput.New()
-	vi.Placeholder = fmt.Sprintf("%d. kelimeyi yaz…", idx+1)
+	vi.Placeholder = dil.F("%d. kelimeyi yaz…", idx+1)
 	if len(words) == 1 {
 		vi.Placeholder = "XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX"
 	}
@@ -312,13 +320,13 @@ func (m loginModel) updateVerify(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Tireler, boşluklar ve büyük/küçük harf önemsizdir — kimliği geri
 		// yükleyen crypto.RestoreFromCode da onları yok sayar.
 		if kodNormal(m.verifyInput.Value()) != kodNormal(m.verifyWordVal) {
-			m.err = errors.New("yanlış kelime — kurtarma kodunu tekrar kontrol et")
+			m.err = errors.New(dil.T("yanlış kelime — kurtarma kodunu tekrar kontrol et"))
 			m.verifyInput.SetValue("")
 			return m, nil
 		}
 		m.err = nil
 		if err := m.identity.SaveEncrypted(m.path, m.passphrase); err != nil {
-			m.err = fmt.Errorf("kimlik kaydedilemedi: %w", err)
+			m.err = fmt.Errorf(dil.T("kimlik kaydedilemedi: %w"), err)
 			return m, nil
 		}
 		m.stage = stageDone
@@ -350,13 +358,13 @@ func (m loginModel) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		name := strings.TrimSpace(m.inputs[0].Value())
 		if name == "" {
-			m.err = errors.New("ad gir  (atlamak için esc)")
+			m.err = errors.New(dil.T("ad gir  (atlamak için esc)"))
 			return m, nil
 		}
 		m.err = nil
 		m.identity.SetName(name)
 		if err := m.identity.SaveEncrypted(m.path, m.passphrase); err != nil {
-			m.err = fmt.Errorf("kimlik kaydedilemedi: %w", err)
+			m.err = fmt.Errorf(dil.T("kimlik kaydedilemedi: %w"), err)
 			return m, nil
 		}
 		m.stage = stageDone
@@ -381,23 +389,34 @@ const (
 
 // kayitAdimlari, ilk kayıt akışının adımlarıdır — kullanıcı nerede olduğunu
 // ve kaç adım kaldığını görsün diye kartın üstünde gösterilir.
-var kayitAdimlari = []string{"Bilgiler", "Kurtarma kodu", "Doğrulama"}
+var kayitAdimlari = []string{dil.K("Bilgiler"), dil.K("Kurtarma kodu"), dil.K("Doğrulama")}
 
 // adimCizgisi: tamamlanan adımlar ✓ ile, etkin adım vurgu renginde,
-// sıradakiler soluk.
+// sıradakiler soluk. Uzun çevirilerde satır karta sığmazsa yalnızca etkin
+// adımın adı yazılır; diğerleri ✓ ya da numarasıyla kalır.
 func adimCizgisi(aktif int) string {
-	parcalar := make([]string, len(kayitAdimlari))
-	for i, ad := range kayitAdimlari {
-		switch {
-		case i < aktif:
-			parcalar[i] = ui.S.Success.Render("✓ " + ad)
-		case i == aktif:
-			parcalar[i] = ui.S.Title.Render(fmt.Sprintf("%d %s", i+1, ad))
-		default:
-			parcalar[i] = ui.S.Muted.Render(fmt.Sprintf("%d %s", i+1, ad))
+	ciz := func(kisa bool) string {
+		parcalar := make([]string, len(kayitAdimlari))
+		for i, ad := range kayitAdimlari {
+			ad = " " + dil.T(ad)
+			if kisa && i != aktif {
+				ad = ""
+			}
+			switch {
+			case i < aktif:
+				parcalar[i] = ui.S.Success.Render("✓" + ad)
+			case i == aktif:
+				parcalar[i] = ui.S.Title.Render(fmt.Sprintf("%d%s", i+1, ad))
+			default:
+				parcalar[i] = ui.S.Muted.Render(fmt.Sprintf("%d%s", i+1, ad))
+			}
 		}
+		return strings.Join(parcalar, ui.S.Subtle.Render("  ›  "))
 	}
-	return strings.Join(parcalar, ui.S.Subtle.Render("  ›  "))
+	if s := ciz(false); lipgloss.Width(s) <= girisKartW {
+		return s
+	}
+	return ciz(true)
 }
 
 // girisTanitim, geniş ekranda kartın solunda duran amblem ve tanıtımdır.
@@ -406,11 +425,11 @@ func girisTanitim() string {
 	return strings.Join([]string{
 		ui.Logo(),
 		"",
-		ui.S.Bold.Render("Sunucusuz, eşten eşe terminal forumu"),
+		ui.S.Bold.Render(dil.T("Sunucusuz, eşten eşe terminal forumu")),
 		"",
-		madde("Hesap ve sunucu yok; kimliğin bu cihazda üretilir"),
-		madde("Her konu ve mesaj Ed25519 ile imzalanır"),
-		madde("İçerik eşler arasında doğrudan yayılır"),
+		madde(dil.T("Hesap ve sunucu yok; kimliğin bu cihazda üretilir")),
+		madde(dil.T("Her konu ve mesaj Ed25519 ile imzalanır")),
+		madde(dil.T("İçerik eşler arasında doğrudan yayılır")),
 	}, "\n")
 }
 
@@ -432,7 +451,7 @@ func sifreGucu(s string) (puan int, etiket string) {
 		return 0, ""
 	}
 	if len(r) < 8 {
-		return 1, "çok kısa"
+		return 1, dil.T("çok kısa")
 	}
 	var kucuk, buyuk, rakam, diger bool
 	for _, c := range r {
@@ -464,7 +483,7 @@ func sifreGucu(s string) (puan int, etiket string) {
 		puan++
 	}
 	puan = min(puan, 4)
-	return puan, []string{"", "zayıf", "orta", "iyi", "güçlü"}[puan]
+	return puan, []string{"", dil.T("zayıf"), dil.T("orta"), dil.T("iyi"), dil.T("güçlü")}[puan]
 }
 
 // sifreGucuGostergesi, şifre alanının sağındaki güç çubuğudur.
@@ -490,22 +509,56 @@ func eslesmeDurumu(sifre, tekrar string) string {
 	case tekrar == "":
 		return ""
 	case tekrar == sifre:
-		return ui.S.Success.Render("✓ eşleşiyor")
+		return ui.S.Success.Render(dil.T("✓ eşleşiyor"))
 	case len([]rune(tekrar)) >= len([]rune(sifre)):
-		return ui.S.Warning.Render("eşleşmiyor")
+		return ui.S.Warning.Render(dil.T("eşleşmiyor"))
 	}
 	return ""
 }
 
-// ilkHarfBuyuk, bir hata metnini cümle gibi büyük harfle başlatır (Türkçe
-// kuralıyla: "i" → "İ"). Go'da hata metinleri küçük harfle yazılır.
+// ilkHarfBuyuk, bir hata metnini cümle gibi büyük harfle başlatır. Go'da hata
+// metinleri küçük harfle yazılır. Türkçede "i" → "İ"; diğer dillerde "i" → "I".
 func ilkHarfBuyuk(s string) string {
 	r := []rune(s)
 	if len(r) == 0 {
 		return s
 	}
-	r[0] = unicode.TurkishCase.ToUpper(r[0])
+	if dil.Etkin() == "tr" {
+		r[0] = unicode.TurkishCase.ToUpper(r[0])
+	} else {
+		r[0] = unicode.ToUpper(r[0])
+	}
 	return string(r)
+}
+
+// dilDegistir, giriş ekranında arayüz dilini sıradaki dile çevirir ve
+// seçimi kaydeder: Türkçe bilmeyen biri ilk açılışta Ayarlar'a ulaşmadan
+// dilini seçebilsin.
+func (m loginModel) dilDegistir() loginModel {
+	kod := dil.Sonraki(dil.Etkin())
+	dil.Ayarla(kod)
+	if m.dataDir != "" {
+		_ = dil.Kaydet(m.dataDir, kod)
+	}
+	return m.yerTutuculariKur()
+}
+
+// yerTutuculariKur, açık aşamanın giriş kutularının yer tutucularını etkin
+// dilde kurar.
+func (m loginModel) yerTutuculariKur() loginModel {
+	switch {
+	case m.stage == stageForm && m.register && len(m.inputs) == 3:
+		m.inputs[fieldName].Placeholder = dil.T("görünen adın")
+		m.inputs[fieldPass].Placeholder = dil.T("şifre")
+		m.inputs[fieldConfirm].Placeholder = dil.T("şifre (tekrar)")
+	case m.stage == stageForm && len(m.inputs) == 1:
+		m.inputs[0].Placeholder = dil.T("şifre")
+	case m.stage == stageName && len(m.inputs) == 1:
+		m.inputs[0].Placeholder = dil.T("görünen adın")
+	case m.stage == stageVerify && len(strings.Fields(m.mnemonic)) > 1:
+		m.verifyInput.Placeholder = dil.F("%d. kelimeyi yaz…", m.verifyWordIdx+1)
+	}
+	return m
 }
 
 // ekran, bir giriş aşamasını tam ekran çerçeveye yerleştirir: adim ≥ 0 ise
@@ -527,6 +580,7 @@ func (m loginModel) ekran(adim int, baslik, aciklama, govde string, hints ...ui.
 		Padding(1, 3).Width(girisKartW + 6).Render(k.String())
 
 	W := icGenislik(m.width)
+	hints = append(hints, ui.H("ctrl+l", dil.F("dil: %s", dil.EtkinAd())))
 	alt := ui.Divider(W) + "\n" + ui.KeyHints(W, hints...)
 	yer := 0 // kart bloğu için kalan yükseklik; 0 = bilinmiyor
 	if m.height > 0 {
@@ -549,24 +603,24 @@ func (m loginModel) ekran(adim int, baslik, aciklama, govde string, hints ...ui.
 
 func (m loginModel) viewForm() string {
 	if !m.register {
-		govde := alan(girisKartW, "Şifre", "", m.inputs[0], true)
-		return m.ekran(-1, "Kimliğinin kilidini aç", "Kimliğin bu cihazda, şifrenle şifrelenmiş olarak saklanıyor.", govde,
-			ui.H("enter", "kilidi aç"), ui.H("esc", "çıkış"))
+		govde := alan(girisKartW, dil.T("Şifre"), "", m.inputs[0], true)
+		return m.ekran(-1, dil.T("Kimliğinin kilidini aç"), dil.T("Kimliğin bu cihazda, şifrenle şifrelenmiş olarak saklanıyor."), govde,
+			ui.H("enter", dil.T("kilidi aç")), ui.H("esc", dil.T("çıkış")))
 	}
 	sifre, tekrar := m.inputs[fieldPass].Value(), m.inputs[fieldConfirm].Value()
-	govde := alan(girisKartW, "Görünen ad", ui.S.Muted.Render(fmt.Sprintf("%d/32", len([]rune(m.inputs[fieldName].Value())))), m.inputs[fieldName], m.focus == fieldName) + "\n\n" +
-		alan(girisKartW, "Şifre", sifreGucuGostergesi(sifre), m.inputs[fieldPass], m.focus == fieldPass) + "\n\n" +
-		alan(girisKartW, "Şifre (tekrar)", eslesmeDurumu(sifre, tekrar), m.inputs[fieldConfirm], m.focus == fieldConfirm) + "\n\n" +
-		ui.S.Subtle.Render("Şifre en az 8 karakter olmalı ve yalnızca bu cihazda kullanılır.")
-	return m.ekran(0, "Kimliğini oluştur", "Hesap ya da sunucu yok: kimliğin bu cihazda üretilir ve şifrenle korunur.", govde,
-		ui.H("tab ↑↓", "alanlar arası"), ui.H("enter", "devam"), ui.H("esc", "çıkış"))
+	govde := alan(girisKartW, dil.T("Görünen ad"), ui.S.Muted.Render(fmt.Sprintf("%d/32", len([]rune(m.inputs[fieldName].Value())))), m.inputs[fieldName], m.focus == fieldName) + "\n\n" +
+		alan(girisKartW, dil.T("Şifre"), sifreGucuGostergesi(sifre), m.inputs[fieldPass], m.focus == fieldPass) + "\n\n" +
+		alan(girisKartW, dil.T("Şifre (tekrar)"), eslesmeDurumu(sifre, tekrar), m.inputs[fieldConfirm], m.focus == fieldConfirm) + "\n\n" +
+		ui.S.Subtle.Render(dil.T("Şifre en az 8 karakter olmalı ve yalnızca bu cihazda kullanılır."))
+	return m.ekran(0, dil.T("Kimliğini oluştur"), dil.T("Hesap ya da sunucu yok: kimliğin bu cihazda üretilir ve şifrenle korunur."), govde,
+		ui.H("tab ↑↓", dil.T("alanlar arası")), ui.H("enter", dil.T("devam")), ui.H("esc", dil.T("çıkış")))
 }
 
 func (m loginModel) viewName() string {
-	govde := alan(girisKartW, "Görünen ad", "", m.inputs[0], true)
-	return m.ekran(-1, "Görünen adını belirle",
-		"Adın sohbette ve forumda diğer kullanıcılara gösterilir; imzalarını etkilemez.",
-		govde, ui.H("enter", "kaydet"), ui.H("esc", "şimdilik atla"))
+	govde := alan(girisKartW, dil.T("Görünen ad"), "", m.inputs[0], true)
+	return m.ekran(-1, dil.T("Görünen adını belirle"),
+		dil.T("Adın sohbette ve forumda diğer kullanıcılara gösterilir; imzalarını etkilemez."),
+		govde, ui.H("enter", dil.T("kaydet")), ui.H("esc", dil.T("şimdilik atla")))
 }
 
 func (m loginModel) viewMnemonic() string {
@@ -581,23 +635,23 @@ func (m loginModel) viewMnemonic() string {
 	}
 	kutu := mnemonicStyle.Padding(1, 3).Render(kod)
 	govde := lipgloss.PlaceHorizontal(girisKartW, lipgloss.Center, kutu) + "\n\n" +
-		ui.S.Muted.Render("Tek satırda") + "\n" + ui.S.Bold.Render(m.mnemonic) + "\n\n" +
-		ui.Notice(ui.KindWarning, "Bu kod bir daha gösterilmeyecek.")
-	return m.ekran(1, "Kurtarma kodunu kaydet",
-		"Bu kod, kimliğini başka bir cihazda ya da şifreni unutursan geri getirmenin tek yoludur. Kâğıda yaz ya da güvenli bir yere kaydet.",
-		govde, ui.H("enter", "kaydettim"), ui.H("esc", "forma dön"))
+		ui.S.Muted.Render(dil.T("Tek satırda")) + "\n" + ui.S.Bold.Render(m.mnemonic) + "\n\n" +
+		ui.Notice(ui.KindWarning, dil.T("Bu kod bir daha gösterilmeyecek."))
+	return m.ekran(1, dil.T("Kurtarma kodunu kaydet"),
+		dil.T("Bu kod, kimliğini başka bir cihazda ya da şifreni unutursan geri getirmenin tek yoludur. Kâğıda yaz ya da güvenli bir yere kaydet."),
+		govde, ui.H("enter", dil.T("kaydettim")), ui.H("esc", dil.T("forma dön")))
 }
 
 func (m loginModel) viewVerify() string {
 	// RecoveryCode boşluksuz tek bir "kelime"dir (bkz. goToVerify): o durumda
 	// istenen şey kodun TAMAMIDIR, "1. kelime" demek yanıltıcı olurdu.
-	etiket := "Kurtarma kodu"
-	aciklama := "Kodu gerçekten kaydettiğinden emin olmak için tamamını yaz. Tireleri yazmasan da olur."
+	etiket := dil.T("Kurtarma kodu")
+	aciklama := dil.T("Kodu gerçekten kaydettiğinden emin olmak için tamamını yaz. Tireleri yazmasan da olur.")
 	if len(strings.Fields(m.mnemonic)) > 1 {
-		etiket = fmt.Sprintf("%d. kelime", m.verifyWordIdx+1)
-		aciklama = fmt.Sprintf("Kodu gerçekten kaydettiğinden emin olmak için %d. kelimeyi yaz.", m.verifyWordIdx+1)
+		etiket = dil.F("%d. kelime", m.verifyWordIdx+1)
+		aciklama = dil.F("Kodu gerçekten kaydettiğinden emin olmak için %d. kelimeyi yaz.", m.verifyWordIdx+1)
 	}
 	govde := alan(girisKartW, etiket, "", m.verifyInput, true)
-	return m.ekran(2, "Kurtarma kodunu doğrula", aciklama, govde,
-		ui.H("enter", "doğrula ve bitir"), ui.H("esc", "koda dön"))
+	return m.ekran(2, dil.T("Kurtarma kodunu doğrula"), aciklama, govde,
+		ui.H("enter", dil.T("doğrula ve bitir")), ui.H("esc", dil.T("koda dön")))
 }

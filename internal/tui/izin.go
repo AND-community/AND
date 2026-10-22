@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/pluginui"
@@ -104,7 +104,7 @@ func (m appModel) handleIzinKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		pl := m.plugins[ist.eklenti]
 		if err := pluginmgr.IzinOnayla(m.dataDir, pl.Name(), ist.izinler); err != nil {
-			ist.hata = "İzinler kaydedilemedi: " + err.Error()
+			ist.hata = dil.T("İzinler kaydedilemedi: ") + err.Error()
 			return m, nil
 		}
 		m.screen = ist.onceki
@@ -125,33 +125,33 @@ func (m appModel) viewIzin() string {
 	if ad == "" {
 		ad = pl.Name()
 	}
-	ad = pluginui.Safe(ad)
+	ad = dil.T(pluginui.Safe(ad))
 	olcu := ui.Measure(iw)
 
 	var b strings.Builder
-	b.WriteString(ui.Header(iw, []string{"Eklentiler", ad}, ui.S.Muted.Render(eklentiKaynagi(pl))) + "\n\n")
+	b.WriteString(ui.Header(iw, []string{dil.T("Eklentiler"), ad}, ui.S.Muted.Render(eklentiKaynagi(pl))) + "\n\n")
 	if ist.hata != "" {
 		b.WriteString(ui.Notice(ui.KindError, ist.hata) + "\n")
-		f := ui.Divider(iw) + "\n" + ui.KeyHints(iw, ui.H("esc", "geri"))
+		f := ui.Divider(iw) + "\n" + ui.KeyHints(iw, ui.H("esc", dil.T("geri")))
 		return ui.Page(m.width, m.height, b.String(), f)
 	}
 
-	b.WriteString(ui.S.Title.Render(ad+" şu izinleri istiyor") + "\n\n")
+	b.WriteString(ui.S.Title.Render(dil.F("%s şu izinleri istiyor", ad)) + "\n\n")
 	for _, iz := range ist.izinler {
 		bilgi, ok := pluginapi.IzinBul(iz)
 		if !ok {
 			continue
 		}
-		b.WriteString("  " + ui.S.Accent.Render("●") + " " + ui.S.Bold.Render(bilgi.Baslik) + "\n")
-		for _, satir := range strings.Split(ui.Wrap(bilgi.Aciklama, olcu-4), "\n") {
+		b.WriteString("  " + ui.S.Accent.Render("●") + " " + ui.S.Bold.Render(dil.T(bilgi.Baslik)) + "\n")
+		for _, satir := range strings.Split(ui.Wrap(dil.T(bilgi.Aciklama), olcu-4), "\n") {
 			b.WriteString("    " + ui.S.Muted.Render(satir) + "\n")
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString(ui.S.Muted.Render(ui.Wrap("Her eklenti, herkese açık içeriği (forum, siteler, genel sohbet, kimliğin) izinsiz okuyabilir. "+
-		"Bu izinleri yalnızca güvendiğin eklentilere ver; Ayarlar › Eklentiler'den istediğin zaman geri alabilirsin.", olcu)) + "\n")
+	b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Her eklenti, herkese açık içeriği (forum, siteler, genel sohbet, kimliğin) izinsiz okuyabilir. ")+
+		dil.T("Bu izinleri yalnızca güvendiğin eklentilere ver; Ayarlar › Eklentiler'den istediğin zaman geri alabilirsin."), olcu)) + "\n")
 
-	f := ui.Divider(iw) + "\n" + ui.KeyHints(iw, ui.H("e", "izin ver ve aç"), ui.H("esc", "vazgeç"))
+	f := ui.Divider(iw) + "\n" + ui.KeyHints(iw, ui.H("e", dil.T("izin ver ve aç")), ui.H("esc", dil.T("vazgeç")))
 	return ui.Page(m.width, m.height, b.String(), f)
 }
 
@@ -170,17 +170,17 @@ func eklentiKaynagi(pl pluginmgr.Plugin) string {
 // izinOzeti, Ayarlar › Eklentiler'de seçili eklentinin izin satırıdır.
 func (m appModel) izinOzeti(pl pluginmgr.Plugin) string {
 	if len(pl.Manifest.Permissions) == 0 {
-		return "İzin istemiyor"
+		return dil.T("İzin istemiyor")
 	}
 	var adlar []string
 	for _, iz := range pl.Manifest.Permissions {
 		if b, ok := pluginapi.IzinBul(iz); ok {
-			adlar = append(adlar, b.Baslik)
+			adlar = append(adlar, dil.T(b.Baslik))
 		}
 	}
-	durum := "ilk açılışta sorulacak"
+	durum := dil.T("ilk açılışta sorulacak")
 	if pluginmgr.IzinOnayli(m.dataDir, pl.Name(), pl.Manifest.Permissions) {
-		durum = "verildi (r ile geri al)"
+		durum = dil.T("verildi (r ile geri al)")
 	}
-	return fmt.Sprintf("İzinler: %s — %s", strings.Join(adlar, ", "), durum)
+	return dil.F("İzinler: %s — %s", strings.Join(adlar, ", "), durum)
 }

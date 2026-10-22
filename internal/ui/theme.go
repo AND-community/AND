@@ -18,6 +18,8 @@ package ui
 
 import (
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lucian95511/and/dil"
 )
 
 // Theme, kullanıcının seçtiği/kaydettiği temadır — theme.json'un ve
@@ -43,12 +45,12 @@ type Theme struct {
 // yanlışlıkla "Turkuaz" adını taşıyordu); yalnızca ikincil metin (241 → 245)
 // okunurluk için bir ton açılmıştır.
 var Presets = []Theme{
-	{ThemeName: "Klasik", Accent: "63", SelBG: "57", SelFG: "255", Muted: "245", Name: "86", Badge: "33"},
-	{ThemeName: "Turkuaz", Accent: "80", SelBG: "23", SelFG: "255", Muted: "245", Name: "216", Badge: "141"},
-	{ThemeName: "Gece Moru", Accent: "99", SelBG: "55", SelFG: "255", Muted: "245", Name: "86", Badge: "75"},
-	{ThemeName: "Kehribar", Accent: "214", SelBG: "94", SelFG: "230", Muted: "245", Name: "180", Badge: "117"},
-	{ThemeName: "Orman", Accent: "114", SelBG: "22", SelFG: "255", Muted: "245", Name: "223", Badge: "117"},
-	{ThemeName: "Mono", Accent: "255", SelBG: "240", SelFG: "255", Muted: "246", Name: "252", Badge: "250"},
+	{ThemeName: dil.K("Klasik"), Accent: "63", SelBG: "57", SelFG: "255", Muted: "245", Name: "86", Badge: "33"},
+	{ThemeName: dil.K("Turkuaz"), Accent: "80", SelBG: "23", SelFG: "255", Muted: "245", Name: "216", Badge: "141"},
+	{ThemeName: dil.K("Gece Moru"), Accent: "99", SelBG: "55", SelFG: "255", Muted: "245", Name: "86", Badge: "75"},
+	{ThemeName: dil.K("Kehribar"), Accent: "214", SelBG: "94", SelFG: "230", Muted: "245", Name: "180", Badge: "117"},
+	{ThemeName: dil.K("Orman"), Accent: "114", SelBG: "22", SelFG: "255", Muted: "245", Name: "223", Badge: "117"},
+	{ThemeName: dil.K("Mono"), Accent: "255", SelBG: "240", SelFG: "255", Muted: "246", Name: "252", Badge: "250"},
 }
 
 // DefaultTheme, AND'ın hiç tema seçilmemişken kullandığı temadır.
