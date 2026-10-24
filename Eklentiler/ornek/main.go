@@ -31,9 +31,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/protokol"
 )
 
 // ─── Manifest ─────────────────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ornek",
 	Label:       "Örnek Eklenti",
-	Version:     "1.1.0",
+	Version:     "1.2.0",
 	Description: "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici referansı",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinForum, pluginapi.IzinModerasyon, pluginapi.IzinDM},
@@ -61,6 +63,8 @@ func main() {
 		fmt.Println(string(data))
 		return
 	}
+	// AND, eklentiyi kendi etkin dilinde açar (AND_DIL).
+	dil.OrtamdanAyarla()
 
 	// AND_API_ADDR ortam değişkeni eksikse eklenti AND dışından çalıştırılmıştır.
 	client, err := pluginapi.NewClientFromEnv()
@@ -73,12 +77,12 @@ func main() {
 	// Eklenti kısa ömürlü bir subprocess olduğu için başlangıç snapshotı yeterli.
 	identity, err := client.Identity()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "ornek: kimlik alınamadı:", err)
+		fmt.Fprintln(os.Stderr, dil.T("ornek: kimlik alınamadı:"), err)
 		os.Exit(1)
 	}
 	role, err := client.Role()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "ornek: rol alınamadı:", err)
+		fmt.Fprintln(os.Stderr, dil.T("ornek: rol alınamadı:"), err)
 		os.Exit(1)
 	}
 
@@ -219,12 +223,9 @@ type dmGonderildi struct{ err error }
 
 // ─── Model ────────────────────────────────────────────────────────────────────
 
-// kategoriListesi, AND forumundaki geçerli kategorileri listeler.
-// protokol.Kategoriler ile eşleşmeli.
-var kategoriListesi = []string{
-	"genel", "duyuru", "teknik", "soru", "tartışma",
-	"proje", "haber", "eğlence", "destek", "diğer",
-}
+// kategoriListesi, AND forumundaki geçerli kategorilerdir. Değerler ağda
+// Türkçe gider; ekranda dil.T ile çevrilir.
+var kategoriListesi = protokol.Kategoriler
 
 type model struct {
 	client   *pluginapi.Client
@@ -278,12 +279,12 @@ func newModel(c *pluginapi.Client, id pluginapi.IdentityInfo, role pluginapi.Rol
 
 	// Başlık input'u
 	ti := textinput.New()
-	ti.Placeholder = "Konu başlığı…"
+	ti.Placeholder = dil.T("Konu başlığı…")
 	ti.CharLimit = 120
 
 	// Gövde textarea'sı
 	ta := textarea.New()
-	ta.Placeholder = "Konu içeriği…"
+	ta.Placeholder = dil.T("Konu içeriği…")
 	ta.CharLimit = 4000
 	ta.SetWidth(60)
 	ta.SetHeight(8)
@@ -291,17 +292,17 @@ func newModel(c *pluginapi.Client, id pluginapi.IdentityInfo, role pluginapi.Rol
 
 	// DM peer ID input'u
 	pi := textinput.New()
-	pi.Placeholder = "12D3KooW… (Peer ID)"
+	pi.Placeholder = dil.T("12D3KooW… (Peer ID)")
 	pi.CharLimit = 100
 
 	// DM mesaj input'u
 	mi := textinput.New()
-	mi.Placeholder = "Mesaj…"
+	mi.Placeholder = dil.T("Mesaj…")
 	mi.CharLimit = 500
 
 	// Ayarlar not input'u
 	ni := textinput.New()
-	ni.Placeholder = "Bir şey yaz…"
+	ni.Placeholder = dil.T("Bir şey yaz…")
 	ni.CharLimit = 200
 	ni.SetValue(a.OzelNot)
 
@@ -398,7 +399,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case postlarYuklendi:
 		m.loading = false
 		if msg.err != nil {
-			m.notice = "Yüklenemedi: " + msg.err.Error()
+			m.notice = dil.T("Yüklenemedi: ") + msg.err.Error()
 			m.isErr = true
 			return m, nil
 		}
@@ -413,9 +414,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case konuDetayGeldi:
 		m.loading = false
 		if msg.err != nil || msg.detay == nil {
-			m.notice = "Konu yüklenemedi"
+			m.notice = dil.T("Konu yüklenemedi")
 			if msg.err != nil {
-				m.notice = "Konu yüklenemedi: " + msg.err.Error()
+				m.notice = dil.T("Konu yüklenemedi: ") + msg.err.Error()
 			}
 			m.isErr = true
 			m.ekran = ekTumKonular
@@ -431,11 +432,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case konuSilindi:
 		m.pending = false
 		if msg.err != nil {
-			m.notice = "Silme hatası: " + msg.err.Error()
+			m.notice = dil.T("Silme hatası: ") + msg.err.Error()
 			m.isErr = true
 			return m, nil
 		}
-		m.notice = "Konu silindi."
+		m.notice = dil.T("Konu silindi.")
 		m.isErr = false
 		m.seciliDetay = nil
 		m.ekran = ekTumKonular
@@ -444,11 +445,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case konuOlusturuldu:
 		m.pending = false
 		if msg.err != nil {
-			m.notice = "Konu oluşturulamadı: " + msg.err.Error()
+			m.notice = dil.T("Konu oluşturulamadı: ") + msg.err.Error()
 			m.isErr = true
 			return m, nil
 		}
-		m.notice = "Konu gönderildi — 5 gün süreyle listelenecek."
+		m.notice = dil.T("Konu gönderildi — 5 gün süreyle listelenecek.")
 		m.isErr = false
 		// Formu sıfırla
 		m.titleIn.SetValue("")
@@ -461,11 +462,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dmGonderildi:
 		m.pending = false
 		if msg.err != nil {
-			m.notice = "DM gönderilemedi: " + msg.err.Error()
+			m.notice = dil.T("DM gönderilemedi: ") + msg.err.Error()
 			m.isErr = true
 			return m, nil
 		}
-		m.notice = "DM gönderildi."
+		m.notice = dil.T("DM gönderildi.")
 		m.isErr = false
 		m.peerIn.SetValue("")
 		m.msgIn.SetValue("")
@@ -518,12 +519,12 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // Ana menü seçeneklerini rol'e göre hesapla
 func (m model) menuSecenekleri() []string {
-	opts := []string{"Kimlik Bilgileri", "Yeni Konu Oluştur", "Özel Mesaj Gönder", "Ayarlar"}
+	opts := []string{dil.T("Kimlik Bilgileri"), dil.T("Yeni Konu Oluştur"), dil.T("Özel Mesaj Gönder"), dil.T("Ayarlar")}
 	if m.role.IsFounder || m.role.IsModerator {
 		// Moderatör/kurucu seçeneği ortaya ekle
-		opts = []string{"Kimlik Bilgileri", "Tüm Konular", "Yeni Konu Oluştur", "Özel Mesaj Gönder", "Ayarlar"}
+		opts = []string{dil.T("Kimlik Bilgileri"), dil.T("Tüm Konular"), dil.T("Yeni Konu Oluştur"), dil.T("Özel Mesaj Gönder"), dil.T("Ayarlar")}
 	}
-	return append(opts, "Çıkış")
+	return append(opts, dil.T("Çıkış"))
 }
 
 func (m model) keyAnaMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -681,12 +682,12 @@ func (m model) keyKonuOlustur(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		title := strings.TrimSpace(m.titleIn.Value())
 		body := strings.TrimSpace(m.bodyTA.Value())
 		if title == "" {
-			m.notice = "Başlık boş olamaz."
+			m.notice = dil.T("Başlık boş olamaz.")
 			m.isErr = true
 			return m, nil
 		}
 		if body == "" {
-			m.notice = "Gövde boş olamaz."
+			m.notice = dil.T("Gövde boş olamaz.")
 			m.isErr = true
 			return m, nil
 		}
@@ -761,12 +762,12 @@ func (m model) keyDMGonder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		peerID := strings.TrimSpace(m.peerIn.Value())
 		message := strings.TrimSpace(m.msgIn.Value())
 		if peerID == "" {
-			m.notice = "Peer ID boş olamaz."
+			m.notice = dil.T("Peer ID boş olamaz.")
 			m.isErr = true
 			return m, nil
 		}
 		if message == "" {
-			m.notice = "Mesaj boş olamaz."
+			m.notice = dil.T("Mesaj boş olamaz.")
 			m.isErr = true
 			return m, nil
 		}
@@ -806,10 +807,10 @@ func (m model) keyAyarlar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.notFocus {
 			m.ayarlar.OzelNot = m.notIn.Value()
 			if err := ayarlarKaydet(m.dataDir, m.ayarlar); err != nil {
-				m.notice = "Kaydedilemedi: " + err.Error()
+				m.notice = dil.T("Kaydedilemedi: ") + err.Error()
 				m.isErr = true
 			} else {
-				m.notice = "Ayarlar kaydedildi."
+				m.notice = dil.T("Ayarlar kaydedildi.")
 				m.isErr = false
 			}
 			m.notFocus = false
@@ -854,16 +855,16 @@ func (m model) viewAnaMenu() string {
 	var sb strings.Builder
 
 	// Başlık + kimlik özeti
-	sb.WriteString(stTitle.Render("AND — Örnek Eklenti") + "\n\n")
-	sb.WriteString(stBold.Render("Kullanıcı : ") + safe(m.identity.Name) + "\n")
-	rol := "Üye"
+	sb.WriteString(stTitle.Render(dil.T("AND — Örnek Eklenti")) + "\n\n")
+	sb.WriteString(stBold.Render(dil.T("Kullanıcı : ")) + safe(m.identity.Name) + "\n")
+	rol := dil.T("Üye")
 	if m.role.IsFounder {
-		rol = "Kurucu"
+		rol = dil.T("Kurucu")
 	} else if m.role.IsModerator {
-		rol = "Moderatör"
+		rol = dil.T("Moderatör")
 	}
-	sb.WriteString(stBold.Render("Rol       : ") + rol + "\n")
-	sb.WriteString(stDim.Render("Eklenti   : "+manifest.Name+" v"+manifest.Version) + "\n")
+	sb.WriteString(stBold.Render(dil.T("Rol       : ")) + rol + "\n")
+	sb.WriteString(stDim.Render(dil.T("Eklenti   : ")+manifest.Name+" v"+manifest.Version) + "\n")
 	sb.WriteString("\n")
 
 	// Menü
@@ -879,7 +880,7 @@ func (m model) viewAnaMenu() string {
 	// Bildirim
 	sb.WriteString("\n")
 	m.yazBildirim(&sb)
-	sb.WriteString(stDim.Render("↑/↓  j/k    enter  seç    q  çıkış"))
+	sb.WriteString(stDim.Render(dil.T("↑/↓  j/k    enter  seç    q  çıkış")))
 	return sb.String()
 }
 
@@ -887,19 +888,19 @@ func (m model) viewAnaMenu() string {
 
 func (m model) viewKimlik() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Kimlik Bilgileri") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Kimlik Bilgileri")) + "\n\n")
 
 	sb.WriteString(stBorder.Render(
-		stBold.Render("Ad       : ")+safe(m.identity.Name)+"\n"+
-			stBold.Render("Rol      : ")+rolStr(m.role)+"\n"+
-			stBold.Render("Peer ID  : ")+"\n"+
+		stBold.Render(dil.T("Ad       : "))+safe(m.identity.Name)+"\n"+
+			stBold.Render(dil.T("Rol      : "))+rolStr(m.role)+"\n"+
+			stBold.Render(dil.T("Peer ID  : "))+"\n"+
 			stDim.Render("  "+safe(m.identity.PeerID))+"\n"+
-			stBold.Render("Pub Key  : ")+"\n"+
+			stBold.Render(dil.T("Pub Key  : "))+"\n"+
 			stDim.Render("  "+safe(m.identity.PubKey)),
 	) + "\n\n")
 
-	sb.WriteString(stMuted.Render("Peer ID, diğer kullanıcıların sana DM göndermesi için paylaşabileceğin adresindir.") + "\n\n")
-	sb.WriteString(stDim.Render("esc  geri"))
+	sb.WriteString(stMuted.Render(dil.T("Peer ID, diğer kullanıcıların sana DM göndermesi için paylaşabileceğin adresindir.")) + "\n\n")
+	sb.WriteString(stDim.Render(dil.T("esc  geri")))
 	return sb.String()
 }
 
@@ -907,19 +908,19 @@ func (m model) viewKimlik() string {
 
 func (m model) viewTumKonular() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Tüm Konular") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Tüm Konular")) + "\n\n")
 
 	if m.loading {
-		sb.WriteString(stMuted.Render("Yükleniyor…") + "\n")
+		sb.WriteString(stMuted.Render(dil.T("Yükleniyor…")) + "\n")
 		return sb.String()
 	}
 
 	if len(m.posts) == 0 {
-		sb.WriteString(stOk.Render("Hiç konu yok.") + "\n")
+		sb.WriteString(stOk.Render(dil.T("Hiç konu yok.")) + "\n")
 	} else {
 		for i, p := range m.posts {
 			line := fmt.Sprintf("[%s] %s  %s",
-				safe(p.Category), safe(p.Title),
+				dil.T(safe(p.Category)), safe(p.Title),
 				stDim.Render(safe(p.AuthorName)))
 			if i == m.postIdx {
 				sb.WriteString(stSel.Render(line) + "\n")
@@ -931,7 +932,7 @@ func (m model) viewTumKonular() string {
 
 	sb.WriteString("\n")
 	m.yazBildirim(&sb)
-	sb.WriteString(stDim.Render("↑/↓ seç   enter detay   r yenile   esc geri"))
+	sb.WriteString(stDim.Render(dil.T("↑/↓ seç   enter detay   r yenile   esc geri")))
 	return sb.String()
 }
 
@@ -939,21 +940,21 @@ func (m model) viewTumKonular() string {
 
 func (m model) viewDetay() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Konu Detayı") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Konu Detayı")) + "\n\n")
 
 	if m.loading || m.seciliDetay == nil {
-		sb.WriteString(stMuted.Render("Yükleniyor…") + "\n")
+		sb.WriteString(stMuted.Render(dil.T("Yükleniyor…")) + "\n")
 		return sb.String()
 	}
 
 	sb.WriteString(m.postVP.View() + "\n\n")
 
 	if m.pending {
-		sb.WriteString(stDim.Render("İşleniyor…") + "\n")
+		sb.WriteString(stDim.Render(dil.T("İşleniyor…")) + "\n")
 	} else {
 		m.yazBildirim(&sb)
 	}
-	sb.WriteString(stDim.Render("x sil   ↑/↓ kaydır   esc geri"))
+	sb.WriteString(stDim.Render(dil.T("x sil   ↑/↓ kaydır   esc geri")))
 	return sb.String()
 }
 
@@ -961,44 +962,40 @@ func (m model) viewDetay() string {
 
 func (m model) viewKonuOlustur() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Yeni Konu") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Yeni Konu")) + "\n\n")
 
 	// Kategori seçimi
-	catLabel := stBold.Render("Kategori: ")
+	catLabel := stBold.Render(dil.T("Kategori: "))
 	if m.formFocus == 0 {
-		catLabel = stFocused.Render("▸ Kategori: ")
+		catLabel = stFocused.Render(dil.T("▸ Kategori: "))
 	}
+	// 34 kategori tek satıra sığmaz: yalnızca seçili olan, ←/→ ile gezilir.
 	sb.WriteString(catLabel)
-	for i, c := range kategoriListesi {
-		if i == m.catIdx {
-			sb.WriteString(stSel.Render(" " + c + " "))
-		} else {
-			sb.WriteString(stDim.Render(" " + c + " "))
-		}
-	}
+	sb.WriteString(stDim.Render("← ") + stSel.Render(" "+dil.T(kategoriListesi[m.catIdx])+" ") + stDim.Render(" →") +
+		stDim.Render(fmt.Sprintf("  (%d/%d)", m.catIdx+1, len(kategoriListesi))))
 	sb.WriteString("\n\n")
 
 	// Başlık
-	titleLabel := stBold.Render("Başlık:")
+	titleLabel := stBold.Render(dil.T("Başlık:"))
 	if m.formFocus == 1 {
-		titleLabel = stFocused.Render("▸ Başlık:")
+		titleLabel = stFocused.Render(dil.T("▸ Başlık:"))
 	}
 	sb.WriteString(titleLabel + "\n")
 	sb.WriteString(m.titleIn.View() + "\n\n")
 
 	// Gövde
-	bodyLabel := stBold.Render("Gövde:")
+	bodyLabel := stBold.Render(dil.T("Gövde:"))
 	if m.formFocus == 2 {
-		bodyLabel = stFocused.Render("▸ Gövde:")
+		bodyLabel = stFocused.Render(dil.T("▸ Gövde:"))
 	}
 	sb.WriteString(bodyLabel + "\n")
 	sb.WriteString(m.bodyTA.View() + "\n\n")
 
 	m.yazBildirim(&sb)
 	if m.pending {
-		sb.WriteString(stDim.Render("Gönderiliyor…") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Gönderiliyor…")) + "\n")
 	}
-	sb.WriteString(stDim.Render("tab  sonraki alan   ctrl+s  gönder   esc  geri"))
+	sb.WriteString(stDim.Render(dil.T("tab  sonraki alan   ctrl+s  gönder   esc  geri")))
 	return sb.String()
 }
 
@@ -1006,16 +1003,16 @@ func (m model) viewKonuOlustur() string {
 
 func (m model) viewDMGonder() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Özel Mesaj Gönder") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Özel Mesaj Gönder")) + "\n\n")
 
 	sb.WriteString(stMuted.Render(
-		"Peer ID'yi kimlik ekranından ya da karşıdaki kullanıcıdan öğrenebilirsin.",
+		dil.T("Peer ID'yi kimlik ekranından ya da karşıdaki kullanıcıdan öğrenebilirsin."),
 	) + "\n\n")
 
 	// Peer ID
-	peerLabel := stBold.Render("Peer ID:")
+	peerLabel := stBold.Render(dil.T("Peer ID:"))
 	if m.dmFocus == 0 {
-		peerLabel = stFocused.Render("▸ Peer ID:")
+		peerLabel = stFocused.Render(dil.T("▸ Peer ID:"))
 	}
 	sb.WriteString(peerLabel + "\n")
 	sb.WriteString(m.peerIn.View() + "\n\n")
@@ -1023,16 +1020,16 @@ func (m model) viewDMGonder() string {
 	// Mesaj
 	msgLabel := stBold.Render("Mesaj:")
 	if m.dmFocus == 1 {
-		msgLabel = stFocused.Render("▸ Mesaj:")
+		msgLabel = stFocused.Render(dil.T("▸ Mesaj:"))
 	}
 	sb.WriteString(msgLabel + "\n")
 	sb.WriteString(m.msgIn.View() + "\n\n")
 
 	m.yazBildirim(&sb)
 	if m.pending {
-		sb.WriteString(stDim.Render("Gönderiliyor…") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Gönderiliyor…")) + "\n")
 	}
-	sb.WriteString(stDim.Render("tab  sonraki alan   enter/ctrl+s  gönder   esc  geri"))
+	sb.WriteString(stDim.Render(dil.T("tab  sonraki alan   enter/ctrl+s  gönder   esc  geri")))
 	return sb.String()
 }
 
@@ -1040,30 +1037,30 @@ func (m model) viewDMGonder() string {
 
 func (m model) viewAyarlar() string {
 	var sb strings.Builder
-	sb.WriteString(stTitle.Render("AND — Ayarlar") + "\n\n")
+	sb.WriteString(stTitle.Render(dil.T("AND — Ayarlar")) + "\n\n")
 
 	// AND_DATA_DIR bilgisi — eklentinin verileri nerede saklandığını gösterir
 	dataDir := m.dataDir
 	if dataDir == "" {
-		dataDir = stErr.Render("(AND_DATA_DIR tanımlı değil)")
+		dataDir = stErr.Render(dil.T("(AND_DATA_DIR tanımlı değil)"))
 	}
-	sb.WriteString(stBold.Render("Veri klasörü : ") + stDim.Render(dataDir) + "\n")
-	sb.WriteString(stBold.Render("İlk açılış   : ") + m.ayarlar.IlkAcilis + "\n")
-	sb.WriteString(stBold.Render("Açılış sayısı: ") + fmt.Sprintf("%d", m.ayarlar.AcilisSay) + "\n\n")
+	sb.WriteString(stBold.Render(dil.T("Veri klasörü : ")) + stDim.Render(dataDir) + "\n")
+	sb.WriteString(stBold.Render(dil.T("İlk açılış   : ")) + m.ayarlar.IlkAcilis + "\n")
+	sb.WriteString(stBold.Render(dil.T("Açılış sayısı: ")) + fmt.Sprintf("%d", m.ayarlar.AcilisSay) + "\n\n")
 
 	// Düzenlenebilir not
-	notLabel := stBold.Render("Kişisel not:")
+	notLabel := stBold.Render(dil.T("Kişisel not:"))
 	if m.notFocus {
-		notLabel = stFocused.Render("▸ Kişisel not (düzenleniyor):")
+		notLabel = stFocused.Render(dil.T("▸ Kişisel not (düzenleniyor):"))
 	}
 	sb.WriteString(notLabel + "\n")
 	sb.WriteString(m.notIn.View() + "\n\n")
 
 	m.yazBildirim(&sb)
 	if !m.notFocus {
-		sb.WriteString(stDim.Render("e  notu düzenle   esc  geri"))
+		sb.WriteString(stDim.Render(dil.T("e  notu düzenle   esc  geri")))
 	} else {
-		sb.WriteString(stDim.Render("enter/ctrl+s  kaydet   esc  iptal"))
+		sb.WriteString(stDim.Render(dil.T("enter/ctrl+s  kaydet   esc  iptal")))
 	}
 	return sb.String()
 }
@@ -1074,11 +1071,11 @@ func (m model) viewAyarlar() string {
 // Tüm kullanıcı verisi safe() ile temizlenir.
 func detayMetni(p *pluginapi.PostDetail) string {
 	var sb strings.Builder
-	sb.WriteString(stBold.Render("Başlık      : ") + safe(p.Title) + "\n")
-	sb.WriteString(stDim.Render("Yazar       : ") + safe(p.AuthorName) + "\n")
-	sb.WriteString(stDim.Render("Kategori    : ") + safe(p.Category) + "\n")
-	sb.WriteString(stDim.Render("Oluşturulma : ") + p.CreatedAt.Local().Format("2006-01-02 15:04") + "\n")
-	sb.WriteString(stDim.Render("Yanıt sayısı: ") + fmt.Sprintf("%d", len(p.Replies)) + "\n")
+	sb.WriteString(stBold.Render(dil.T("Başlık      : ")) + safe(p.Title) + "\n")
+	sb.WriteString(stDim.Render(dil.T("Yazar       : ")) + safe(p.AuthorName) + "\n")
+	sb.WriteString(stDim.Render(dil.T("Kategori    : ")) + dil.T(safe(p.Category)) + "\n")
+	sb.WriteString(stDim.Render(dil.T("Oluşturulma : ")) + p.CreatedAt.Local().Format("2006-01-02 15:04") + "\n")
+	sb.WriteString(stDim.Render(dil.T("Yanıt sayısı: ")) + fmt.Sprintf("%d", len(p.Replies)) + "\n")
 	sb.WriteString("\n" + safe(p.Body) + "\n")
 	return sb.String()
 }
@@ -1099,11 +1096,11 @@ func (m model) yazBildirim(sb *strings.Builder) {
 func rolStr(r pluginapi.RoleInfo) string {
 	switch {
 	case r.IsFounder:
-		return "Kurucu"
+		return dil.T("Kurucu")
 	case r.IsModerator:
-		return "Moderatör"
+		return dil.T("Moderatör")
 	default:
-		return "Üye"
+		return dil.T("Üye")
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/lucian95511/and/dil/diltest"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/protokol"
 )
@@ -343,14 +344,17 @@ func TestYardimcilar(t *testing.T) {
 }
 
 // TestView_EkraniKaplar: her durumda görünüm terminali tam kaplar.
+// TestView_EkraniKaplar: her ekran her dilde terminali tam kaplar ve
+// çevrilmemiş metin içermez.
 func TestView_EkraniKaplar(t *testing.T) {
 	c := &sahteIstemci{}
+	denetci := diltest.YeniDenetci(t, nil, diltest.Oku(t, "ceviri.json", ceviriVerisi))
 	durumlar := map[string]func(model) model{
 		"boş": func(m model) model { return m },
 		"konuşma": func(m model) model {
 			m.gecmis = []pluginapi.DMRecord{
 				{PeerID: alice, Name: "alice", Text: strings.Repeat("uzun bir mesaj ", 30), At: time.Now()},
-				{PeerID: alice, Text: "kısa yanıt", At: time.Now(), Outgoing: true},
+				{PeerID: alice, Text: "short reply", At: time.Now(), Outgoing: true},
 			}
 			return m.konusmaAc(alice)
 		},
@@ -364,22 +368,28 @@ func TestView_EkraniKaplar(t *testing.T) {
 			return m
 		},
 	}
-	for _, sz := range [][2]int{{213, 50}, {100, 30}, {70, 24}} {
-		for ad, kur := range durumlar {
-			m := yeniModel(c, pluginapi.IdentityInfo{PeerID: ben}, t.TempDir())
-			mm, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
-			m = kur(mm.(model))
-			lines := strings.Split(m.View(), "\n")
-			if len(lines) != sz[1] {
-				t.Fatalf("%s %dx%d: %d satır", ad, sz[0], sz[1], len(lines))
-			}
-			for i, l := range lines {
-				if lipgloss.Width(l) != sz[0] {
-					t.Fatalf("%s %dx%d: satır %d genişliği %d: %q", ad, sz[0], sz[1], i, lipgloss.Width(l), ansi.Strip(l))
+	diltest.HerDilde(t, func(kod string) {
+		for _, sz := range [][2]int{{213, 50}, {100, 30}, {70, 24}} {
+			for ad, kur := range durumlar {
+				m := yeniModel(c, pluginapi.IdentityInfo{PeerID: ben}, t.TempDir())
+				mm, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
+				m = kur(mm.(model))
+				ekran := m.View()
+				lines := strings.Split(ekran, "\n")
+				if len(lines) != sz[1] {
+					t.Fatalf("%s %s %dx%d: %d satır", kod, ad, sz[0], sz[1], len(lines))
+				}
+				for i, l := range lines {
+					if lipgloss.Width(l) != sz[0] {
+						t.Fatalf("%s %s %dx%d: satır %d genişliği %d: %q", kod, ad, sz[0], sz[1], i, lipgloss.Width(l), ansi.Strip(l))
+					}
+				}
+				for _, k := range denetci.Kalintilar(kod, ansi.Strip(ekran)) {
+					t.Errorf("%s %s %dx%d: %s", kod, ad, sz[0], sz[1], k)
 				}
 			}
 		}
-	}
+	})
 }
 
 func TestGonderim_GidenKutusuylaYapilir(t *testing.T) {

@@ -17,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -25,7 +26,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "admin",
 	Label:       "Yönetici Paneli",
-	Version:     "4.0.0",
+	Version:     "4.1.0",
 	Description: "Konu yönetimi, ban listesi, moderasyon geçmişi ve moderatör atama (kurucu/moderatör yetkisi gerekir)",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinModerasyon},
@@ -37,6 +38,8 @@ func main() {
 		fmt.Println(string(data))
 		return
 	}
+	// AND, eklentiyi kendi etkin dilinde açar (AND_DIL).
+	dil.OrtamdanAyarla()
 
 	client, err := pluginapi.NewClientFromEnv()
 	if err != nil {
@@ -46,11 +49,11 @@ func main() {
 
 	role, err := client.Role()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "admin: rol sorgulanamadı:", err)
+		fmt.Fprintln(os.Stderr, dil.T("admin: rol sorgulanamadı:"), err)
 		os.Exit(1)
 	}
 	if !role.IsFounder && !role.IsModerator {
-		fmt.Fprintln(os.Stderr, "admin: bu paneli açmak için kurucu veya moderatör olmanız gerekir.")
+		fmt.Fprintln(os.Stderr, dil.T("admin: bu paneli açmak için kurucu veya moderatör olmanız gerekir."))
 		os.Exit(1)
 	}
 

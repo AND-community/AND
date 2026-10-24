@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/ui"
 )
 
@@ -59,10 +60,10 @@ func (m model) View() string {
 }
 
 func (m model) baslik(w int, liste []konusma) string {
-	crumbs := []string{"Özel Chat"}
+	crumbs := []string{dil.T("Özel Chat")}
 	switch {
 	case m.odak == odakYeni:
-		crumbs = append(crumbs, "Yeni konuşma")
+		crumbs = append(crumbs, dil.T("Yeni konuşma"))
 	case m.secili != "" && m.odak != odakListe:
 		crumbs = append(crumbs, m.adOf(m.secili))
 	}
@@ -70,9 +71,9 @@ func (m model) baslik(w int, liste []konusma) string {
 	for _, k := range liste {
 		toplam += k.okunmamis
 	}
-	sag := ui.S.Muted.Render(fmt.Sprintf("%d konuşma", len(liste)))
+	sag := ui.S.Muted.Render(dil.F("%d konuşma", len(liste)))
 	if toplam > 0 {
-		sag = ui.S.Accent.Bold(true).Render(fmt.Sprintf("%d okunmamış", toplam)) + ui.S.Subtle.Render("  ·  ") + sag
+		sag = ui.S.Accent.Bold(true).Render(dil.F("%d okunmamış", toplam)) + ui.S.Subtle.Render("  ·  ") + sag
 	}
 	return ui.Header(w, crumbs, sag)
 }
@@ -80,14 +81,14 @@ func (m model) baslik(w int, liste []konusma) string {
 // listeCiz, konuşma listesidir: okunmamışı olan konuşma kalın ve sayılı.
 func (m model) listeCiz(w, h int, liste []konusma) string {
 	var b strings.Builder
-	b.WriteString(ui.S.Muted.Bold(true).Render("Konuşmalar") + "\n")
+	b.WriteString(ui.S.Muted.Bold(true).Render(dil.T("Konuşmalar")) + "\n")
 	if len(liste) == 0 {
-		b.WriteString(ui.S.Muted.Render(ui.Wrap("Henüz bir konuşma yok. n ile yeni bir konuşma başlat.", w-2)))
+		b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Henüz bir konuşma yok. n ile yeni bir konuşma başlat."), w-2)))
 		return b.String()
 	}
 	for i, k := range liste {
 		if i >= h-2 {
-			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  … %d konuşma daha", len(liste)-i)))
+			b.WriteString(ui.S.Muted.Render(dil.F("  … %d konuşma daha", len(liste)-i)))
 			break
 		}
 		ad := k.ad
@@ -120,26 +121,26 @@ func (m model) sagBolme(w, h int) string {
 
 func (m model) bosDurum(w int) string {
 	var b strings.Builder
-	b.WriteString(ui.S.Title.Render("Özel mesajlar") + "\n")
-	b.WriteString(ui.S.Muted.Render(ui.Wrap("Mesajlar sunucuya uğramadan doğrudan karşı tarafa gider; bağlantı iki uç arasında libp2p'nin Noise protokolüyle şifrelidir, aracı röleler yalnızca şifreli veri görür. Karşı taraf çevrimdışıysa mesaj bekler ve bağlanınca gider. AND geçmişi bu bilgisayarda, kimliğinden türetilen bir anahtarla şifreli saklar.", ui.Measure(w))) + "\n\n")
-	b.WriteString(ui.KV(16, "Senin Peer ID'n", ui.S.Bold.Render(m.ben.PeerID)) + "\n")
-	b.WriteString(ui.S.Muted.Render(ui.Wrap("Seninle konuşmak isteyen biri bu kimliği kullanır. Yeni bir konuşma için n'ye bas.", ui.Measure(w))))
+	b.WriteString(ui.S.Title.Render(dil.T("Özel mesajlar")) + "\n")
+	b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Mesajlar sunucuya uğramadan doğrudan karşı tarafa gider; bağlantı iki uç arasında libp2p'nin Noise protokolüyle şifrelidir, aracı röleler yalnızca şifreli veri görür. Karşı taraf çevrimdışıysa mesaj bekler ve bağlanınca gider. AND geçmişi bu bilgisayarda, kimliğinden türetilen bir anahtarla şifreli saklar."), ui.Measure(w))) + "\n\n")
+	b.WriteString(ui.KV(16, dil.T("Senin Peer ID'n"), ui.S.Bold.Render(m.ben.PeerID)) + "\n")
+	b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Seninle konuşmak isteyen biri bu kimliği kullanır. Yeni bir konuşma için n'ye bas."), ui.Measure(w))))
 	return b.String()
 }
 
 func (m model) yeniKonusmaCiz(w int) string {
 	var b strings.Builder
-	b.WriteString(ui.S.Title.Render("Yeni konuşma") + "\n")
-	b.WriteString(ui.S.Muted.Render(ui.Wrap("Karşı tarafın Peer ID'sini yapıştır ya da bağlı AND düğümlerinden birini seç.", ui.Measure(w))) + "\n\n")
-	b.WriteString(ui.S.Title.Render("Peer ID") + "\n" + m.yeniEs.View() + "\n\n")
-	b.WriteString(ui.S.Muted.Bold(true).Render(fmt.Sprintf("Bağlı AND düğümleri (%d)", len(m.esler))) + "\n")
+	b.WriteString(ui.S.Title.Render(dil.T("Yeni konuşma")) + "\n")
+	b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Karşı tarafın Peer ID'sini yapıştır ya da bağlı AND düğümlerinden birini seç."), ui.Measure(w))) + "\n\n")
+	b.WriteString(ui.S.Title.Render(dil.T("Peer ID")) + "\n" + m.yeniEs.View() + "\n\n")
+	b.WriteString(ui.S.Muted.Bold(true).Render(dil.F("Bağlı AND düğümleri (%d)", len(m.esler))) + "\n")
 	if len(m.esler) == 0 {
-		b.WriteString(ui.S.Muted.Render("Şu an bağlı bir AND düğümü yok.") + "\n")
+		b.WriteString(ui.S.Muted.Render(dil.T("Şu an bağlı bir AND düğümü yok.")) + "\n")
 	}
 	bos := strings.TrimSpace(m.yeniEs.Value()) == ""
 	for i, e := range m.esler {
 		if i >= 12 {
-			b.WriteString(ui.S.Muted.Render(fmt.Sprintf("  … %d düğüm daha", len(m.esler)-i)) + "\n")
+			b.WriteString(ui.S.Muted.Render(dil.F("  … %d düğüm daha", len(m.esler)-i)) + "\n")
 			break
 		}
 		segs := []ui.Seg{ui.T(kisaID(e.PeerID))}
@@ -148,7 +149,7 @@ func (m model) yeniKonusmaCiz(w int) string {
 		}
 		b.WriteString(ui.Row(min(w, 60), bos && i == m.yeniIdx, segs...) + "\n")
 	}
-	b.WriteString("\n" + ui.KV(16, "Senin Peer ID'n", ui.S.Bold.Render(m.ben.PeerID)))
+	b.WriteString("\n" + ui.KV(16, dil.T("Senin Peer ID'n"), ui.S.Bold.Render(m.ben.PeerID)))
 	return b.String()
 }
 
@@ -161,7 +162,7 @@ func (m model) akisCiz(w, h int) string {
 
 	var giris string
 	if m.odak == odakDosya {
-		giris = ui.S.Title.Render("Gönderilecek dosya") + ui.S.Muted.Render("  tam yol ya da sürükle-bırak") + "\n" + m.dosyaYolu.View()
+		giris = ui.S.Title.Render(dil.T("Gönderilecek dosya")) + ui.S.Muted.Render(dil.T("  tam yol ya da sürükle-bırak")) + "\n" + m.dosyaYolu.View()
 	} else {
 		giris = m.yazi.View()
 	}
@@ -179,7 +180,7 @@ func (m model) akisCiz(w, h int) string {
 		kim := ui.Truncate(ad, adW)
 		renk := lipgloss.TerminalColor(ui.AuthorColor(m.secili))
 		if ms.giden {
-			kim, renk = "sen", ui.P.Accent
+			kim, renk = dil.T("sen"), ui.P.Accent
 		}
 		kim += strings.Repeat(" ", max(adW-lipgloss.Width(kim), 0))
 		parcalar := strings.Split(ui.Wrap(ms.metin, metinW), "\n")
@@ -189,13 +190,13 @@ func (m model) akisCiz(w, h int) string {
 		}
 		switch {
 		case ms.bekliyor:
-			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Muted.Render(ui.Truncate("bekliyor · alıcı bağlanınca gidecek", metinW)))
+			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Muted.Render(ui.Truncate(dil.T("bekliyor · alıcı bağlanınca gidecek"), metinW)))
 		case ms.basarisiz:
-			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Error.Render(ui.Truncate("gönderilemedi · alıcı bir hafta bağlanmadı", metinW)))
+			satirlar = append(satirlar, strings.Repeat(" ", girinti)+ui.S.Error.Render(ui.Truncate(dil.T("gönderilemedi · alıcı bir hafta bağlanmadı"), metinW)))
 		}
 	}
 	if len(satirlar) == 0 {
-		satirlar = []string{ui.S.Muted.Render(ui.Wrap(fmt.Sprintf("%s ile henüz mesaj yok. İlk mesajı yaz; ctrl+f ile dosya gönderebilirsin.", ad), w))}
+		satirlar = []string{ui.S.Muted.Render(ui.Wrap(dil.F("%s ile henüz mesaj yok. İlk mesajı yaz; ctrl+f ile dosya gönderebilirsin.", ad), w))}
 	}
 
 	// Mesajlar yazma kutusunun hemen üstüne yaslanır (sohbet uygulamalarındaki
@@ -207,7 +208,7 @@ func (m model) akisCiz(w, h int) string {
 	var gorunen []string
 	if bas > 0 {
 		bas++ // bir satır "daha fazla" göstergesine
-		gorunen = append(gorunen, ui.S.Muted.Render(fmt.Sprintf("  ↑ %d satır daha (pgup)", bas)))
+		gorunen = append(gorunen, ui.S.Muted.Render(dil.F("  ↑ %d satır daha (pgup)", bas)))
 	}
 	gorunen = append(gorunen, satirlar[min(bas, son):son]...)
 	var b strings.Builder
@@ -227,12 +228,12 @@ func (m model) altBilgi(w int) string {
 		if m.simdi != nil {
 			kalan = max(int(o.bitis.Sub(m.simdi()).Seconds()), 0)
 		}
-		istek := fmt.Sprintf("%s (%s) sana %q (%s) göndermek istiyor · %d sn", m.adOf(o.SenderID), kisaID(o.SenderID), o.Filename, boyutYaz(o.Size), kalan)
+		istek := dil.F("%s (%s) sana %q (%s) göndermek istiyor · %d sn", m.adOf(o.SenderID), kisaID(o.SenderID), o.Filename, boyutYaz(o.Size), kalan)
 		if len(m.onaylar) > 1 {
-			istek += fmt.Sprintf("  (+%d istek)", len(m.onaylar)-1)
+			istek += dil.F("  (+%d istek)", len(m.onaylar)-1)
 		}
 		b.WriteString(ui.Notice(ui.KindWarning, ui.Truncate(istek, w-2)) + "\n")
-		b.WriteString(ui.KeyHints(w, ui.H("y", "kabul et"), ui.H("n", "reddet")))
+		b.WriteString(ui.KeyHints(w, ui.H("y", dil.T("kabul et")), ui.H("n", dil.T("reddet"))))
 		return b.String()
 	}
 	if m.bildirim != "" {
@@ -243,18 +244,18 @@ func (m model) altBilgi(w int) string {
 		b.WriteString(ui.Notice(tur, ui.Truncate(m.bildirim, w-2)) + "\n")
 	}
 	if m.gonderiliyor > 0 {
-		b.WriteString(ui.Notice(ui.KindPending, "gönderiliyor") + "\n")
+		b.WriteString(ui.Notice(ui.KindPending, dil.T("gönderiliyor")) + "\n")
 	}
 	var hints []ui.Hint
 	switch m.odak {
 	case odakYazi:
-		hints = []ui.Hint{ui.H("enter", "gönder"), ui.H("ctrl+f", "dosya gönder"), ui.H("pgup/pgdn", "kaydır"), ui.H("ctrl+n", "yeni konuşma"), ui.H("tab", "konuşmalar")}
+		hints = []ui.Hint{ui.H("enter", dil.T("gönder")), ui.H("ctrl+f", dil.T("dosya gönder")), ui.H("pgup/pgdn", dil.T("kaydır")), ui.H("ctrl+n", dil.T("yeni konuşma")), ui.H("tab", dil.T("konuşmalar"))}
 	case odakYeni:
-		hints = []ui.Hint{ui.H("↑↓", "düğüm seç"), ui.H("enter", "başlat"), ui.H("esc", "vazgeç")}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("düğüm seç")), ui.H("enter", dil.T("başlat")), ui.H("esc", dil.T("vazgeç"))}
 	case odakDosya:
-		hints = []ui.Hint{ui.H("enter", "gönder"), ui.H("esc", "vazgeç")}
+		hints = []ui.Hint{ui.H("enter", dil.T("gönder")), ui.H("esc", dil.T("vazgeç"))}
 	default:
-		hints = []ui.Hint{ui.H("↑↓", "seç"), ui.H("enter", "aç"), ui.H("n", "yeni konuşma"), ui.H("esc", "çıkış")}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("enter", dil.T("aç")), ui.H("n", dil.T("yeni konuşma")), ui.H("esc", dil.T("çıkış"))}
 	}
 	b.WriteString(ui.KeyHints(w, hints...))
 	return b.String()
@@ -265,12 +266,12 @@ func neZaman(t, simdi time.Time) string {
 	d := simdi.Sub(t)
 	switch {
 	case d < time.Minute:
-		return "şimdi"
+		return dil.T("şimdi")
 	case d < time.Hour:
-		return fmt.Sprintf("%d dk", int(d.Minutes()))
+		return dil.F("%d dk", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d sa", int(d.Hours()))
+		return dil.F("%d sa", int(d.Hours()))
 	default:
-		return fmt.Sprintf("%d gün", int(d.Hours()/24))
+		return dil.F("%d gün", int(d.Hours()/24))
 	}
 }

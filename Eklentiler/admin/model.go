@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/ui"
 )
@@ -56,7 +57,7 @@ type model struct {
 
 func newModel(c *pluginapi.Client, role pluginapi.RoleInfo) model {
 	ti := textinput.New()
-	ti.Placeholder = "hedef public key (hex, 64 karakter)…"
+	ti.Placeholder = dil.T("hedef public key (hex, 64 karakter)…")
 	ti.CharLimit = 64
 	ti.Width = 40
 	ui.StyleInput(&ti)
@@ -73,13 +74,13 @@ func (m model) tabCount() int {
 func (m model) tabLabel(t tab) string {
 	switch t {
 	case tabKonular:
-		return "Konular"
+		return dil.T("Konular")
 	case tabBanlar:
-		return "Banlar"
+		return dil.T("Banlar")
 	case tabGecmis:
-		return "Geçmiş"
+		return dil.T("Geçmiş")
 	case tabModeratorler:
-		return "Moderatörler"
+		return dil.T("Moderatörler")
 	}
 	return ""
 }
@@ -118,7 +119,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case allPostsMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Yükleme hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Yükleme hatası: ")+msg.err.Error(), true
 		} else {
 			m.allPosts = msg.posts
 			if m.postIdx >= len(m.allPosts) {
@@ -130,16 +131,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case deleteMsg:
 		m.pending = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Silme hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Silme hatası: ")+msg.err.Error(), true
 			return m, nil
 		}
-		m.notice, m.isErr = "Konu silindi.", false
+		m.notice, m.isErr = dil.T("Konu silindi."), false
 		return m, allPostsCmd(m.client)
 
 	case bansMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Yükleme hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Yükleme hatası: ")+msg.err.Error(), true
 		} else {
 			m.bans = msg.bans
 			if m.bansIdx >= len(m.bans) {
@@ -151,16 +152,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case unbanMsg:
 		m.pending = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Ban kaldırma hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Ban kaldırma hatası: ")+msg.err.Error(), true
 			return m, nil
 		}
-		m.notice, m.isErr = "Ban kaldırıldı.", false
+		m.notice, m.isErr = dil.T("Ban kaldırıldı."), false
 		return m, bansCmd(m.client)
 
 	case historyMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Yükleme hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Yükleme hatası: ")+msg.err.Error(), true
 		} else {
 			m.history = msg.history
 			m.notice, m.isErr = "", false
@@ -170,7 +171,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case grantsMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Yükleme hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Yükleme hatası: ")+msg.err.Error(), true
 		} else {
 			m.grants = msg.grants
 			if m.grantsIdx >= len(m.grants) {
@@ -182,23 +183,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case grantMsg:
 		m.pending = false
 		if msg.err != nil {
-			m.notice, m.isErr = "Atama hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("Atama hatası: ")+msg.err.Error(), true
 			return m, nil
 		}
 		if msg.certPath != "" {
-			m.notice = "Moderatör sertifikası oluşturuldu — dosyayı hedefe Özel Chat ile gönderin: " + msg.certPath
+			m.notice = dil.T("Moderatör sertifikası oluşturuldu — dosyayı hedefe Özel Chat ile gönderin: ") + msg.certPath
 		} else {
-			m.notice = "Moderatör sertifikası oluşturuldu."
+			m.notice = dil.T("Moderatör sertifikası oluşturuldu.")
 		}
 		m.isErr = false
 		return m, grantsCmd(m.client)
 	case revokeMsg:
 		m.pending = false
 		if msg.err != nil {
-			m.notice, m.isErr = "İptal hatası: "+msg.err.Error(), true
+			m.notice, m.isErr = dil.T("İptal hatası: ")+msg.err.Error(), true
 			return m, nil
 		}
-		m.notice, m.isErr = "Moderatör yetkisi iptal edildi.", false
+		m.notice, m.isErr = dil.T("Moderatör yetkisi iptal edildi."), false
 		return m, grantsCmd(m.client)
 
 	case tea.KeyMsg:
@@ -256,16 +257,16 @@ func (m model) View() string {
 	if m.w > 0 {
 		w = ui.ContentWidth(m.w)
 	}
-	roleStr := "Moderatör"
+	roleStr := dil.T("Moderatör")
 	if m.role.IsFounder {
-		roleStr = "Kurucu"
+		roleStr = dil.T("Kurucu")
 	}
 	var sb strings.Builder
-	sb.WriteString(ui.Header(w, []string{"Yönetici Paneli", m.tabLabel(m.tab)}, ui.S.Badge.Render(roleStr)) + "\n")
+	sb.WriteString(ui.Header(w, []string{dil.T("Yönetici Paneli"), m.tabLabel(m.tab)}, ui.S.Badge.Render(roleStr)) + "\n")
 	sb.WriteString(m.tabBar() + "\n\n")
 
 	if m.loading {
-		sb.WriteString(ui.Notice(ui.KindPending, "Yükleniyor") + "\n")
+		sb.WriteString(ui.Notice(ui.KindPending, dil.T("Yükleniyor")) + "\n")
 		return ui.Frame(m.w, m.h, sb.String())
 	}
 
@@ -289,7 +290,7 @@ func (m model) View() string {
 	f.WriteString(ui.Divider(w) + "\n")
 	switch {
 	case m.pending:
-		f.WriteString(ui.Notice(ui.KindPending, "İşleniyor") + "\n")
+		f.WriteString(ui.Notice(ui.KindPending, dil.T("İşleniyor")) + "\n")
 	case m.isErr:
 		f.WriteString(ui.Notice(ui.KindError, m.notice) + "\n")
 	case m.notice != "":
@@ -308,33 +309,33 @@ func (m model) tabBar() string {
 }
 
 func (m model) helpText() string {
-	const nav = "tab/←→ sekme"
+	nav := dil.T("tab/←→ sekme")
 	switch m.tab {
 	case tabKonular:
 		if m.confirming {
-			return "e onayla   esc vazgeç"
+			return dil.T("e onayla   esc vazgeç")
 		}
-		return "↑/↓ seç   x sil   r yenile   " + nav + "   q çıkış"
+		return dil.T("↑/↓ seç   x sil   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabBanlar:
 		if m.unbanConfirming {
-			return "e onayla   esc vazgeç"
+			return dil.T("e onayla   esc vazgeç")
 		}
-		return "↑/↓ seç   u banı kaldır   r yenile   " + nav + "   q çıkış"
+		return dil.T("↑/↓ seç   u banı kaldır   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabGecmis:
-		return "↑/↓ kaydır   r yenile   " + nav + "   q çıkış"
+		return dil.T("↑/↓ kaydır   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabModeratorler:
 		if m.revokeConfirming {
-			return "e onayla   esc vazgeç"
+			return dil.T("e onayla   esc vazgeç")
 		}
 		if m.granting && m.grantStep == 0 {
-			return "anahtarı yazın, enter devam   esc vazgeç"
+			return dil.T("enter devam   esc vazgeç")
 		}
 		if m.granting {
-			return "←/→ süre seç   enter ata   backspace anahtarı düzenle   esc vazgeç"
+			return dil.T("←/→ süre seç   enter ata   backspace anahtarı düzenle   esc vazgeç")
 		}
-		return "↑/↓ seç   g yeni ata   r seçiliyi iptal et   " + nav + "   q çıkış"
+		return dil.T("↑/↓ seç   g yeni ata   r seçiliyi iptal et   ") + nav + dil.T("   q çıkış")
 	}
-	return nav + "   q çıkış"
+	return nav + dil.T("   q çıkış")
 }
 
 func maxInt(a, b int) int {

@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -47,7 +48,7 @@ func (m model) handleBanlarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.bans[m.bansIdx].AuthorKey == "" {
-			m.notice, m.isErr = "Bu banın yazar anahtarı çözülemedi (yalnızca bağlantı/peer düzeyinde bilgi var).", true
+			m.notice, m.isErr = dil.T("Bu banın yazar anahtarı çözülemedi (yalnızca bağlantı/peer düzeyinde bilgi var)."), true
 			return m, nil
 		}
 		m.unbanConfirming = true
@@ -86,14 +87,14 @@ func banLabel(b pluginapi.BanEntryInfo) string {
 
 func banDuration(b pluginapi.BanEntryInfo) string {
 	if b.Permanent {
-		return "Ömür boyu"
+		return dil.T("Ömür boyu")
 	}
 	return kalanSure(b.ExpiresAt)
 }
 
 func whoLabel(modKey string, isFounderMod bool) string {
 	if isFounderMod {
-		return "Kurucu"
+		return dil.T("Kurucu")
 	}
 	return shortKey(modKey)
 }
@@ -103,24 +104,24 @@ func kalanSure(t time.Time) string {
 	d := time.Until(t)
 	switch {
 	case d <= 0:
-		return "süresi doldu"
+		return dil.T("süresi doldu")
 	case d < time.Minute:
-		return "1 dakikadan az"
+		return dil.T("1 dakikadan az")
 	case d < time.Hour:
-		return fmt.Sprintf("%d dakika", int(d.Minutes()))
+		return dil.F("%d dakika", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%d saat", int(d.Hours()))
+		return dil.F("%d saat", int(d.Hours()))
 	case d < 30*24*time.Hour:
-		return fmt.Sprintf("%d gün", int(d.Hours()/24))
+		return dil.F("%d gün", int(d.Hours()/24))
 	default:
-		return t.Local().Format("02 Jan 2006")
+		return dil.Tarih(t.Local())
 	}
 }
 
 func (m model) viewBanlar() string {
 	var sb strings.Builder
 	if len(m.bans) == 0 {
-		sb.WriteString(stDim.Render("Aktif ban yok.") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Aktif ban yok.")) + "\n")
 		return sb.String()
 	}
 	for i, b := range m.bans {
@@ -136,7 +137,7 @@ func (m model) viewBanlar() string {
 			sb.WriteString(stNormal.Render(line) + "\n")
 		}
 		if i == m.bansIdx && m.unbanConfirming {
-			sb.WriteString(stWarn.Render("Banı kaldır: "+safe(banLabel(b))+" — emin misiniz?") + "\n")
+			sb.WriteString(stWarn.Render(dil.T("Banı kaldır: ")+safe(banLabel(b))+dil.T(" — emin misiniz?")) + "\n")
 		}
 	}
 	return sb.String()

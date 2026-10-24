@@ -385,8 +385,24 @@ doğrular. Yeni bir metnin eksik çevirilerinin iskeleti şöyle alınır:
 DIL_ISKELET=eksik.json go test ./dil -run Kapsam
 ```
 
-AND, başlattığı eklentilere etkin dili `AND_DIL` ile iletir; eklentiler `dil.OrtamdanAyarla()`
-ile aynı dili kullanabilir ve kendi çevirilerini `dil.Ekle` ile ekleyebilir.
+Paketle gelen bütün eklentiler (DeltaX, Özel Chat, Site, Yönetici Paneli, konu_ac, Pembiş,
+Örnek Eklenti) AND'ın diliyle açılır: AND etkin dili başlattığı eklentiye `AND_DIL` ile iletir,
+eklenti açılışta `dil.OrtamdanAyarla()` çağırır. Her eklentinin kendi kataloğu kendi klasöründedir:
+
+| Dosya | Görevi |
+|---|---|
+| `ceviri.json` | Eklentiye özgü metinlerin çevirileri (`dil/ceviriler` ile aynı biçim). AND'ın kataloğunda olan metinler ("vazgeç", "Peer ID" …) yazılmaz, oradan gelir |
+| `ceviri.go` | Kataloğu `//go:embed` ile gömer ve `init`'te `dil.Ekle` ile katar |
+| `ceviri_test.go` | `diltest.Kapsam(t, "ceviri.json", ceviriVerisi, diltest.Tara(t, "."))` — eksik ya da kullanılmayan çeviriyi, biçim fiili ve baş/son boşluk farkını yakalar |
+
+Eklentilerin ekran testleri de `diltest.HerDilde` ve `diltest.YeniDenetci` ile her dilde çizilip
+çevrilmemiş metin aranarak yapılır. Ağa giden değerler (kategori, dal adı, protokol alanları) ve
+`switch` içinde karşılaştırılan menü kimlikleri Türkçe kalır; bunlar `dil.K` ile işaretlenir ve
+yalnızca gösterilirken `dil.T` ile çevrilir. Yeni bir eklentinin eksik çevirilerinin iskeleti:
+
+```bash
+DIL_ISKELET=eksik.json go test ./Eklentiler/<isim> -run CeviriKapsami
+```
 
 ### Klavye kısayolları — forum
 
@@ -614,6 +630,9 @@ go build -o and-plugin-meklentim ./Eklentiler/meklentim
 Eklentiler yalnızca istedikleri izinlerle çalışır: `plugin.json`'daki `permissions` alanı (ör.
 `["dm", "file"]`) ilk açılışta kullanıcıya sorulur; herkese açık içeriği okumak izin istemez. İzin
 listesi ve uç noktaları için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
+
+Eklentinin AND'la aynı dilde açılması için `main`'de `dil.OrtamdanAyarla()` çağır, metinleri
+`dil.T`/`dil.F` ile yaz ve çevirilerini `ceviri.json`'a koy (bkz. [Arayüz dili](#arayüz-dili)).
 
 ---
 

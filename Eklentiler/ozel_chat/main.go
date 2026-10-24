@@ -19,6 +19,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/ui"
 )
@@ -26,7 +27,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ozel_chat",
 	Label:       "Özel Chat",
-	Version:     "2.0.0",
+	Version:     "2.1.0",
 	Description: "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinDM, pluginapi.IzinDosya},
@@ -38,6 +39,8 @@ func main() {
 		fmt.Println(string(data))
 		return
 	}
+	// AND, eklentiyi kendi etkin dilinde açar (AND_DIL).
+	dil.OrtamdanAyarla()
 
 	client, err := pluginapi.NewClientFromEnv()
 	if err != nil {
@@ -46,7 +49,7 @@ func main() {
 	}
 	ben, err := client.Identity()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "ozel_chat: kimlik alınamadı:", err)
+		fmt.Fprintln(os.Stderr, dil.T("ozel_chat: kimlik alınamadı:"), err)
 		os.Exit(1)
 	}
 	// AND'ın etkin temasını uygula; eski bir AND'da uç nokta yoksa varsayılan kalır.

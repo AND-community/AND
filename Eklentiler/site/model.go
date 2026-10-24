@@ -9,7 +9,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,6 +19,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/ui"
 )
@@ -65,10 +65,10 @@ type sablon struct {
 }
 
 var sablonlar = []sablon{
-	{Ad: "Boş sayfa"},
-	{Ad: "Hakkımda", Govde: "## Kimim\n\n\n## İlgi Alanlarım\n\n\n## İletişim\n\n"},
-	{Ad: "Proje", Govde: "## Açıklama\n\n\n## Kullanılan Teknolojiler\n\n\n## Bağlantılar\n\n"},
-	{Ad: "Blog Yazısı", Govde: "## Giriş\n\n\n## Gelişme\n\n\n## Sonuç\n\n"},
+	{Ad: dil.K("Boş sayfa")},
+	{Ad: dil.K("Hakkımda"), Govde: dil.K("## Kimim\n\n\n## İlgi Alanlarım\n\n\n## İletişim\n\n")},
+	{Ad: dil.K("Proje"), Govde: dil.K("## Açıklama\n\n\n## Kullanılan Teknolojiler\n\n\n## Bağlantılar\n\n")},
+	{Ad: dil.K("Blog Yazısı"), Govde: dil.K("## Giriş\n\n\n## Gelişme\n\n\n## Sonuç\n\n")},
 }
 
 // taslak, henüz ağa YAYINLANMAMIŞ, yalnızca bu düğümde yerel olarak
@@ -317,15 +317,15 @@ const govdeDisiSatir = 21
 
 func newModel(client *pluginapi.Client, displayName, dataDir string) model {
 	slugIn := textinput.New()
-	slugIn.Placeholder = "slug (ör. home, projeler)"
+	slugIn.Placeholder = dil.T("slug (ör. home, projeler)")
 	slugIn.CharLimit = maxSlugBytes
 
 	baslikIn := textinput.New()
-	baslikIn.Placeholder = "başlık…"
+	baslikIn.Placeholder = dil.T("başlık…")
 	baslikIn.CharLimit = maxTitleBytes
 
 	govdeArea := textarea.New()
-	govdeArea.Placeholder = "sayfa içeriği…"
+	govdeArea.Placeholder = dil.T("sayfa içeriği…")
 	govdeArea.SetHeight(12)
 	govdeArea.CharLimit = maxBodyBytes
 	govdeArea.ShowLineNumbers = false
@@ -394,7 +394,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pagesMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.errMsg = "Yüklenemedi: " + msg.err.Error()
+			m.errMsg = dil.T("Yüklenemedi: ") + msg.err.Error()
 			return m, bildirimTemizle()
 		}
 		m.pages = siralaSayfalar(msg.pages, siraOku(m.dataDir))
@@ -406,7 +406,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case publishedMsg:
 		m.gonderiliyor = false
 		if msg.err != nil {
-			m.errMsg = "Kaydedilemedi: " + msg.err.Error()
+			m.errMsg = dil.T("Kaydedilemedi: ") + msg.err.Error()
 			return m, bildirimTemizle()
 		}
 		// Başarıyla yayınlandıysa bu slug için varsa BAYAT kalmış yerel
@@ -414,16 +414,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// eski taslağın etrafta kalmasının bir faydası yok.
 		taslakSil(m.dataDir, msg.slug)
 		m.ekran = ekListe
-		m.okMsg = "Sayfa kaydedildi ve ağa yayınlandı."
+		m.okMsg = dil.T("Sayfa kaydedildi ve ağa yayınlandı.")
 		return m, tea.Batch(pagesCmd(m.client), bildirimTemizle())
 
 	case deletedMsg:
 		if msg.err != nil {
-			m.errMsg = "Silinemedi: " + msg.err.Error()
+			m.errMsg = dil.T("Silinemedi: ") + msg.err.Error()
 			return m, bildirimTemizle()
 		}
 		m.ekran = ekListe
-		m.okMsg = "Sayfa silindi."
+		m.okMsg = dil.T("Sayfa silindi.")
 		return m, tea.Batch(pagesCmd(m.client), bildirimTemizle())
 
 	case tea.KeyMsg:
@@ -497,7 +497,7 @@ func (m model) tusSablon(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.sablonIdx < len(sablonlar) {
-			return m.yeniSayfaBaslat("", sablonlar[m.sablonIdx].Govde)
+			return m.yeniSayfaBaslat("", dil.T(sablonlar[m.sablonIdx].Govde))
 		}
 	}
 	return m, nil
@@ -526,7 +526,7 @@ func (m model) tusListe(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, pagesCmd(m.client)
 	case "n":
 		if len(m.pages) >= maxPagesPerAuthor {
-			m.errMsg = fmt.Sprintf("En fazla %d sayfan olabilir", maxPagesPerAuthor)
+			m.errMsg = dil.F("En fazla %d sayfan olabilir", maxPagesPerAuthor)
 			return m, bildirimTemizle()
 		}
 		m.sablonIdx = 0
@@ -539,7 +539,7 @@ func (m model) tusListe(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// alanındadır. Benzer yapıda birden fazla sayfa (ör. bir dizinin
 		// bölümleri) oluştururken sıfırdan yazmayı önler.
 		if len(m.pages) >= maxPagesPerAuthor {
-			m.errMsg = fmt.Sprintf("En fazla %d sayfan olabilir", maxPagesPerAuthor)
+			m.errMsg = dil.F("En fazla %d sayfan olabilir", maxPagesPerAuthor)
 			return m, bildirimTemizle()
 		}
 		if m.idx < len(m.pages) {
@@ -655,7 +655,7 @@ func (m model) tusTaslaklar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.taslakIdx >= len(m.taslaklar) {
 				m.taslakIdx = maxInt(0, len(m.taslaklar)-1)
 			}
-			m.okMsg = "Taslak silindi."
+			m.okMsg = dil.T("Taslak silindi.")
 			return m, bildirimTemizle()
 		}
 	}
@@ -768,11 +768,11 @@ func (m model) tusDuzenle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			slug = strings.TrimSpace(m.slugAlan.Value())
 		}
 		if slug == "" {
-			m.errMsg = "Taslak kaydetmek için önce bir slug yaz"
+			m.errMsg = dil.T("Taslak kaydetmek için önce bir slug yaz")
 			return m, bildirimTemizle()
 		}
 		taslakKaydet(m.dataDir, slug, strings.TrimSpace(m.baslikAlan.Value()), m.govdeAlan.Value())
-		m.okMsg = "Taslak yerel olarak kaydedildi (ağa yayınlanmadı)."
+		m.okMsg = dil.T("Taslak yerel olarak kaydedildi (ağa yayınlanmadı).")
 		return m, bildirimTemizle()
 	}
 
@@ -807,11 +807,11 @@ func (m model) kaydet() (tea.Model, tea.Cmd) {
 	govde := strings.TrimSpace(m.govdeAlan.Value())
 
 	if slug == "" {
-		m.errMsg = "Slug boş olamaz"
+		m.errMsg = dil.T("Slug boş olamaz")
 		return m, bildirimTemizle()
 	}
 	if govde == "" {
-		m.errMsg = "Sayfa içeriği boş olamaz"
+		m.errMsg = dil.T("Sayfa içeriği boş olamaz")
 		return m, bildirimTemizle()
 	}
 	// Bayt sınırlarını ağa hiç çıkmadan yerel olarak denetle — textinput/
@@ -821,15 +821,15 @@ func (m model) kaydet() (tea.Model, tea.Cmd) {
 	// Go'da bayt uzunluğu verir — tam olarak sunucunun (internal/site.Store)
 	// denetlediği şey budur.
 	if len(slug) > maxSlugBytes {
-		m.errMsg = fmt.Sprintf("Slug en fazla %d bayt olabilir (şu an %d bayt)", maxSlugBytes, len(slug))
+		m.errMsg = dil.F("Slug en fazla %d bayt olabilir (şu an %d bayt)", maxSlugBytes, len(slug))
 		return m, bildirimTemizle()
 	}
 	if len(baslik) > maxTitleBytes {
-		m.errMsg = fmt.Sprintf("Başlık en fazla %d bayt olabilir (şu an %d bayt)", maxTitleBytes, len(baslik))
+		m.errMsg = dil.F("Başlık en fazla %d bayt olabilir (şu an %d bayt)", maxTitleBytes, len(baslik))
 		return m, bildirimTemizle()
 	}
 	if len(govde) > maxBodyBytes {
-		m.errMsg = fmt.Sprintf("Sayfa en fazla %d bayt olabilir (şu an %d bayt)", maxBodyBytes, len(govde))
+		m.errMsg = dil.F("Sayfa en fazla %d bayt olabilir (şu an %d bayt)", maxBodyBytes, len(govde))
 		return m, bildirimTemizle()
 	}
 

@@ -3,12 +3,12 @@ package main
 import (
 	"crypto/ed25519"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -49,10 +49,10 @@ type durPreset struct {
 }
 
 var grantDurationPresets = []durPreset{
-	{label: "1 gün", duration: 24 * time.Hour},
-	{label: "3 gün", duration: 3 * 24 * time.Hour},
-	{label: "7 gün", duration: 7 * 24 * time.Hour},
-	{label: "Ömür boyu", permanent: true},
+	{label: dil.K("1 gün"), duration: 24 * time.Hour},
+	{label: dil.K("3 gün"), duration: 3 * 24 * time.Hour},
+	{label: dil.K("7 gün"), duration: 7 * 24 * time.Hour},
+	{label: dil.K("Ömür boyu"), permanent: true},
 }
 
 func (m model) handleModeratorlerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -118,7 +118,7 @@ func (m model) handleGrantKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			key := strings.TrimSpace(m.grantKeyInput.Value())
 			raw, err := hex.DecodeString(key)
 			if err != nil || len(raw) != ed25519.PublicKeySize {
-				m.notice, m.isErr = "Geçersiz public key (32 bayt / 64 hex karakter olmalı)", true
+				m.notice, m.isErr = dil.T("Geçersiz public key (32 bayt / 64 hex karakter olmalı)"), true
 				return m, nil
 			}
 			m.grantStep = 1
@@ -154,18 +154,18 @@ func (m model) handleGrantKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewModeratorler() string {
 	var sb strings.Builder
 	if m.granting {
-		sb.WriteString(stBold.Render("Yeni moderatör ata") + "\n")
+		sb.WriteString(stBold.Render(dil.T("Yeni moderatör ata")) + "\n")
 		if m.grantStep == 0 {
-			sb.WriteString(stDim.Render("Hedef public key (hex, 64 karakter):") + "\n")
+			sb.WriteString(stDim.Render(dil.T("Hedef public key (hex, 64 karakter):")) + "\n")
 			sb.WriteString(m.grantKeyInput.View() + "\n")
 		} else {
-			sb.WriteString(stDim.Render("Hedef: ") + shortKey(m.grantKeyInput.Value()) + "\n")
-			sb.WriteString(stDim.Render("Süre:") + "\n")
+			sb.WriteString(stDim.Render(dil.T("Hedef: ")) + shortKey(m.grantKeyInput.Value()) + "\n")
+			sb.WriteString(stDim.Render(dil.T("Süre:")) + "\n")
 			for i, p := range grantDurationPresets {
 				if i == m.grantDurIdx {
-					sb.WriteString(stSel.Render(" " + p.label + " "))
+					sb.WriteString(stSel.Render(" " + dil.T(p.label) + " "))
 				} else {
-					sb.WriteString(" " + p.label + " ")
+					sb.WriteString(" " + dil.T(p.label) + " ")
 				}
 			}
 			sb.WriteString("\n")
@@ -173,20 +173,20 @@ func (m model) viewModeratorler() string {
 		return sb.String()
 	}
 	if len(m.grants) == 0 {
-		sb.WriteString(stDim.Render("Henüz kimseye moderatörlük verilmedi. 'g' ile yeni ata.") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Henüz kimseye moderatörlük verilmedi. 'g' ile yeni ata.")) + "\n")
 		return sb.String()
 	}
 	for i, g := range m.grants {
 		var status string
 		switch {
 		case g.Revoked:
-			status = "iptal edildi (" + g.RevokedAt.Local().Format("02.01.2006") + ")"
+			status = dil.T("iptal edildi (") + g.RevokedAt.Local().Format("02.01.2006") + ")"
 		case g.Permanent:
-			status = "ömür boyu"
+			status = dil.T("ömür boyu")
 		default:
 			status = kalanSure(g.ExpiresAt)
 		}
-		line := fmt.Sprintf("%-24s  verildi: %-12s  %s", shortKey(g.Key), g.GrantedAt.Local().Format("02.01.2006"), status)
+		line := dil.F("%-24s  verildi: %-12s  %s", shortKey(g.Key), g.GrantedAt.Local().Format("02.01.2006"), status)
 		switch {
 		case i == m.grantsIdx:
 			sb.WriteString(stSel.Render(line) + "\n")
@@ -196,7 +196,7 @@ func (m model) viewModeratorler() string {
 			sb.WriteString(line + "\n")
 		}
 		if i == m.grantsIdx && m.revokeConfirming {
-			sb.WriteString(stWarn.Render("İptal et: "+shortKey(g.Key)+" — emin misiniz?") + "\n")
+			sb.WriteString(stWarn.Render(dil.T("İptal et: ")+shortKey(g.Key)+dil.T(" — emin misiniz?")) + "\n")
 		}
 	}
 	return sb.String()

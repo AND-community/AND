@@ -18,6 +18,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -26,7 +27,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "site",
 	Label:       "Site",
-	Version:     "1.2.0",
+	Version:     "1.3.0",
 	Description: "Kendi çok sayfalı kişisel sitenizi oluşturun, düzenleyin ve yayınlayın",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinSite},
@@ -38,6 +39,8 @@ func main() {
 		fmt.Println(string(data))
 		return
 	}
+	// AND, eklentiyi kendi etkin dilinde açar (AND_DIL).
+	dil.OrtamdanAyarla()
 
 	client, err := pluginapi.NewClientFromEnv()
 	if err != nil {

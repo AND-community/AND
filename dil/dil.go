@@ -20,6 +20,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,6 +280,29 @@ func gomuluYukle() {
 			_ = ekle(veri)
 		}
 	}
+}
+
+// Gomulu, AND'ın kendi çeviri dosyalarının (ceviriler/*.json; eklentilerin
+// Ekle ile kattıkları hariç) içeriğidir: kaynak metin → dil kodu → çeviri.
+// Çeviri denetimi (dil/diltest) içindir.
+func Gomulu() (map[string]map[string]string, error) {
+	girdiler, err := gomulu.ReadDir("ceviriler")
+	if err != nil {
+		return nil, err
+	}
+	hepsi := map[string]map[string]string{}
+	for _, g := range girdiler {
+		veri, err := gomulu.ReadFile("ceviriler/" + g.Name())
+		if err != nil {
+			return nil, err
+		}
+		var k kayitlar
+		if err := json.Unmarshal(veri, &k); err != nil {
+			return nil, fmt.Errorf("dil: %s okunamadı: %w", g.Name(), err)
+		}
+		maps.Copy(hepsi, k)
+	}
+	return hepsi, nil
 }
 
 // Ekle, bir eklentinin kendi çeviri dosyasını (bu paketteki dosyalarla aynı

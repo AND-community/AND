@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -72,11 +73,11 @@ func (m model) handleKonularConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewKonular() string {
 	var sb strings.Builder
 	if len(m.allPosts) == 0 {
-		sb.WriteString(stDim.Render("Hiç konu yok.") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Hiç konu yok.")) + "\n")
 		return sb.String()
 	}
 	for i, p := range m.allPosts {
-		line := fmt.Sprintf("[%s] %s  %s", safe(p.Category), safe(p.Title), stDim.Render(safe(p.AuthorName)))
+		line := fmt.Sprintf("[%s] %s  %s", dil.T(safe(p.Category)), safe(p.Title), stDim.Render(safe(p.AuthorName)))
 		if i == m.postIdx {
 			sb.WriteString(stSel.Render(line) + "\n")
 		} else {
@@ -85,7 +86,7 @@ func (m model) viewKonular() string {
 	}
 	if m.confirming && m.postIdx < len(m.allPosts) {
 		title := safe(m.allPosts[m.postIdx].Title)
-		sb.WriteString("\n" + stErr.Render(fmt.Sprintf("Sil: %s — emin misiniz?", title)) + "\n")
+		sb.WriteString("\n" + stErr.Render(dil.F("Sil: %s — emin misiniz?", title)) + "\n")
 	}
 	return sb.String()
 }

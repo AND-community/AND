@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -204,10 +205,10 @@ type model struct {
 
 func yeniModel(c istemci, ben pluginapi.IdentityInfo, dataDir string) model {
 	yazi := textinput.New()
-	yazi.Placeholder = "mesajını yaz…"
+	yazi.Placeholder = dil.T("mesajını yaz…")
 	yazi.CharLimit = maxMesajRune
 	yeniEs := textinput.New()
-	yeniEs.Placeholder = "Peer ID (12D3KooW…)"
+	yeniEs.Placeholder = dil.T("Peer ID (12D3KooW…)")
 	yeniEs.CharLimit = 80
 	dosya := textinput.New()
 	dosya.Placeholder = `C:\Users\…\dosya.pdf`
@@ -343,7 +344,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			if pluginapi.IsNotFound(msg.err) && !m.canliMod {
 				m.canliMod = true
-				m.bildirim, m.hata = "Bu AND sürümü mesaj geçmişi tutmuyor; yalnızca bu ekran açıkken gelen mesajlar görünür.", false
+				m.bildirim, m.hata = dil.T("Bu AND sürümü mesaj geçmişi tutmuyor; yalnızca bu ekran açıkken gelen mesajlar görünür."), false
 				return m, dmDinle(m.c)
 			}
 			return m, nil // geçici hata: bir sonraki tikte yeniden denenir
@@ -428,11 +429,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case onayYanitMsg:
 		switch {
 		case msg.err != nil:
-			m.bildirim, m.hata = "Yanıt iletilemedi: "+msg.err.Error(), true
+			m.bildirim, m.hata = dil.T("Yanıt iletilemedi: ")+msg.err.Error(), true
 		case msg.kabul:
-			m.bildirim, m.hata = msg.dosya+" kabul edildi, alınıyor…", false
+			m.bildirim, m.hata = msg.dosya+dil.T(" kabul edildi, alınıyor…"), false
 		default:
-			m.bildirim, m.hata = msg.dosya+" reddedildi.", false
+			m.bildirim, m.hata = msg.dosya+dil.T(" reddedildi."), false
 		}
 		return m, nil
 
@@ -442,15 +443,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		for _, f := range msg.dosyalar {
 			ad := pluginui.Safe(f.Filename)
-			m.olayEkle(f.From, fmt.Sprintf("↓ dosya alındı: %s (%s)", ad, boyutYaz(f.Size)))
-			m.bildirim, m.hata = fmt.Sprintf("%s kaydedildi: %s", ad, pluginui.Safe(f.SavePath)), false
+			m.olayEkle(f.From, dil.F("↓ dosya alındı: %s (%s)", ad, boyutYaz(f.Size)))
+			m.bildirim, m.hata = dil.F("%s kaydedildi: %s", ad, pluginui.Safe(f.SavePath)), false
 		}
 		return m, dosyaDinle(m.c)
 
 	case gonderildiMsg:
 		m.gonderiliyor--
 		if msg.err != nil {
-			m.bildirim, m.hata = "Gönderilemedi: "+msg.err.Error(), true
+			m.bildirim, m.hata = dil.T("Gönderilemedi: ")+msg.err.Error(), true
 			if m.yazi.Value() == "" {
 				m.yazi.SetValue(msg.metin) // yazılan kaybolmasın
 			}
@@ -465,11 +466,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dosyaGonderildiMsg:
 		m.gonderiliyor--
 		if msg.err != nil {
-			m.bildirim, m.hata = msg.ad+" gönderilemedi: "+msg.err.Error(), true
+			m.bildirim, m.hata = msg.ad+dil.T(" gönderilemedi: ")+msg.err.Error(), true
 			return m, nil
 		}
-		m.olayEkle(msg.peer, fmt.Sprintf("↑ dosya gönderildi: %s (%s)", msg.ad, boyutYaz(msg.boyut)))
-		m.bildirim, m.hata = msg.ad+" gönderildi.", false
+		m.olayEkle(msg.peer, dil.F("↑ dosya gönderildi: %s (%s)", msg.ad, boyutYaz(msg.boyut)))
+		m.bildirim, m.hata = msg.ad+dil.T(" gönderildi."), false
 		return m, nil
 
 	case yenidenDinleMsg:
@@ -532,7 +533,7 @@ func (m *model) onaylariTemizle() {
 		if simdi.Before(o.bitis) {
 			kalan = append(kalan, o)
 		} else {
-			m.bildirim, m.hata = o.Filename+" isteğinin süresi doldu, reddedildi.", false
+			m.bildirim, m.hata = o.Filename+dil.T(" isteğinin süresi doldu, reddedildi."), false
 		}
 	}
 	m.onaylar = kalan
@@ -681,11 +682,11 @@ func (m model) tusYeni(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			hedef = m.esler[min(m.yeniIdx, len(m.esler)-1)].PeerID
 		}
 		if !gecerliPeerID(hedef) {
-			m.bildirim, m.hata = "Geçerli bir Peer ID gir ya da listeden bir eş seç.", true
+			m.bildirim, m.hata = dil.T("Geçerli bir Peer ID gir ya da listeden bir eş seç."), true
 			return m, nil
 		}
 		if hedef == m.ben.PeerID {
-			m.bildirim, m.hata = "Kendine mesaj gönderemezsin.", true
+			m.bildirim, m.hata = dil.T("Kendine mesaj gönderemezsin."), true
 			return m, nil
 		}
 		if _, vardi := m.konusmaBul(hedef); !vardi {
@@ -713,13 +714,13 @@ func (m model) tusDosya(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case yol == "":
 			return m, nil
 		case err != nil:
-			m.bildirim, m.hata = "Dosya bulunamadı: "+yol, true
+			m.bildirim, m.hata = dil.T("Dosya bulunamadı: ")+yol, true
 			return m, nil
 		case bilgi.IsDir():
-			m.bildirim, m.hata = "Bir klasör değil, dosya seç.", true
+			m.bildirim, m.hata = dil.T("Bir klasör değil, dosya seç."), true
 			return m, nil
 		case bilgi.Size() > pluginapi.MaxFileBytes:
-			m.bildirim, m.hata = fmt.Sprintf("Dosya çok büyük (%s, en fazla %s).", boyutYaz(bilgi.Size()), boyutYaz(pluginapi.MaxFileBytes)), true
+			m.bildirim, m.hata = dil.F("Dosya çok büyük (%s, en fazla %s).", boyutYaz(bilgi.Size()), boyutYaz(pluginapi.MaxFileBytes)), true
 			return m, nil
 		}
 		m.dosyaYolu.SetValue("")

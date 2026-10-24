@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -41,20 +42,20 @@ func (m model) handleGecmisKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) viewGecmis() string {
 	var sb strings.Builder
 	if len(m.history) == 0 {
-		sb.WriteString(stDim.Render("Henüz bir moderasyon eylemi kaydedilmedi.") + "\n")
+		sb.WriteString(stDim.Render(dil.T("Henüz bir moderasyon eylemi kaydedilmedi.")) + "\n")
 		return sb.String()
 	}
 	start, end := windowSlice(len(m.history), m.historyIdx, 15)
 	for i := start; i < end; i++ {
 		e := m.history[i]
-		icon, action := "⛔", "BAN"
+		icon, action := "⛔", dil.T("BAN")
 		if e.Action == "unban" {
-			icon, action = "↺", "KALDIR"
+			icon, action = "↺", dil.T("KALDIR")
 		}
 		dur := ""
 		if e.Action == "ban" {
 			if e.Permanent {
-				dur = "ömür boyu"
+				dur = dil.T("ömür boyu")
 			} else if !e.ExpiresAt.IsZero() {
 				dur = kalanSure(e.ExpiresAt)
 			}
