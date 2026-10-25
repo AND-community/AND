@@ -14,6 +14,7 @@ import {
   utf8Bytes,
   validateNewSlug,
 } from "./sitePage";
+import { binlik, etkin, t } from "../../dil/dil";
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -23,7 +24,7 @@ async function loadPages(siteFs: SiteFileSystem): Promise<SitePageInfo[] | undef
   try {
     return await siteFs.listPages(true);
   } catch (err) {
-    void vscode.window.showErrorMessage(`Kişisel site sayfaları alınamadı: ${describeError(err)}`);
+    void vscode.window.showErrorMessage(t("Kişisel site sayfaları alınamadı: %s", describeError(err)));
     return undefined;
   }
 }
@@ -49,8 +50,9 @@ function slugFromArg(arg: unknown, useActiveEditor: boolean): string | undefined
 
 async function pickPage(pages: SitePageInfo[], placeHolder: string): Promise<string | undefined> {
   if (pages.length === 0) {
-    const choice = await vscode.window.showInformationMessage("Henüz bir site sayfan yok.", "Yeni Sayfa");
-    if (choice === "Yeni Sayfa") {
+    const yeni = t("Yeni Sayfa");
+    const choice = await vscode.window.showInformationMessage(t("Henüz bir site sayfan yok."), yeni);
+    if (choice === yeni) {
       void vscode.commands.executeCommand("and.site.newPage");
     }
     return undefined;
@@ -59,7 +61,7 @@ async function pickPage(pages: SitePageInfo[], placeHolder: string): Promise<str
     pages.map((p) => ({
       label: p.title || p.slug,
       description: p.slug,
-      detail: `${new Date(p.updated_at).toLocaleString("tr-TR")} · ${utf8Bytes(p.body).toLocaleString("tr-TR")}/${SITE_MAX_BODY_BYTES.toLocaleString("tr-TR")} bayt`,
+      detail: `${new Date(p.updated_at).toLocaleString(etkin())} · ${t("%s/%s bayt", binlik(utf8Bytes(p.body)), binlik(SITE_MAX_BODY_BYTES))}`,
       slug: p.slug,
     })),
     { placeHolder, matchOnDescription: true }
@@ -81,14 +83,14 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
         return;
       }
       if (pages.length >= SITE_MAX_PAGES) {
-        void vscode.window.showErrorMessage(`En fazla ${SITE_MAX_PAGES} sayfan olabilir — yenisi için önce birini sil.`);
+        void vscode.window.showErrorMessage(t("En fazla %d sayfan olabilir — yenisi için önce birini sil.", SITE_MAX_PAGES));
         return;
       }
       const existing = pages.map((p) => p.slug);
       const slugInput = await vscode.window.showInputBox({
-        title: "Yeni Site Sayfası (1/2) — slug",
-        prompt: "Sayfanın kalıcı adresi: küçük harf, rakam ve tire (ör. hakkimda, projeler). Sonradan değiştirilemez.",
-        placeHolder: "hakkimda",
+        title: t("Yeni Site Sayfası (1/2) — slug"),
+        prompt: t("Sayfanın kalıcı adresi: küçük harf, rakam ve tire (ör. hakkimda, projeler). Sonradan değiştirilemez."),
+        placeHolder: t("hakkimda"),
         validateInput: (v) => validateNewSlug(v.trim(), existing),
       });
       if (slugInput === undefined) {
@@ -96,12 +98,12 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
       }
       const slug = slugInput.trim();
       const title = await vscode.window.showInputBox({
-        title: "Yeni Site Sayfası (2/2) — başlık",
-        prompt: "Sayfa başlığı — sonradan editördeki ilk satırdan da değiştirebilirsin.",
+        title: t("Yeni Site Sayfası (2/2) — başlık"),
+        prompt: t("Sayfa başlığı — sonradan editördeki ilk satırdan da değiştirebilirsin."),
         value: slug,
         validateInput: (v) => {
           const n = utf8Bytes(v.trim());
-          return n > SITE_MAX_TITLE_BYTES ? `Başlık en fazla ${SITE_MAX_TITLE_BYTES} bayt olabilir (şu an ${n} bayt).` : undefined;
+          return n > SITE_MAX_TITLE_BYTES ? t("Başlık en fazla %d bayt olabilir (şu an %d bayt).", SITE_MAX_TITLE_BYTES, n) : undefined;
         },
       });
       if (title === undefined) {
@@ -112,7 +114,7 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
       const end = editor.document.positionAt(editor.document.getText().length);
       editor.selection = new vscode.Selection(end, end);
       void vscode.window.showInformationMessage(
-        `"${slug}" taslağı açıldı. İlk satır başlıktır; içeriği altına yaz. Hazır olduğunda kaydet (Ctrl+S) — kaydetmek sayfayı ağa yayınlar.`
+        t("\"%s\" taslağı açıldı. İlk satır başlıktır; içeriği altına yaz. Hazır olduğunda kaydet (Ctrl+S) — kaydetmek sayfayı ağa yayınlar.", slug)
       );
     }),
 
@@ -123,7 +125,7 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
         if (!pages) {
           return;
         }
-        slug = await pickPage(pages, "Düzenlenecek sayfa");
+        slug = await pickPage(pages, t("Düzenlenecek sayfa"));
       }
       if (!slug) {
         return;
@@ -131,7 +133,7 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
       try {
         await openSitePage(slug);
       } catch (err) {
-        void vscode.window.showErrorMessage(`"${slug}" açılamadı: ${describeError(err)}`);
+        void vscode.window.showErrorMessage(t("\"%s\" açılamadı: %s", slug, describeError(err)));
       }
     }),
 
@@ -140,32 +142,34 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
       if (!pages) {
         return;
       }
-      const slug = slugFromArg(arg, false) ?? (await pickPage(pages, "Silinecek sayfa"));
+      const slug = slugFromArg(arg, false) ?? (await pickPage(pages, t("Silinecek sayfa")));
       if (!slug) {
         return;
       }
       const page = pages.find((p) => p.slug === slug);
       if (!page) {
-        void vscode.window.showErrorMessage(`"${slug}" adlı yayınlanmış bir sayfan yok.`);
+        void vscode.window.showErrorMessage(t("\"%s\" adlı yayınlanmış bir sayfan yok.", slug));
         return;
       }
+      const sil = t("Sil");
       const confirm = await vscode.window.showWarningMessage(
-        `"${page.title || slug}" (${slug}) sayfası silinsin mi?`,
+        t("\"%s\" (%s) sayfası silinsin mi?", page.title || slug, slug),
         {
           modal: true,
-          detail:
-            "Ağa bir silme kaydı yayınlanır; diğer eşlerdeki ve AND Arama Motoru indekslerindeki kopyalar da kaldırılır. Silinen bir slug bir daha kullanılamaz.",
+          detail: t(
+            "Ağa bir silme kaydı yayınlanır; diğer eşlerdeki ve AND Arama Motoru indekslerindeki kopyalar da kaldırılır. Silinen bir slug bir daha kullanılamaz."
+          ),
         },
-        "Sil"
+        sil
       );
-      if (confirm !== "Sil") {
+      if (confirm !== sil) {
         return;
       }
       try {
         await siteFs.deletePage(slug);
-        void vscode.window.showInformationMessage(`"${slug}" silindi.`);
+        void vscode.window.showInformationMessage(t("\"%s\" silindi.", slug));
       } catch (err) {
-        void vscode.window.showErrorMessage(`"${slug}" silinemedi: ${describeError(err)}`);
+        void vscode.window.showErrorMessage(t("\"%s\" silinemedi: %s", slug, describeError(err)));
       }
     }),
 
@@ -174,12 +178,12 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
       if (!pages) {
         return;
       }
-      const slug = slugFromArg(arg, true) ?? (await pickPage(pages, "Paylaşım kodu kopyalanacak sayfa"));
+      const slug = slugFromArg(arg, true) ?? (await pickPage(pages, t("Paylaşım kodu kopyalanacak sayfa")));
       if (!slug) {
         return;
       }
       if (!pages.some((p) => p.slug === slug)) {
-        void vscode.window.showErrorMessage(`"${slug}" henüz yayınlanmadı — önce kaydet (Ctrl+S), sonra paylaş.`);
+        void vscode.window.showErrorMessage(t("\"%s\" henüz yayınlanmadı — önce kaydet (Ctrl+S), sonra paylaş.", slug));
         return;
       }
       const client = await requireClient(conn);
@@ -190,14 +194,17 @@ export function registerSiteCommands(context: vscode.ExtensionContext, conn: Liv
         const { pub_key } = await client.getIdentity();
         await vscode.env.clipboard.writeText(shareCode(pub_key, slug));
         const choice = await vscode.window.showInformationMessage(
-          `"${slug}" paylaşım kodu panoya kopyalandı — alan kişi AND Arama Motoru'nda "Kodla Git" ekranına yapıştırarak (ya da -site ile) sayfayı açabilir.`,
-          "and-site:// Bağlantısını Kopyala"
+          t(
+            "\"%s\" paylaşım kodu panoya kopyalandı — alan kişi AND Arama Motoru'nda \"Kodla Git\" ekranına yapıştırarak (ya da -site ile) sayfayı açabilir.",
+            slug
+          ),
+          t("and-site:// Bağlantısını Kopyala")
         );
         if (choice) {
           await vscode.env.clipboard.writeText(shareLink(pub_key, slug));
         }
       } catch (err) {
-        void vscode.window.showErrorMessage(`Paylaşım kodu alınamadı: ${describeError(err)}`);
+        void vscode.window.showErrorMessage(t("Paylaşım kodu alınamadı: %s", describeError(err)));
       }
     })
   );

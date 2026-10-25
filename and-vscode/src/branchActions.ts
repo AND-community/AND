@@ -5,15 +5,18 @@ import { markMergeHead, saveProject } from "./groupProjectStore";
 import { applyThreeWayMerge } from "./mergeEngine";
 import { DeltaXRepository } from "./scmController";
 import { authorName } from "./settings";
-
-const CHECKOUT_WARNING =
-  "Dal değiştirme, çalışma klasöründeki TÜM içeriği siler ve hedef dalın kaydedilmiş sürümüyle değiştirir " +
-  "(.projeagignore ile hariç tutulan ya da hiç izlenmeyen dosyalar dahil). Bu, DeltaX TUI'sinin kendi " +
-  "davranışıyla birebir aynıdır. Devam edilsin mi?";
+import { k, t } from "./dil/dil";
 
 async function confirmDestructiveCheckout(): Promise<boolean> {
-  const secim = await vscode.window.showWarningMessage(CHECKOUT_WARNING, { modal: true }, "Devam Et");
-  return secim === "Devam Et";
+  const devam = t("Devam Et");
+  const secim = await vscode.window.showWarningMessage(
+    t(
+      "Dal değiştirme, çalışma klasöründeki TÜM içeriği siler ve hedef dalın kaydedilmiş sürümüyle değiştirir (.projeagignore ile hariç tutulan ya da hiç izlenmeyen dosyalar dahil). Bu, DeltaX TUI'sinin kendi davranışıyla birebir aynıdır. Devam edilsin mi?"
+    ),
+    { modal: true },
+    devam
+  );
+  return secim === devam;
 }
 
 /**
@@ -31,7 +34,10 @@ async function recheckCleanBeforeDestructiveAction(repo: DeltaXRepository, islem
   repo.refresh();
   if (!repo.isClean()) {
     void vscode.window.showErrorMessage(
-      `Az önce yeni değişiklikler tespit edildi — ${islemAdi} güvenlik için iptal edildi. Değişiklikleri kaydedip tekrar deneyin.`
+      t(
+        "Az önce yeni değişiklikler tespit edildi — %s güvenlik için iptal edildi. Değişiklikleri kaydedip tekrar deneyin.",
+        t(islemAdi)
+      )
     );
     return false;
   }
@@ -41,15 +47,15 @@ async function recheckCleanBeforeDestructiveAction(repo: DeltaXRepository, islem
 export async function switchBranch(repo: DeltaXRepository): Promise<void> {
   const dallar = Object.keys(repo.proje.dallar).sort();
   if (dallar.length === 0) {
-    void vscode.window.showInformationMessage("Bu projede hiç dal yok.");
+    void vscode.window.showInformationMessage(t("Bu projede hiç dal yok."));
     return;
   }
   const items = dallar.map((d) => ({
     label: d === repo.proje.aktif_dal ? `$(check) ${d}` : d,
-    description: d === repo.proje.aktif_dal ? "geçerli dal" : undefined,
+    description: d === repo.proje.aktif_dal ? t("geçerli dal") : undefined,
     dal: d,
   }));
-  const secim = await vscode.window.showQuickPick(items, { placeHolder: "Geçiş yapılacak dalı seçin" });
+  const secim = await vscode.window.showQuickPick(items, { placeHolder: t("Geçiş yapılacak dalı seçin") });
   if (!secim) {
     return;
   }
@@ -62,14 +68,14 @@ export async function switchBranch(repo: DeltaXRepository): Promise<void> {
   // uğraştırmamak için mevcut (henüz zorla tazelenmemiş) durumu kontrol et.
   if (!repo.isClean()) {
     void vscode.window.showErrorMessage(
-      "Çalışma klasöründe kaydedilmemiş değişiklikler var. Önce Kaydet (Commit) yapın, sonra dal değiştirin."
+      t("Çalışma klasöründe kaydedilmemiş değişiklikler var. Önce Kaydet (Commit) yapın, sonra dal değiştirin.")
     );
     return;
   }
   if (!(await confirmDestructiveCheckout())) {
     return;
   }
-  if (!(await recheckCleanBeforeDestructiveAction(repo, "dal değiştirme"))) {
+  if (!(await recheckCleanBeforeDestructiveAction(repo, k("dal değiştirme")))) {
     return;
   }
 
@@ -78,25 +84,25 @@ export async function switchBranch(repo: DeltaXRepository): Promise<void> {
   try {
     repo.checkout(hedefTree);
   } catch (err) {
-    void vscode.window.showErrorMessage(`Dal değiştirilemedi: ${describeError(err)}`);
+    void vscode.window.showErrorMessage(t("Dal değiştirilemedi: %s", describeError(err)));
     return;
   }
   repo.proje.aktif_dal = hedef;
   saveProject(repo.root, repo.proje);
   repo.refresh();
-  void vscode.window.showInformationMessage(`Dal değiştirildi: ${hedef}`);
+  void vscode.window.showInformationMessage(t("Dal değiştirildi: %s", hedef));
 }
 
 export async function newBranch(repo: DeltaXRepository): Promise<void> {
   const ad = await vscode.window.showInputBox({
-    prompt: "Yeni dal adı",
+    prompt: t("Yeni dal adı"),
     validateInput: (v) => {
       const trimmed = v.trim();
       if (!trimmed) {
-        return "Dal adı boş olamaz";
+        return t("Dal adı boş olamaz");
       }
       if (repo.proje.dallar[trimmed]) {
-        return "Bu isimde bir dal zaten var";
+        return t("Bu isimde bir dal zaten var");
       }
       return undefined;
     },
@@ -108,7 +114,7 @@ export async function newBranch(repo: DeltaXRepository): Promise<void> {
   repo.proje.dallar[trimmed] = repo.currentHead();
   saveProject(repo.root, repo.proje);
   repo.refresh();
-  void vscode.window.showInformationMessage(`Dal oluşturuldu: ${trimmed} (henüz geçiş yapılmadı)`);
+  void vscode.window.showInformationMessage(t("Dal oluşturuldu: %s (henüz geçiş yapılmadı)", trimmed));
 }
 
 /**
@@ -122,12 +128,12 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
   const anahtarlar = Object.keys(uzaklar);
   if (anahtarlar.length === 0) {
     void vscode.window.showInformationMessage(
-      "Bilinen bir uzak dal ucu yok. Önce AND TUI'sinden Gönder/Çek ile senkronize edin."
+      t("Bilinen bir uzak dal ucu yok. Önce AND TUI'sinden Gönder/Çek ile senkronize edin.")
     );
     return;
   }
   const items = anahtarlar.map((k) => ({ label: k, description: shortHash(uzaklar[k]) }));
-  const secim = await vscode.window.showQuickPick(items, { placeHolder: "Birleştirilecek uzak dal ucunu seçin" });
+  const secim = await vscode.window.showQuickPick(items, { placeHolder: t("Birleştirilecek uzak dal ucunu seçin") });
   if (!secim) {
     return;
   }
@@ -139,7 +145,7 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
   // yolun da kendi yıkıcı eyleminden hemen önce ayrıca yapılır (bkz.
   // aşağıdaki recheckCleanBeforeDestructiveAction çağrıları).
   if (!repo.isClean()) {
-    void vscode.window.showErrorMessage("Önce mevcut değişiklikleri kaydedin.");
+    void vscode.window.showErrorMessage(t("Önce mevcut değişiklikleri kaydedin."));
     return;
   }
 
@@ -148,7 +154,7 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
     uzakCommit = readCommit(repo.root, repo.proje.id, uzakHead);
   } catch {
     void vscode.window.showErrorMessage(
-      "Uzak commit bulunamadı — önce AND TUI'sinden Gönder/Çek ile nesneleri alın."
+      t("Uzak commit bulunamadı — önce AND TUI'sinden Gönder/Çek ile nesneleri alın.")
     );
     return;
   }
@@ -156,7 +162,7 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
   const yerelHead = repo.currentHead();
   const temel = commonAncestor(repo.root, repo.proje.id, yerelHead, uzakHead);
   if (temel === uzakHead) {
-    void vscode.window.showInformationMessage("Zaten güncel.");
+    void vscode.window.showInformationMessage(t("Zaten güncel."));
     return;
   }
 
@@ -164,19 +170,19 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
     if (!(await confirmDestructiveCheckout())) {
       return;
     }
-    if (!(await recheckCleanBeforeDestructiveAction(repo, "birleştirme"))) {
+    if (!(await recheckCleanBeforeDestructiveAction(repo, k("birleştirme")))) {
       return;
     }
     try {
       repo.checkout(uzakCommit.agac);
     } catch (err) {
-      void vscode.window.showErrorMessage(`Birleştirme (fast-forward) başarısız: ${describeError(err)}`);
+      void vscode.window.showErrorMessage(t("Birleştirme (fast-forward) başarısız: %s", describeError(err)));
       return;
     }
     repo.proje.dallar[repo.proje.aktif_dal] = uzakHead;
     saveProject(repo.root, repo.proje);
     repo.refresh();
-    void vscode.window.showInformationMessage(`İleri sarma (fast-forward) tamamlandı: ${shortHash(uzakHead)}`);
+    void vscode.window.showInformationMessage(t("İleri sarma (fast-forward) tamamlandı: %s", shortHash(uzakHead)));
     return;
   }
 
@@ -184,7 +190,7 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
   // kontrolden bu yana geçen sürede (QuickPick seçimi vb.) dosya
   // izleyicisinin debounce'ı henüz tetiklenmemiş olabilir — asıl yıkıcı
   // eylemden (applyThreeWayMerge) hemen önce nihai kontrolü burada yap.
-  if (!(await recheckCleanBeforeDestructiveAction(repo, "birleştirme"))) {
+  if (!(await recheckCleanBeforeDestructiveAction(repo, k("birleştirme")))) {
     return;
   }
 
@@ -201,20 +207,24 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
       uzakCommit.agac
     ));
   } catch (err) {
-    void vscode.window.showErrorMessage(`Birleştirme uygulanamadı: ${describeError(err)}`);
+    void vscode.window.showErrorMessage(t("Birleştirme uygulanamadı: %s", describeError(err)));
     return;
   }
 
   if (catismalar.length > 0) {
     markMergeHead(repo.root, repo.proje.id, uzakHead);
     repo.refresh();
+    const catismaAc = t("Çakışan Dosyaları Aç");
     void vscode.window
       .showWarningMessage(
-        `Birleştirme çakışmaları var (${catismalar.length} dosya). Dosyaları düzenleyip <<<<<<< / ======= / >>>>>>> işaretlerini kaldırdıktan sonra Kaydet ile tamamlayın.`,
-        "Çakışan Dosyaları Aç"
+        t(
+          "Birleştirme çakışmaları var (%d dosya). Dosyaları düzenleyip <<<<<<< / ======= / >>>>>>> işaretlerini kaldırdıktan sonra Kaydet ile tamamlayın.",
+          catismalar.length
+        ),
+        catismaAc
       )
       .then(async (secim2) => {
-        if (secim2 === "Çakışan Dosyaları Aç") {
+        if (secim2 === catismaAc) {
           for (const yol of catismalar) {
             await vscode.window.showTextDocument(vscode.Uri.file(path.join(repo.calismaDir, ...yol.split("/"))), {
               preview: false,
@@ -232,13 +242,16 @@ export async function mergeRemoteBranch(repo: DeltaXRepository): Promise<void> {
     yeniTree,
     [yerelHead, uzakHead],
     authorName(),
-    `Birleştirme: ${shortHash(uzakHead)}`
+    t("Birleştirme: %s", shortHash(uzakHead))
   );
   repo.proje.dallar[repo.proje.aktif_dal] = yeniHash;
   saveProject(repo.root, repo.proje);
   repo.refresh();
-  const not = atlanan.length > 0 ? ` (${atlanan.length} dosya boyut sınırı nedeniyle atlandı)` : "";
-  void vscode.window.showInformationMessage(`Birleştirme tamamlandı: ${shortHash(yeniHash)}${not}`);
+  void vscode.window.showInformationMessage(
+    atlanan.length > 0
+      ? t("Birleştirme tamamlandı: %s (%d dosya boyut sınırı nedeniyle atlandı)", shortHash(yeniHash), atlanan.length)
+      : t("Birleştirme tamamlandı: %s", shortHash(yeniHash))
+  );
 }
 
 function describeError(err: unknown): string {

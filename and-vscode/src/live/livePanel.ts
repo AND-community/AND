@@ -9,6 +9,7 @@ import { ChatMsg, RoleInfo, SitePageInfo } from "./liveTypes";
 import { renderHtml, resolveThemeColors } from "./panelHtml";
 import { SiteFileSystem } from "./site/siteFileSystem";
 import { SITE_MAX_BODY_BYTES, SITE_MAX_PAGES, utf8Bytes } from "./site/sitePage";
+import { t } from "../dil/dil";
 
 let panel: vscode.WebviewPanel | undefined;
 
@@ -48,6 +49,14 @@ function sitePagesForWebview(pages: SitePageInfo[]): unknown {
   };
 }
 
+/** Dil değişti: açık panel etkin dilde yeniden kurulur (webview yeniden yüklenip verisini baştan ister). */
+export function redrawLivePanel(): void {
+  if (panel) {
+    panel.title = t("AND Ekosistemi");
+    panel.webview.html = renderHtml(panel.webview);
+  }
+}
+
 /** Canlı Panel şu an açık ve görünür mü (arka planda bildirim/rozet mantığı için). */
 export function isLivePanelVisible(): boolean {
   return !!panel && panel.visible;
@@ -70,7 +79,7 @@ export function showLivePanel(
     return;
   }
 
-  panel = vscode.window.createWebviewPanel("andLive", "AND Ekosistemi", vscode.ViewColumn.Beside, {
+  panel = vscode.window.createWebviewPanel("andLive", t("AND Ekosistemi"), vscode.ViewColumn.Beside, {
     enableScripts: true,
     retainContextWhenHidden: true,
   });
@@ -152,12 +161,12 @@ export function showLivePanel(
     if (msg.type === "copyText") {
       // AND bağlantısı gerektirmez — kimlik/eş bilgisi panelde zaten görünüyor.
       await vscode.env.clipboard.writeText(String(msg.text ?? ""));
-      void vscode.window.showInformationMessage(`${String(msg.label ?? "Metin")} panoya kopyalandı.`);
+      void vscode.window.showInformationMessage(t("%s panoya kopyalandı.", String(msg.label ?? t("Metin"))));
       return;
     }
     const client = conn.getClient();
     if (!client && msg.type !== "refreshAll") {
-      void thePanel.webview.postMessage({ type: "error", message: "AND'a canlı bağlantı yok." });
+      void thePanel.webview.postMessage({ type: "error", message: t("AND'a canlı bağlantı yok.") });
       return;
     }
     try {
@@ -196,7 +205,7 @@ export function showLivePanel(
           try {
             await pushDM();
           } catch (err) {
-            void thePanel.webview.postMessage({ type: "error", message: `Mesajlar alınamadı: ${describeError(err)}` });
+            void thePanel.webview.postMessage({ type: "error", message: t("Mesajlar alınamadı: %s", describeError(err)) });
           }
           return;
         }
@@ -227,7 +236,7 @@ export function showLivePanel(
         case "sendDM": {
           const peerId = String(msg.peerId ?? "").trim();
           if (!gecerliPeerID(peerId)) {
-            void thePanel.webview.postMessage({ type: "error", message: "Bu bir Peer ID değil (12D3KooW… ile başlar)." });
+            void thePanel.webview.postMessage({ type: "error", message: t("Bu bir Peer ID değil (12D3KooW… ile başlar).") });
             return;
           }
           await dm.merkez.gonder(client!, peerId, String(msg.message));
@@ -244,20 +253,20 @@ export function showLivePanel(
         case "pickFileToSend": {
           const peerId = String(msg.peerId ?? "").trim();
           if (!peerId) {
-            void thePanel.webview.postMessage({ type: "error", message: "Önce hedef Peer ID girin." });
+            void thePanel.webview.postMessage({ type: "error", message: t("Önce hedef Peer ID girin.") });
             return;
           }
           const picked = await vscode.window.showOpenDialog({
             canSelectFiles: true,
             canSelectFolders: false,
             canSelectMany: false,
-            openLabel: "Gönder",
+            openLabel: t("Gönder"),
           });
           if (!picked || picked.length === 0) {
             return;
           }
           await client!.sendFile({ peer_id: peerId, local_path: picked[0].fsPath });
-          void thePanel.webview.postMessage({ type: "info", message: `Gönderiliyor: ${picked[0].fsPath}` });
+          void thePanel.webview.postMessage({ type: "info", message: t("Gönderiliyor: %s", picked[0].fsPath) });
           return;
         }
         case "respondConsent": {
@@ -276,7 +285,7 @@ export function showLivePanel(
             title: String(msg.title),
             body: String(msg.body),
           });
-          void thePanel.webview.postMessage({ type: "info", message: "Gönderi oluşturuldu ve ağa yayınlandı." });
+          void thePanel.webview.postMessage({ type: "info", message: t("Gönderi oluşturuldu ve ağa yayınlandı.") });
           await refreshForumModIfAuthorized();
           return;
         }
@@ -294,7 +303,7 @@ export function showLivePanel(
         }
         case "deletePost": {
           await client!.deletePost(String(msg.postId));
-          void thePanel.webview.postMessage({ type: "info", message: "İşlem tamamlandı." });
+          void thePanel.webview.postMessage({ type: "info", message: t("İşlem tamamlandı.") });
           await refreshForumModIfAuthorized();
           return;
         }

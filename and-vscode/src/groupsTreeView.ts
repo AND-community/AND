@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import { listGroups, listProjects } from "./groupProjectStore";
 import { Grup, Proje } from "./types";
+import { t } from "./dil/dil";
 
 export class GroupItem extends vscode.TreeItem {
   contextValue = "deltaxGroup";
   constructor(readonly grup: Grup) {
     super(grup.ad, vscode.TreeItemCollapsibleState.Expanded);
-    this.description = `${grup.uyeler.length} üye`;
+    this.description = t("%d üye", grup.uyeler.length);
     this.iconPath = new vscode.ThemeIcon("organization");
-    this.tooltip = `Kurucu: ${grup.kurucu_ad}`;
+    this.tooltip = t("Kurucu: %s", grup.kurucu_ad);
   }
 }
 
@@ -18,8 +19,8 @@ export class ProjectItem extends vscode.TreeItem {
     super(proje.ad, vscode.TreeItemCollapsibleState.None);
     this.description = proje.aktif_dal;
     this.iconPath = new vscode.ThemeIcon(isActive ? "folder-active" : "folder");
-    this.tooltip = isActive ? "Şu anda VS Code'da açık" : "Açmak için tıklayın";
-    this.command = { command: "deltax.openProject", title: "Projeyi Aç", arguments: [this] };
+    this.tooltip = isActive ? t("Şu anda VS Code'da açık") : t("Açmak için tıklayın");
+    this.command = { command: "deltax.openProject", title: t("Projeyi Aç"), arguments: [this] };
   }
 }
 
@@ -27,11 +28,11 @@ export class ProjectItem extends vscode.TreeItem {
 export class InvitesItem extends vscode.TreeItem {
   contextValue = "deltaxInvites";
   constructor(count: number) {
-    super("Bekleyen davetler", vscode.TreeItemCollapsibleState.None);
+    super(t("Bekleyen davetler"), vscode.TreeItemCollapsibleState.None);
     this.description = String(count);
     this.iconPath = new vscode.ThemeIcon("mail", new vscode.ThemeColor("notificationsInfoIcon.foreground"));
-    this.tooltip = "Gruba katılmak ya da daveti reddetmek için tıklayın";
-    this.command = { command: "deltax.showInvites", title: "Bekleyen Davetler" };
+    this.tooltip = t("Gruba katılmak ya da daveti reddetmek için tıklayın");
+    this.command = { command: "deltax.showInvites", title: t("Bekleyen Davetler") };
   }
 }
 

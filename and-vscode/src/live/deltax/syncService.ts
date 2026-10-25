@@ -9,6 +9,7 @@ import { BekleyenDavet, bekleyenDavetler, davetGonderildi } from "./davetler";
 import { fetchSelfUye } from "./identity";
 import { applyIncomingPackFile, packSenderTrusted } from "./packSync";
 import { ZarfOrtami, davetEden, davetiYanitla, zarfIsle } from "./zarfIsleyici";
+import { t } from "../../dil/dil";
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -70,9 +71,9 @@ export class DeltaXSyncService implements vscode.Disposable {
   async davetiYanitla(d: BekleyenDavet, kabul: boolean): Promise<void> {
     try {
       const g = await davetiYanitla(this.ortam, d, kabul);
-      this.notify(g ? `"${g.ad}" grubuna katıldın.` : "Davet reddedildi.");
+      this.notify(g ? t("\"%s\" grubuna katıldın.", g.ad) : t("Davet reddedildi."));
     } catch (err) {
-      this.notify(`Davet yanıtlanamadı: ${describeError(err)}. Davet bekleyenlerde duruyor.`, true);
+      this.notify(t("Davet yanıtlanamadı: %s. Davet bekleyenlerde duruyor.", describeError(err)), true);
     }
   }
 
@@ -86,11 +87,13 @@ export class DeltaXSyncService implements vscode.Disposable {
 
   /** Bildirim kapatılırsa davet kaybolmaz: "DeltaX: Bekleyen Davetler" ve gruplar görünümünden yanıtlanabilir. */
   private davetiSor(d: BekleyenDavet): void {
+    const kabul = t("Kabul Et");
+    const ret = t("Reddet");
     void vscode.window
-      .showInformationMessage(`Yeni grup daveti: ${d.payload.grup_ad} (davet eden: ${davetEden(d)})`, "Kabul Et", "Reddet")
+      .showInformationMessage(t("Yeni grup daveti: %s (davet eden: %s)", d.payload.grup_ad, davetEden(d)), kabul, ret)
       .then((choice) => {
-        if (choice === "Kabul Et" || choice === "Reddet") {
-          void this.davetiYanitla(d, choice === "Kabul Et");
+        if (choice === kabul || choice === ret) {
+          void this.davetiYanitla(d, choice === kabul);
         }
       });
   }
@@ -121,10 +124,10 @@ export class DeltaXSyncService implements vscode.Disposable {
       } catch {
         // proje okunamadı — es geç, nesneler yine de yazıldı
       }
-      this.notify(`${applied.objectCount} yeni nesne alındı (${applied.manifest.dal}) — Uzak Dallar'dan birleştirebilirsin.`);
+      this.notify(t("%d yeni nesne alındı (%s) — Uzak Dallar'dan birleştirebilirsin.", applied.objectCount, applied.manifest.dal));
       this.groupsChangedEmitter.fire();
     } catch (err) {
-      this.notify(`Paket işlenemedi: ${describeError(err)}`, true);
+      this.notify(t("Paket işlenemedi: %s", describeError(err)), true);
     } finally {
       fs.rmSync(msg.save_path, { force: true });
     }

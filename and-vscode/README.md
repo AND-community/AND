@@ -220,10 +220,33 @@ code --install-extension and-vscode-<versiyon>.vsix
 
 Geliştirme sırasında canlı yeniden derleme için `npm run watch`.
 
+## Diller
+
+Uzantı AND'ın dilleriyle açılır: Türkçe, English, Deutsch, Español, Français, Русский.
+
+- **Bildirimler, sorular, ağaç görünümü, durum çubuğu, SCM, Canlı Panel ve günlük paneli**
+  `and.language` ayarını izler. Ayar **Kendiliğinden** (`auto`) ise AND'ın seçimi kullanılır:
+  önce `AND_DIL`, sonra AND'ın veri dizinindeki `dil.json` (AND'da Ayarlar → Dil ya da giriş
+  ekranında `F2`). AND'da seçim yoksa VS Code'un görüntüleme dili, o da desteklenmiyorsa İngilizce
+  kullanılır. AND'da dil değişince uzantı birkaç saniye içinde, yeniden başlatmadan değişir.
+- **Komut başlıkları, ayar açıklamaları ve görünüm adları** `package.nls.<dil>.json` dosyalarından
+  gelir ve VS Code'un kısıtı gereği her zaman VS Code'un görüntüleme dilini izler.
+- Ağ değerleri çevrilmez: forum kategorileri ağa Türkçe gider, yalnızca görünen adları çevrilir;
+  çakışma işaretleri (`<<<<<<< YEREL` / `>>>>>>> UZAK`) Go DeltaX'le aynı kalır.
+
+Çeviriler `src/dil/ceviriler.json`'dadır (AND'ınkiyle aynı biçim: Türkçe kaynak metin → dil →
+çeviri; tekil/çoğul biçimler `|` ile ayrılır). `src/dil/kategoriler.json`, AND'daki
+`dil/ceviriler/kategoriler.json`'ın kopyasıdır ve bir test ikisinin aynı kaldığını denetler.
+`src/dil/kapsam.test.ts` kaynağı TypeScript'in sözdizimi ağacıyla tarar. Şunlardan biri olursa test
+başarısız olur: `t()` ile sarılmamış bir Türkçe metin, çevirisi eksik bir dil, kullanılmayan bir
+çeviri ya da `%s`/`%d` fiilleri uyuşmayan bir çeviri. `DIL_ISKELET=<dosya> npm test` eksik metinleri
+boş bir katalog iskeleti olarak yazar.
+
 ## Ayarlar
 
 | Ayar | Açıklama |
 |---|---|
+| `and.language` | Uzantının arayüz dili: `auto` (varsayılan; AND'ın dili, yoksa VS Code'un dili) ya da `tr`, `en`, `de`, `es`, `fr`, `ru`. Bkz. [Diller](#diller). |
 | `deltax.dataDir` | `AND_DATA_DIR` üzerine yaz. Boşsa AND'ın kendi varsayılanı (`os.UserConfigDir()/and`) otomatik hesaplanır. Canlı panelin pipe/socket adını hesaplarken de aynı değer kullanılır — AND gerçekte farklı bir `AND_DATA_DIR` ile başlatıldıysa burada da aynısını belirtin. |
 | `deltax.authorName` | DeltaX commit'lerinde yazar adı. Boşsa işletim sistemi kullanıcı adı kullanılır. AND'daki takma addan bağımsızdır. |
 
@@ -243,6 +266,7 @@ aynı `nesneler/`, `meta.json`, `MERGE_HEAD` dosyalarını sorunsuz okuyup yazab
 | `src/groupProjectStore.ts` | `store.go` | Grup/proje meta verisi, MERGE_HEAD |
 | `src/exportZip.ts` | `export.go` | Projeyi `.zip` olarak dışa aktarma |
 | `src/dataDir.ts` | `cmd/and/main.go` (`appDir`) | `AND_DATA_DIR` varsayılan konum tespiti |
+| `src/dil/dil.ts` | `dil/dil.go` | Arayüz dilleri: çeviri, biçimlendirme, tekil/çoğul kuralları, dil seçimi; `vscode`'a bağımlı değildir |
 
 Canlı panel katmanı (`src/live/`) yukarıdaki DeltaX veri katmanından tamamen ayrıdır ve AND'ın
 çalışan sürecine bağlanır:

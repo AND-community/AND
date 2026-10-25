@@ -20,6 +20,7 @@ import {
   SitePageInfo,
   ThemeReq,
 } from "./liveTypes";
+import { t } from "../dil/dil";
 
 // AND'ın yerel eklenti API'sine (internal/pluginapi/api.go) named pipe /
 // Unix domain socket üzerinden konuşan ince bir HTTP istemcisi. Bearer
@@ -66,7 +67,7 @@ function request<T>(socketPath: string, method: string, urlPath: string, body?: 
           try {
             parsed = JSON.parse(raw);
           } catch {
-            reject(new LiveApiError(`geçersiz yanıt: ${raw.slice(0, 200)}`, status));
+            reject(new LiveApiError(t("geçersiz yanıt: %s", raw.slice(0, 200)), status));
             return;
           }
           if (status >= 200 && status < 300) {
@@ -78,7 +79,7 @@ function request<T>(socketPath: string, method: string, urlPath: string, body?: 
         });
       }
     );
-    req.on("timeout", () => req.destroy(new Error("istek zaman aşımına uğradı")));
+    req.on("timeout", () => req.destroy(new Error(t("istek zaman aşımına uğradı"))));
     req.on("error", reject);
     if (payload) {
       req.write(payload);

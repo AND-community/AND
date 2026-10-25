@@ -1,7 +1,9 @@
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { registerCommands } from "./commands";
 import { DELTAX_SCHEME, DeltaXContentProvider } from "./contentProvider";
 import { deltaXRoot, resolveAndDataDir } from "./dataDir";
+import { ORTAM_DEGISKENI, andDosyaDili, ayarla, dilDosyasi, dilSec, etkin, t } from "./dil/dil";
 import { trackDisposable } from "./disposableBag";
 import { GroupsTreeProvider } from "./groupsTreeView";
 import { BackgroundSync } from "./live/backgroundSync";
@@ -12,11 +14,12 @@ import { DmMerkezi } from "./live/dmMerkezi";
 import { registerEditorActions } from "./live/editorActions";
 import { PencereLideri } from "./live/lider";
 import { LiveConnection } from "./live/liveConnection";
-import { isLivePanelVisible } from "./live/livePanel";
+import { isLivePanelVisible, redrawLivePanel } from "./live/livePanel";
 import { FileConsentReq } from "./live/liveTypes";
 import { registerSiteCommands } from "./live/site/siteCommands";
 import { SiteEditorStatus } from "./live/site/siteEditorStatus";
 import { SITE_EDIT_SCHEME, SiteFileSystem } from "./live/site/siteFileSystem";
+import { redrawLogPanels } from "./logPanel";
 
 /**
  * Açık bir site sayfası editörü varken sayfaların AND'dan yeniden okunma
@@ -52,10 +55,13 @@ export class DeltaXExtension {
   private unreadConsent = 0;
   /** Gelen DM grupları sırayla işlenir: DeltaX'in üye listesi güncellemeleri geliş sırasıyla uygulanmalı. */
   private dmQueue: Promise<void> = Promise.resolve();
+  /** İzlenen AND dil.json'u (veri dizini değişirse yenisi izlenir). */
+  private izlenenDilDosyasi: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.andDataDir = resolveAndDataDir();
     this.root = deltaXRoot(this.andDataDir);
+    this.dilBelirle();
     const stateFile = (name: string): string => durumDosyasi(context.globalStorageUri.fsPath, this.andDataDir, name);
     this.contentProvider = new DeltaXContentProvider(() => this.root);
     this.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -110,10 +116,18 @@ export class DeltaXExtension {
         if (e.affectsConfiguration("deltax.dataDir")) {
           this.andDataDir = resolveAndDataDir();
           this.root = deltaXRoot(this.andDataDir);
+          this.dilDosyasiniIzle();
+          const dilDegisti = this.dilBelirle();
           this.treeProvider.refresh();
           this.attachCurrentWorkspace();
+          if (dilDegisti) {
+            this.dilDegisti();
+          }
+        } else if (e.affectsConfiguration("and.language") && this.dilBelirle()) {
+          this.dilDegisti();
         }
       }),
+      new vscode.Disposable(() => this.dilDosyasiniIzle(false)),
       this.liveConnection.onDidChangeConnection((connected) => {
         this.updateLiveStatusBar(connected);
         if (connected) {
@@ -140,10 +154,59 @@ export class DeltaXExtension {
     }, SITE_POLL_MS);
     this.context.subscriptions.push(new vscode.Disposable(() => clearInterval(sitePoll)));
 
+    this.dilDosyasiniIzle();
     this.attachCurrentWorkspace();
     this.updateLiveStatusBar(false);
     this.liveConnection.start();
     this.backgroundSync.start();
+  }
+
+  /**
+   * Uzantının dilini seçip etkinleştirir: and.language ayarı, "auto" ise
+   * AND'ın seçimi (AND_DIL, sonra AND'ın dil.json'u), o da yoksa VS Code'un
+   * görüntüleme dili. Etkin dil değiştiyse true döner.
+   */
+  private dilBelirle(): boolean {
+    const onceki = etkin();
+    ayarla(
+      dilSec({
+        ayar: vscode.workspace.getConfiguration("and").get<string>("language", "auto"),
+        ortam: process.env[ORTAM_DEGISKENI],
+        andDosyasi: andDosyaDili(this.andDataDir),
+        vscode: vscode.env.language,
+      })
+    );
+    return etkin() !== onceki;
+  }
+
+  /**
+   * AND'da dil değişirse (Ayarlar → Dil ya da giriş ekranı) uzantı da
+   * yeniden başlatılmadan değişsin: dil.json birkaç saniyede bir yoklanır.
+   * fs.watchFile, AND'ın atomik yazmasından (geçici dosya + yeniden adlandırma)
+   * etkilenmez; dosya henüz yoksa oluşturulduğunda da haber verir.
+   */
+  private dilDosyasiniIzle(izle = true): void {
+    if (this.izlenenDilDosyasi) {
+      fs.unwatchFile(this.izlenenDilDosyasi);
+      this.izlenenDilDosyasi = undefined;
+    }
+    if (!izle) {
+      return;
+    }
+    this.izlenenDilDosyasi = dilDosyasi(this.andDataDir);
+    fs.watchFile(this.izlenenDilDosyasi, { interval: 5000, persistent: false }, () => {
+      if (this.dilBelirle()) {
+        this.dilDegisti();
+      }
+    });
+  }
+
+  /** Etkin dil değişti: açık her yüzey yeni dilde yeniden yazılır. */
+  private dilDegisti(): void {
+    this.refreshAll();
+    this.updateLiveStatusBar(this.liveConnection.isConnected());
+    redrawLivePanel();
+    redrawLogPanels();
   }
 
   /**
@@ -206,9 +269,10 @@ export class DeltaXExtension {
     const text =
       dms.length === 1
         ? `AND DM — ${gorunenAd(first)}: ${preview}`
-        : `AND — ${dms.length} yeni doğrudan mesaj (${senders.slice(0, 3).join(", ")}${senders.length > 3 ? "…" : ""})`;
-    void vscode.window.showInformationMessage(text, "Görüntüle").then((choice) => {
-      if (choice === "Görüntüle") {
+        : t("AND — %d yeni doğrudan mesaj (%s)", dms.length, senders.slice(0, 3).join(", ") + (senders.length > 3 ? "…" : ""));
+    const goruntule = t("Görüntüle");
+    void vscode.window.showInformationMessage(text, goruntule).then((choice) => {
+      if (choice === goruntule) {
         void vscode.commands.executeCommand("and.openLivePanel");
       }
     });
@@ -227,25 +291,27 @@ export class DeltaXExtension {
     }
     this.unreadConsent++;
     this.updateLiveStatusBar(this.liveConnection.isConnected());
-    const sizeKb = (req.size / 1024).toFixed(1);
+    const sizeKb = (req.size / 1024).toLocaleString(etkin(), { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const kabul = t("Kabul Et");
+    const ret = t("Reddet");
     void vscode.window
-      .showInformationMessage(`AND — ${req.sender_id} bir dosya göndermek istiyor: ${req.filename} (${sizeKb} KB)`, "Kabul Et", "Reddet")
+      .showInformationMessage(t("AND — %s bir dosya göndermek istiyor: %s (%s KB)", req.sender_id, req.filename, sizeKb), kabul, ret)
       .then(async (choice) => {
-        if (choice !== "Kabul Et" && choice !== "Reddet") {
+        if (choice !== kabul && choice !== ret) {
           return;
         }
         const client = await this.liveConnection.ensureConnected();
-        await client?.respondConsent({ transfer_id: req.transfer_id, accept: choice === "Kabul Et" });
+        await client?.respondConsent({ transfer_id: req.transfer_id, accept: choice === kabul });
       });
   }
 
   private updateLiveStatusBar(connected: boolean): void {
     const unread = this.unreadDM + this.unreadConsent;
     const badge = unread > 0 ? ` ($(bell) ${unread})` : "";
-    this.liveStatusBar.text = connected ? `$(broadcast) AND: bağlı${badge}` : "$(circle-slash) AND: bağlı değil";
+    this.liveStatusBar.text = connected ? `$(broadcast) ${t("AND: bağlı")}${badge}` : `$(circle-slash) ${t("AND: bağlı değil")}`;
     this.liveStatusBar.tooltip = connected
-      ? "AND'a canlı bağlısınız — Forum/DM/Sohbet/Ağ paneli için tıklayın"
-      : "AND kapalı ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamış — canlı panel için tıklayın";
+      ? t("AND'a canlı bağlısınız — Forum/DM/Sohbet/Ağ paneli için tıklayın")
+      : t("AND kapalı ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamış — canlı panel için tıklayın");
     this.liveStatusBar.show();
   }
 
@@ -300,9 +366,9 @@ export class DeltaXExtension {
     }
     const toplam = this.repo.status.eklenen.length + this.repo.status.degisen.length + this.repo.status.silinen.length;
     const kirli = toplam > 0 ? ` ${toplam}●` : "";
-    const merging = this.repo.isMerging() ? " (birleştiriliyor)" : "";
+    const merging = this.repo.isMerging() ? ` ${t("(birleştiriliyor)")}` : "";
     this.statusBar.text = `$(git-branch) ${this.repo.proje.aktif_dal}${kirli}${merging}`;
-    this.statusBar.tooltip = `DeltaX proje: ${this.repo.proje.ad} — dal değiştirmek için tıklayın`;
+    this.statusBar.tooltip = t("DeltaX proje: %s — dal değiştirmek için tıklayın", this.repo.proje.ad);
     this.statusBar.show();
   }
 }

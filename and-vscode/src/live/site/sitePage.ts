@@ -1,3 +1,5 @@
+import { t } from "../../dil/dil";
+
 // Kişisel site sayfaları için SAF yardımcılar — vscode'a bağımlı değildir,
 // node:test ile doğrudan test edilir (bkz. sitePage.test.ts). AND'ın
 // internal/site/site.go'sundaki sınırların ve slug kuralının karşılığı,
@@ -95,23 +97,27 @@ function titleFromLine(line: string): string {
 
 /**
  * Ağa çıkmadan önce Eklentiler/site'ın kaydet()'iyle aynı kurallar: slug
- * biçimi, boş olmayan gövde ve bayt sınırları. İlk sorunun Türkçe
- * açıklamasını, sorun yoksa undefined döner.
+ * biçimi, boş olmayan gövde ve bayt sınırları. İlk sorunun etkin
+ * dildeki açıklamasını, sorun yoksa undefined döner.
  */
 export function validatePage(slug: string, page: SitePageContent): string | undefined {
   if (!isValidSlug(slug)) {
-    return `Geçersiz slug "${slug}" — yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla ${SITE_MAX_SLUG_BYTES} karakter.`;
+    return t(
+      "Geçersiz slug \"%s\" — yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla %d karakter.",
+      slug,
+      SITE_MAX_SLUG_BYTES
+    );
   }
   if (!page.body) {
-    return "Sayfa içeriği boş olamaz — başlık satırının altına bir şeyler yaz.";
+    return t("Sayfa içeriği boş olamaz — başlık satırının altına bir şeyler yaz.");
   }
   const titleBytes = utf8Bytes(page.title);
   if (titleBytes > SITE_MAX_TITLE_BYTES) {
-    return `Başlık en fazla ${SITE_MAX_TITLE_BYTES} bayt olabilir (şu an ${titleBytes} bayt).`;
+    return t("Başlık en fazla %d bayt olabilir (şu an %d bayt).", SITE_MAX_TITLE_BYTES, titleBytes);
   }
   const bodyBytes = utf8Bytes(page.body);
   if (bodyBytes > SITE_MAX_BODY_BYTES) {
-    return `Sayfa en fazla ${SITE_MAX_BODY_BYTES} bayt olabilir (şu an ${bodyBytes} bayt).`;
+    return t("Sayfa en fazla %d bayt olabilir (şu an %d bayt).", SITE_MAX_BODY_BYTES, bodyBytes);
   }
   return undefined;
 }
@@ -119,13 +125,13 @@ export function validatePage(slug: string, page: SitePageContent): string | unde
 /** "Yeni Sayfa" slug girişinin doğrulaması (showInputBox'ın validateInput'u için). */
 export function validateNewSlug(slug: string, existingSlugs: readonly string[]): string | undefined {
   if (!slug) {
-    return "Slug boş olamaz.";
+    return t("Slug boş olamaz.");
   }
   if (!isValidSlug(slug)) {
-    return `Yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla ${SITE_MAX_SLUG_BYTES} karakter.`;
+    return t("Yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla %d karakter.", SITE_MAX_SLUG_BYTES);
   }
   if (existingSlugs.includes(slug)) {
-    return `"${slug}" adlı bir sayfan zaten var — onu düzenlemek için "Site Sayfası Aç" komutunu kullan.`;
+    return t("\"%s\" adlı bir sayfan zaten var — onu düzenlemek için \"Site Sayfası Aç\" komutunu kullan.", slug);
   }
   return undefined;
 }

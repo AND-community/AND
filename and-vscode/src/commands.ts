@@ -12,6 +12,7 @@ import { projeCalismaDizini } from "./paths";
 import { listAllProjects } from "./projectLocator";
 import { ChangeKind, DeltaXRepository } from "./scmController";
 import { Grup } from "./types";
+import { t } from "./dil/dil";
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -25,7 +26,7 @@ async function requireRepo(ext: DeltaXExtension, maybe: unknown): Promise<DeltaX
   const repo = resolveRepo(ext, maybe);
   if (!repo) {
     void vscode.window.showErrorMessage(
-      "Aktif bir DeltaX projesi yok. Önce Gruplar ve Projeler görünümünden bir proje açın."
+      t("Aktif bir DeltaX projesi yok. Önce Gruplar ve Projeler görünümünden bir proje açın.")
     );
     return undefined;
   }
@@ -36,13 +37,13 @@ export async function pickGroup(root: string): Promise<Grup | undefined> {
   const gruplar = listGroups(root);
   if (gruplar.length === 0) {
     void vscode.window.showInformationMessage(
-      "Henüz bir DeltaX grubun yok. Etkinlik çubuğundaki DeltaX görünümünün başlığından \"Yeni Grup\" ile oluşturabilirsin."
+      t("Henüz bir DeltaX grubun yok. Etkinlik çubuğundaki DeltaX görünümünün başlığından \"Yeni Grup\" ile oluşturabilirsin.")
     );
     return undefined;
   }
   const secim = await vscode.window.showQuickPick(
-    gruplar.map((g) => ({ label: g.ad, description: `${g.uyeler.length} üye`, grup: g })),
-    { placeHolder: "Grup seçin" }
+    gruplar.map((g) => ({ label: g.ad, description: t("%d üye", g.uyeler.length), grup: g })),
+    { placeHolder: t("Grup seçin") }
   );
   return secim?.grup;
 }
@@ -70,7 +71,7 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
           description: `${gp.grup.ad} · ${gp.proje.aktif_dal}`,
           projeId: gp.proje.id,
         })),
-        { placeHolder: "Açılacak projeyi seçin" }
+        { placeHolder: t("Açılacak projeyi seçin") }
       );
       projeId = secim?.projeId;
     }
@@ -86,16 +87,17 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
       return;
     }
     const ad = await vscode.window.showInputBox({
-      prompt: `"${grup.ad}" grubunda yeni proje adı`,
-      validateInput: (v) => (v.trim() ? undefined : "Proje adı boş olamaz"),
+      prompt: t("\"%s\" grubunda yeni proje adı", grup.ad),
+      validateInput: (v) => (v.trim() ? undefined : t("Proje adı boş olamaz")),
     });
     if (!ad) {
       return;
     }
     const proje = createProject(ext.root, grup.id, ad.trim());
     ext.treeProvider.refresh();
-    const secim = await vscode.window.showInformationMessage(`Proje oluşturuldu: ${proje.ad}`, "Aç");
-    if (secim === "Aç") {
+    const ac = t("Aç");
+    const secim = await vscode.window.showInformationMessage(t("Proje oluşturuldu: %s", proje.ad), ac);
+    if (secim === ac) {
       await openProjectInWorkspace(ext.root, proje.id);
     }
   });
@@ -108,8 +110,11 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
     const message = repo.sourceControl.inputBox.value;
     try {
       const { hash, atlanan } = await repo.commit(message);
-      const not = atlanan > 0 ? ` (${atlanan} dosya boyut sınırı nedeniyle atlandı)` : "";
-      void vscode.window.showInformationMessage(`Kaydedildi: ${shortHash(hash)}${not}`);
+      void vscode.window.showInformationMessage(
+        atlanan > 0
+          ? t("Kaydedildi: %s (%d dosya boyut sınırı nedeniyle atlandı)", shortHash(hash), atlanan)
+          : t("Kaydedildi: %s", shortHash(hash))
+      );
       refreshLogPanel(repo);
     } catch (err) {
       void vscode.window.showErrorMessage(describeError(err));
@@ -160,7 +165,7 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
       projeAd = ext.repo.proje.ad;
     }
     if (!projeId || !projeAd) {
-      void vscode.window.showErrorMessage("Dışa aktarılacak bir proje seçilmedi.");
+      void vscode.window.showErrorMessage(t("Dışa aktarılacak bir proje seçilmedi."));
       return;
     }
     const hedef = await vscode.window.showOpenDialog({
@@ -168,19 +173,20 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
       canSelectFolders: true,
       canSelectMany: false,
       defaultUri: vscode.Uri.file(defaultExportFolder()),
-      openLabel: "Bu klasöre dışa aktar",
+      openLabel: t("Bu klasöre dışa aktar"),
     });
     if (!hedef || hedef.length === 0) {
       return;
     }
     try {
       const yol = await exportProject(ext.root, projeId, projeAd, hedef[0].fsPath);
-      const secim = await vscode.window.showInformationMessage(`Dışa aktarıldı: ${yol}`, "Klasörde Göster");
-      if (secim === "Klasörde Göster") {
+      const goster = t("Klasörde Göster");
+      const secim = await vscode.window.showInformationMessage(t("Dışa aktarıldı: %s", yol), goster);
+      if (secim === goster) {
         await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(yol));
       }
     } catch (err) {
-      void vscode.window.showErrorMessage(`Dışa aktarma başarısız: ${describeError(err)}`);
+      void vscode.window.showErrorMessage(t("Dışa aktarma başarısız: %s", describeError(err)));
     }
   });
 
@@ -195,7 +201,7 @@ export function registerCommands(context: vscode.ExtensionContext, ext: DeltaXEx
     } catch {
       await vscode.workspace.fs.writeFile(
         uri,
-        Buffer.from("# Her satıra bir desen (ör. node_modules, *.log)\n", "utf8")
+        Buffer.from(`# ${t("Her satıra bir desen (ör. node_modules, *.log)")}\n`, "utf8")
       );
     }
     const doc = await vscode.workspace.openTextDocument(uri);

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { KAYNAK, ayarla, gomulu, t } from "../dil/dil";
 import { renderHtml, resolveThemeColors } from "./panelHtml";
 
 // Canlı Panel'in webview betiği, küçük bir sahte DOM üzerinde çalıştırılır:
@@ -308,4 +309,83 @@ test("resolveThemeColors: xterm-256 kodları CSS'e, vurgu yazısı okunur renge"
     { accent: "#5f5fff", accentFg: "#ffffff", selBg: "#5f00ff", badge: "#0087ff" }
   );
   assert.equal(resolveThemeColors({}).accentFg, undefined);
+});
+
+/** HTML'in kullanıcıya görünen metni: etiket dışı metin ve okunan öznitelikler (stil ve betik hariç). */
+function gorunenMetin(html: string): string {
+  const govde = html.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<script[\s\S]*?<\/script>/g, " ");
+  const oznitelikler = [...govde.matchAll(/\s(?:placeholder|aria-label|title|data-empty)="([^"]*)"/g)].map((m) => m[1]);
+  return [govde.replace(/<[^>]*>/g, " "), ...oznitelikler].join("\n");
+}
+
+/** Çevirisi kaynaktan farklı olan bir katalog metni bu dilin ekranında kelime olarak geçiyorsa kalıntıdır. */
+function kalintilar(kod: string, metin: string): string[] {
+  // Yalnızca Türkçeye özgü harfler: ö/ü Almancada, ç Fransızcada da vardır; onları katalog denetimi yakalar.
+  const bulunan: string[] = [...(metin.match(/\S*[ğışĞİŞ]\S*/g) ?? [])];
+  const katalog = gomulu();
+  // Bu dilin kendi çevirileri: kaynak metin orada da kelime olarak geçiyorsa (fr "Site") o dilin kelimesidir.
+  const dilinMetinleri = Object.values(katalog)
+    .map((d) => d[kod] ?? "")
+    .join("\n");
+  for (const [kaynak, diller] of Object.entries(katalog)) {
+    const sade = kaynak.replace(/%(\[\d+\])?[sd]/g, "").trim();
+    if (sade.length < 4 || !diller[kod] || diller[kod] === kaynak) {
+      continue;
+    }
+    const kacik = sade.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const kelime = new RegExp(`(^|[^\\p{L}])${kacik}($|[^\\p{L}])`, "u");
+    if (kelime.test(metin) && !kelime.test(dilinMetinleri)) {
+      bulunan.push(kaynak);
+    }
+  }
+  return bulunan;
+}
+
+test("panel: her dilde HTML, betik çıktısı, kategori ve tema adları çevrilir", () => {
+  try {
+    for (const kod of ["en", "de", "es", "fr", "ru"]) {
+      ayarla(kod);
+      const { html, els, send } = boot();
+      assert.ok(html.includes(`<html lang="${kod}">`), kod);
+      assert.deepEqual(kalintilar(kod, gorunenMetin(html)), [], `${kod}: HTML'de çevrilmemiş metin`);
+
+      send({ type: "connectionState", connected: false });
+      send({ type: "identity", data: { name: "", peer_id: "12D3KooABC", pub_key: "a3f9" } });
+      send({ type: "role", data: { is_founder: true, is_moderator: false } });
+      send({
+        type: "postDetail",
+        data: { id: "k1", title: "T", category: "Yapay Zeka", author_name: "z", body: "g", replies: [{ author_name: "a", body: "y" }, { author_name: "b", body: "x" }] },
+      });
+      send({ type: "theme", data: { themeName: "Gece Moru" } });
+      send({ type: "sitePages", data: { max: 20, maxBody: 8000, pages: [] } });
+      send({ type: "dmData", data: { konusmalar: [], gecmisYok: true } });
+      const cikti = [
+        els.connBadge.textContent,
+        els.identityBody.innerHTML,
+        els.postDetailBody.innerHTML,
+        els.themeName.textContent,
+        els.siteBody.innerHTML,
+        els.dmLede.textContent,
+      ].join("\n");
+      assert.deepEqual(kalintilar(kod, gorunenMetin(cikti)), [], `${kod}: betik çıktısında çevrilmemiş metin`);
+      assert.ok(els.postDetailBody.innerHTML.includes(`<h3>${t("%d yanıt", 2)}</h3>`), `${kod}: çoğul biçim`);
+      assert.ok(els.postDetailBody.innerHTML.includes(t("Yapay Zeka")), `${kod}: kategori adı`);
+      assert.equal(els.themeName.textContent, t("%s teması", t("Gece Moru")), `${kod}: tema adı`);
+    }
+    // Tekil/çoğul biçimi betikte sayıya göre seçilir: İngilizcede 1 tekil, Fransızcada 0 tekil, Rusçada üç biçim.
+    const yanitlar = (n: number) => Array.from({ length: n }, () => ({ author_name: "a", body: "y" }));
+    const durumlar: [string, number, string][] = [
+      ["en", 1, "1 reply"], ["en", 2, "2 replies"],
+      ["fr", 1, "1 réponse"], ["fr", 2, "2 réponses"],
+      ["ru", 1, "1 ответ"], ["ru", 3, "3 ответа"], ["ru", 5, "5 ответов"], ["ru", 21, "21 ответ"],
+    ];
+    for (const [kod, n, beklenen] of durumlar) {
+      ayarla(kod);
+      const { els, send } = boot();
+      send({ type: "postDetail", data: { id: "k", title: "T", category: "Go", author_name: "z", body: "g", replies: yanitlar(n) } });
+      assert.ok(els.postDetailBody.innerHTML.includes(`<h3>${beklenen}</h3>`), `${kod} ${n}: ${els.postDetailBody.innerHTML}`);
+    }
+  } finally {
+    ayarla(KAYNAK);
+  }
 });

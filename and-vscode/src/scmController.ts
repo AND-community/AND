@@ -7,14 +7,20 @@ import { projeKokDizini } from "./paths";
 import { authorName } from "./settings";
 import { buildTreeFromWorkdir, checkoutTree, computeStatus, FileHashCache, treeMap } from "./treeStore";
 import { AgacGirdi, DurumSonucu, Proje, durumTemizMi } from "./types";
+import { t } from "./dil/dil";
 
 export type ChangeKind = "eklenen" | "degisen" | "silinen";
 
-const DECORATIONS: Record<ChangeKind, vscode.SourceControlResourceDecorations> = {
-  eklenen: { strikeThrough: false, tooltip: "Eklendi", iconPath: new vscode.ThemeIcon("diff-added") },
-  degisen: { strikeThrough: false, tooltip: "Değişti", iconPath: new vscode.ThemeIcon("diff-modified") },
-  silinen: { strikeThrough: true, tooltip: "Silindi", iconPath: new vscode.ThemeIcon("diff-removed") },
-};
+function decorations(kind: ChangeKind): vscode.SourceControlResourceDecorations {
+  switch (kind) {
+    case "eklenen":
+      return { strikeThrough: false, tooltip: t("Eklendi"), iconPath: new vscode.ThemeIcon("diff-added") };
+    case "degisen":
+      return { strikeThrough: false, tooltip: t("Değişti"), iconPath: new vscode.ThemeIcon("diff-modified") };
+    case "silinen":
+      return { strikeThrough: true, tooltip: t("Silindi"), iconPath: new vscode.ThemeIcon("diff-removed") };
+  }
+}
 
 export class DeltaXRepository implements vscode.Disposable {
   readonly sourceControl: vscode.SourceControl;
@@ -49,13 +55,8 @@ export class DeltaXRepository implements vscode.Disposable {
       `DeltaX: ${proje.ad}`,
       vscode.Uri.file(calismaDir)
     );
-    this.sourceControl.inputBox.placeholder = "Commit mesajı (Ctrl+Enter ile Kaydet)";
-    this.sourceControl.acceptInputCommand = {
-      command: "deltax.commit",
-      title: "Kaydet",
-      arguments: [this],
-    };
-    this.changesGroup = this.sourceControl.createResourceGroup("changes", "Değişiklikler");
+    this.changesGroup = this.sourceControl.createResourceGroup("changes", t("Değişiklikler"));
+    this.writeLabels();
     this.changesGroup.hideWhenEmpty = false;
 
     this.watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(calismaDir, "**/*"));
@@ -122,7 +123,7 @@ export class DeltaXRepository implements vscode.Disposable {
       // statusError bayrağını kontrol ederek bu durumda HER ZAMAN "kirli"
       // (false) döner — güvenli taraf, hata durumunda işlemi engellemektir.
       this.statusError = true;
-      void vscode.window.showErrorMessage(`DeltaX durum hesaplanamadı: ${describeError(err)}`);
+      void vscode.window.showErrorMessage(t("DeltaX durum hesaplanamadı: %s", describeError(err)));
     }
 
     const resources: vscode.SourceControlResourceState[] = [];
@@ -135,10 +136,21 @@ export class DeltaXRepository implements vscode.Disposable {
 
     const total = resources.length;
     this.sourceControl.count = total;
-    const dalEtiketi = this.mergingWith ? `${this.proje.aktif_dal} (birleştiriliyor)` : this.proje.aktif_dal;
-    this.changesGroup.label = `Değişiklikler — dal: ${dalEtiketi}`;
+    this.writeLabels();
 
     this.onDidRefresh?.();
+  }
+
+  /** Etkin dilde yazılan metinler: dil değişince bir sonraki refresh() bunları da günceller. */
+  private writeLabels(): void {
+    this.sourceControl.inputBox.placeholder = t("Commit mesajı (Ctrl+Enter ile Kaydet)");
+    this.sourceControl.acceptInputCommand = {
+      command: "deltax.commit",
+      title: t("Kaydet"),
+      arguments: [this],
+    };
+    const dalEtiketi = this.mergingWith ? `${this.proje.aktif_dal} ${t("(birleştiriliyor)")}` : this.proje.aktif_dal;
+    this.changesGroup.label = t("Değişiklikler — dal: %s", dalEtiketi);
   }
 
   isMerging(): boolean {
@@ -160,10 +172,10 @@ export class DeltaXRepository implements vscode.Disposable {
     const resourceUri = vscode.Uri.file(path.join(this.calismaDir, ...yol.split("/")));
     return {
       resourceUri,
-      decorations: DECORATIONS[kind],
+      decorations: decorations(kind),
       command: {
         command: "deltax.openChange",
-        title: "Değişikliği Görüntüle",
+        title: t("Değişikliği Görüntüle"),
         arguments: [this, yol, kind],
       },
     };
@@ -188,14 +200,14 @@ export class DeltaXRepository implements vscode.Disposable {
     const headUri = makeBlobUri(this.proje.id, yol, headEntry.hash, `${yol} (HEAD)`);
 
     if (kind === "silinen") {
-      await vscode.commands.executeCommand("vscode.open", headUri, { preview: true }, `${yol} (silinen — HEAD sürümü)`);
+      await vscode.commands.executeCommand("vscode.open", headUri, { preview: true }, `${yol} (${t("silinen — HEAD sürümü")})`);
       return;
     }
     await vscode.commands.executeCommand(
       "vscode.diff",
       headUri,
       workingUri,
-      `${yol} (HEAD ↔ Çalışma Klasörü)`,
+      `${yol} (${t("HEAD ↔ Çalışma Klasörü")})`,
       { preview: true }
     );
   }
@@ -222,7 +234,7 @@ export class DeltaXRepository implements vscode.Disposable {
   async commit(message: string): Promise<{ hash: string; atlanan: number }> {
     const trimmed = message.trim();
     if (!trimmed) {
-      throw new Error("Commit mesajı boş olamaz");
+      throw new Error(t("Commit mesajı boş olamaz"));
     }
     const { hash: yeniTree, atlanan } = this.buildWorkdirTree();
     const head = this.currentHead();
@@ -234,7 +246,7 @@ export class DeltaXRepository implements vscode.Disposable {
     } else if (head) {
       const hc = readCommit(this.root, this.proje.id, head);
       if (hc.agac === yeniTree) {
-        throw new Error("Kaydedilecek değişiklik yok");
+        throw new Error(t("Kaydedilecek değişiklik yok"));
       }
     }
 

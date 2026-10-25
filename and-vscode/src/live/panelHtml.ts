@@ -5,6 +5,7 @@
 import * as crypto from "crypto";
 import { FORUM_CATEGORIES, ThemeReq } from "./liveTypes";
 import { ansiOrHexToCss, readableTextOn } from "./themeColor";
+import { betikDegeri, bicimle, cogulBicimi, etkin, ham, k, t } from "../dil/dil";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -57,6 +58,9 @@ function icon(name: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ""}</svg>`;
 }
 
+/** AND'ın hazır tema adları (internal/ui/theme.go); panelin alt köşesinde etkin dilde gösterilir. */
+const TEMA_ADLARI = [k("Klasik"), k("Turkuaz"), k("Gece Moru"), k("Kehribar"), k("Orman"), k("Mono")];
+
 /**
  * Canlı Panel'in HTML'i. Görsel dil iki katmanlıdır: yüzeyler, metin ve form
  * öğeleri VS Code'un KENDİ belirteçlerinden gelir (panel her VS Code temasında
@@ -67,12 +71,22 @@ function icon(name: string): string {
  */
 export function renderHtml(webview: { cspSource: string }): string {
   const nonce = crypto.randomBytes(16).toString("hex");
-  const categoryOptions = FORUM_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join(
+  // Kategori değerleri ağ protokolünün parçasıdır ve Türkçe gönderilir; yalnızca görünen ad çevrilir.
+  const categoryOptions = FORUM_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(t(c))}</option>`).join(
     ""
   );
+  /** HTML'e yazılacak çeviri. */
+  const h = (kaynak: string): string => escapeHtml(t(kaynak));
+  /**
+   * Betiğe dize değişmezi olarak gömülecek çeviri. Tekil/çoğul biçimlerinin
+   * hepsi gömülür; biçimi ve fiilleri betikteki tf/th sayıya göre seçip doldurur.
+   */
+  const j = (kaynak: string): string => betikDegeri(ham(kaynak));
+  const ceviriTablosu = (kaynaklar: readonly string[]): string =>
+    betikDegeri(Object.fromEntries(kaynaklar.map((k) => [k, t(k)])));
 
   return `<!doctype html>
-<html lang="tr">
+<html lang="${etkin()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -214,17 +228,17 @@ export function renderHtml(webview: { cspSource: string }): string {
   <aside class="rail">
     <div class="brand">
       <span class="mark">AND</span>
-      <span id="connBadge" class="conn">bağlanıyor…</span>
-      <button class="icon-btn" id="refreshBtn" title="Yenile" aria-label="Yenile">${icon("refresh")}</button>
+      <span id="connBadge" class="conn">${h("bağlanıyor…")}</span>
+      <button class="icon-btn" id="refreshBtn" title="${h("Yenile")}" aria-label="${h("Yenile")}">${icon("refresh")}</button>
     </div>
-    <nav id="nav" aria-label="Bölümler">
-      <button data-tab="identity" class="active">${icon("user")}<span>Kimlik</span></button>
-      <button data-tab="peers">${icon("network")}<span>Ağ</span><span id="peerCount" class="count"></span></button>
-      <button data-tab="chat">${icon("chat")}<span>Sohbet</span></button>
-      <button data-tab="dm">${icon("mail")}<span>Doğrudan mesaj</span><span id="dmCount" class="count"></span></button>
-      <button data-tab="forum">${icon("forum")}<span>Forum</span></button>
-      <button data-tab="site">${icon("globe")}<span>Site</span><span id="siteCount" class="count"></span></button>
-      <button data-tab="files">${icon("file")}<span>Dosyalar</span></button>
+    <nav id="nav" aria-label="${h("Bölümler")}">
+      <button data-tab="identity" class="active">${icon("user")}<span>${h("Kimlik")}</span></button>
+      <button data-tab="peers">${icon("network")}<span>${h("Ağ")}</span><span id="peerCount" class="count"></span></button>
+      <button data-tab="chat">${icon("chat")}<span>${h("Sohbet")}</span></button>
+      <button data-tab="dm">${icon("mail")}<span>${h("Doğrudan mesaj")}</span><span id="dmCount" class="count"></span></button>
+      <button data-tab="forum">${icon("forum")}<span>${h("Forum")}</span></button>
+      <button data-tab="site">${icon("globe")}<span>${h("Site")}</span><span id="siteCount" class="count"></span></button>
+      <button data-tab="files">${icon("file")}<span>${h("Dosyalar")}</span></button>
     </nav>
     <div class="rail-foot" id="themeName"></div>
   </aside>
@@ -232,94 +246,113 @@ export function renderHtml(webview: { cspSource: string }): string {
     <div id="banner" role="status" aria-live="polite"></div>
 
     <section id="tab-identity" class="active">
-      <div class="sec-head"><h1>Kimlik</h1><p class="lede">Bu AND düğümünün kimliği ve ağdaki rolün.</p></div>
-      <dl id="identityBody" class="kv"><dt>Durum</dt><dd class="muted">Yükleniyor…</dd></dl>
+      <div class="sec-head"><h1>${h("Kimlik")}</h1><p class="lede">${h("Bu AND düğümünün kimliği ve ağdaki rolün.")}</p></div>
+      <dl id="identityBody" class="kv"><dt>${h("Durum")}</dt><dd class="muted">${h("Yükleniyor…")}</dd></dl>
     </section>
 
     <section id="tab-peers">
-      <div class="sec-head"><h1>Ağ</h1><p class="lede">Şu an doğrudan bağlı olduğun eşler.</p></div>
-      <ul id="peersBody" class="list" data-empty="Bağlı eş yok. AND ağa bağlandıkça eşler burada görünür."></ul>
+      <div class="sec-head"><h1>${h("Ağ")}</h1><p class="lede">${h("Şu an doğrudan bağlı olduğun eşler.")}</p></div>
+      <ul id="peersBody" class="list" data-empty="${h("Bağlı eş yok. AND ağa bağlandıkça eşler burada görünür.")}"></ul>
     </section>
 
     <section id="tab-chat">
-      <div class="sec-head"><h1>Sohbet</h1><p class="lede">Herkese açık genel kanal. Mesajlar imzalıdır ama şifreli değildir; ağdaki herkes okuyabilir.</p></div>
-      <ul class="stream" id="chatList" data-empty="Henüz mesaj yok. İlk mesajı sen yaz."></ul>
+      <div class="sec-head"><h1>${h("Sohbet")}</h1><p class="lede">${h("Herkese açık genel kanal. Mesajlar imzalıdır ama şifreli değildir; ağdaki herkes okuyabilir.")}</p></div>
+      <ul class="stream" id="chatList" data-empty="${h("Henüz mesaj yok. İlk mesajı sen yaz.")}"></ul>
       <div class="composer">
-        <input type="text" id="chatInput" placeholder="Genel kanala yaz…" />
-        <button class="btn primary" id="chatSend">Gönder</button>
+        <input type="text" id="chatInput" placeholder="${h("Genel kanala yaz…")}" />
+        <button class="btn primary" id="chatSend">${h("Gönder")}</button>
       </div>
     </section>
 
     <section id="tab-dm">
-      <div class="sec-head"><h1>Doğrudan mesaj</h1><p class="lede" id="dmLede">Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.</p></div>
+      <div class="sec-head"><h1>${h("Doğrudan mesaj")}</h1><p class="lede" id="dmLede">${h("Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.")}</p></div>
       <div class="dm">
         <div>
           <div class="composer">
-            <input type="text" id="dmNewPeer" class="mono" placeholder="Yeni konuşma: Peer ID" list="peerIdsList" />
-            <button class="btn ghost sm" id="dmNewBtn">Aç</button>
+            <input type="text" id="dmNewPeer" class="mono" placeholder="${h("Yeni konuşma: Peer ID")}" list="peerIdsList" />
+            <button class="btn ghost sm" id="dmNewBtn">${h("Aç")}</button>
           </div>
-          <ul class="convs" id="dmConvs" data-empty="Henüz konuşma yok."></ul>
+          <ul class="convs" id="dmConvs" data-empty="${h("Henüz konuşma yok.")}"></ul>
         </div>
         <div>
-          <div class="dm-head muted" id="dmHead">Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.</div>
-          <ul class="stream" id="dmList" data-empty="Bu konuşmada henüz mesaj yok."></ul>
+          <div class="dm-head muted" id="dmHead">${h("Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.")}</div>
+          <ul class="stream" id="dmList" data-empty="${h("Bu konuşmada henüz mesaj yok.")}"></ul>
           <div class="composer">
-            <input type="text" id="dmInput" placeholder="Mesajını yaz…" />
-            <button class="btn primary" id="dmSend">Gönder</button>
+            <input type="text" id="dmInput" placeholder="${h("Mesajını yaz…")}" />
+            <button class="btn primary" id="dmSend">${h("Gönder")}</button>
           </div>
         </div>
       </div>
     </section>
 
     <section id="tab-forum">
-      <div class="sec-head"><h1>Forum</h1><p class="lede">Yeni bir konu aç ya da ID'sini bildiğin bir konuyu görüntüle. Konular yayınlandığı anda ağa yayılır ve 5 gün sonra silinir.</p></div>
+      <div class="sec-head"><h1>${h("Forum")}</h1><p class="lede">${h("Yeni bir konu aç ya da ID'sini bildiğin bir konuyu görüntüle. Konular yayınlandığı anda ağa yayılır ve 5 gün sonra silinir.")}</p></div>
       <div class="panel">
-        <div class="field"><label for="postCategory">Kategori</label><select id="postCategory">${categoryOptions}</select></div>
-        <div class="field"><label for="postTitle">Başlık</label><input type="text" id="postTitle" /></div>
-        <div class="field"><label for="postBody">İçerik</label><textarea id="postBody"></textarea></div>
-        <button class="btn primary" id="postCreate">Konuyu yayınla</button>
+        <div class="field"><label for="postCategory">${h("Kategori")}</label><select id="postCategory">${categoryOptions}</select></div>
+        <div class="field"><label for="postTitle">${h("Başlık")}</label><input type="text" id="postTitle" /></div>
+        <div class="field"><label for="postBody">${h("İçerik")}</label><textarea id="postBody"></textarea></div>
+        <button class="btn primary" id="postCreate">${h("Konuyu yayınla")}</button>
       </div>
 
-      <h2>Konu görüntüle</h2>
+      <h2>${h("Konu görüntüle")}</h2>
       <div class="composer">
-        <input type="text" id="viewPostId" class="mono" placeholder="Konu ID" />
-        <button class="btn secondary" id="viewPostBtn">Göster</button>
+        <input type="text" id="viewPostId" class="mono" placeholder="${h("Konu ID")}" />
+        <button class="btn secondary" id="viewPostBtn">${h("Göster")}</button>
       </div>
       <div id="postDetailBody"></div>
 
       <div id="modSection" style="display:none">
-        <h2>Moderasyon</h2>
-        <p class="lede">Ağdaki tüm konular. Silme, konuyu herkes için kaldırır.</p>
-        <ul id="allPostsBody" class="list" data-empty="Konu yok."></ul>
+        <h2>${h("Moderasyon")}</h2>
+        <p class="lede">${h("Ağdaki tüm konular. Silme, konuyu herkes için kaldırır.")}</p>
+        <ul id="allPostsBody" class="list" data-empty="${h("Konu yok.")}"></ul>
       </div>
     </section>
 
     <section id="tab-site">
-      <div class="sec-head"><h1>Kişisel site</h1><p class="lede">Sayfaların VS Code editöründe açılır; <strong>kaydetmek (Ctrl+S) sayfayı ağa yayınlar</strong>. Paylaşım kodunu alan kişi sayfayı AND Arama Motoru'ndaki Kodla Git ekranında ya da <span class="mono">-site</span> bayrağıyla açabilir.</p></div>
+      <div class="sec-head"><h1>${h("Kişisel site")}</h1><p class="lede">${bicimle(h("Sayfaların VS Code editöründe açılır; %s. Paylaşım kodunu alan kişi sayfayı AND Arama Motoru'ndaki Kodla Git ekranında ya da %s bayrağıyla açabilir."), [`<strong>${h("kaydetmek (Ctrl+S) sayfayı ağa yayınlar")}</strong>`, `<span class="mono">-site</span>`])}</p></div>
       <div class="composer" style="margin-bottom:14px">
-        <button class="btn primary" id="siteNewBtn">Yeni sayfa</button>
-        <button class="btn ghost" id="siteRefreshBtn">Yenile</button>
+        <button class="btn primary" id="siteNewBtn">${h("Yeni sayfa")}</button>
+        <button class="btn ghost" id="siteRefreshBtn">${h("Yenile")}</button>
       </div>
-      <div id="siteBody"><p class="muted">Yükleniyor…</p></div>
+      <div id="siteBody"><p class="muted">${h("Yükleniyor…")}</p></div>
     </section>
 
     <section id="tab-files">
-      <div class="sec-head"><h1>Dosyalar</h1><p class="lede">Bir eşe dosya gönder; gelen istekleri onayla. Alınan dosyalar AND'ın veri dizinine kaydedilir.</p></div>
+      <div class="sec-head"><h1>${h("Dosyalar")}</h1><p class="lede">${h("Bir eşe dosya gönder; gelen istekleri onayla. Alınan dosyalar AND'ın veri dizinine kaydedilir.")}</p></div>
       <div class="panel">
-        <div class="field"><label for="filePeerId">Alıcı</label><input type="text" id="filePeerId" class="mono" placeholder="Peer ID" list="peerIdsList" /></div>
+        <div class="field"><label for="filePeerId">${h("Alıcı")}</label><input type="text" id="filePeerId" class="mono" placeholder="Peer ID" list="peerIdsList" /></div>
         <datalist id="peerIdsList"></datalist>
-        <button class="btn primary" id="fileSendBtn">Dosya seç ve gönder</button>
+        <button class="btn primary" id="fileSendBtn">${h("Dosya seç ve gönder")}</button>
       </div>
-      <h2>Bekleyen istekler</h2>
-      <ul id="consentBody" class="list" data-empty="Bekleyen istek yok."></ul>
-      <h2>Alınan dosyalar</h2>
-      <ul id="receivedFilesBody" class="list" data-empty="Henüz dosya alınmadı."></ul>
+      <h2>${h("Bekleyen istekler")}</h2>
+      <ul id="consentBody" class="list" data-empty="${h("Bekleyen istek yok.")}"></ul>
+      <h2>${h("Alınan dosyalar")}</h2>
+      <ul id="receivedFilesBody" class="list" data-empty="${h("Henüz dosya alınmadı.")}"></ul>
     </section>
   </main>
 </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const banner = document.getElementById('banner');
+  // Etkin dil ve çeviri yardımcıları: kurallar uzantının dil modülünden (src/dil/dil.ts) gömülür.
+  const DIL = ${betikDegeri(etkin())};
+  const cogulBicimi = ${cogulBicimi.toString()};
+  const bicimle = ${bicimle.toString()};
+  const KATEGORI = ${ceviriTablosu(FORUM_CATEGORIES)};
+  const TEMA = ${ceviriTablosu(TEMA_ADLARI)};
+  // tf: çevrilmiş kalıbı doldurur, tekil/çoğul biçimini ilk sayı argümanı seçer.
+  function tf(kalip, ...args) {
+    let c = kalip;
+    if (c.includes('|')) {
+      const n = args.find(a => typeof a === 'number');
+      const b = c.split('|');
+      c = b[Math.min(cogulBicimi(DIL, n === undefined ? 0 : n), b.length - 1)];
+    }
+    return bicimle(c, args);
+  }
+  // th: tf'nin HTML'e yazılan biçimi — kalıp kaçırılır, argümanlar zaten kaçırılmış HTML'dir.
+  function th(kalip, ...args) { return tf(esc(kalip), ...args); }
+  function kat(c) { return KATEGORI[c] || c; }
   const COPY_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
   let isModerator = false;
   let bannerTimer;
@@ -348,7 +381,7 @@ export function renderHtml(webview: { cspSource: string }): string {
 
   function fmtTime(ts) {
     const d = new Date(ts);
-    return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return isNaN(d) ? '' : d.toLocaleTimeString(DIL, { hour: '2-digit', minute: '2-digit' });
   }
 
   function formatSize(bytes) {
@@ -390,7 +423,7 @@ export function renderHtml(webview: { cspSource: string }): string {
   onEnter('chatInput', 'chatSend');
   document.getElementById('dmSend').addEventListener('click', () => {
     const el = document.getElementById('dmInput');
-    if (!dmSelected) { showBanner('Önce bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.', false); return; }
+    if (!dmSelected) { showBanner(${j("Önce bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.")}, false); return; }
     if (!el.value.trim()) return;
     vscode.postMessage({ type: 'sendDM', peerId: dmSelected, message: el.value });
     el.value = '';
@@ -399,7 +432,7 @@ export function renderHtml(webview: { cspSource: string }): string {
   document.getElementById('dmNewBtn').addEventListener('click', () => {
     const el = document.getElementById('dmNewPeer');
     const peer = el.value.trim();
-    if (!peer) { showBanner('Konuşmak istediğin kişinin Peer ID’sini gir.', false); return; }
+    if (!peer) { showBanner(${j("Konuşmak istediğin kişinin Peer ID’sini gir.")}, false); return; }
     el.value = '';
     dmSelect(peer);
   });
@@ -408,7 +441,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     const category = document.getElementById('postCategory').value;
     const title = document.getElementById('postTitle').value.trim();
     const body = document.getElementById('postBody').value.trim();
-    if (!title || !body) { showBanner('Başlık ve içerik boş olamaz.', false); return; }
+    if (!title || !body) { showBanner(${j("Başlık ve içerik boş olamaz.")}, false); return; }
     vscode.postMessage({ type: 'createPost', category, title, body });
   });
   document.getElementById('viewPostBtn').addEventListener('click', () => {
@@ -419,7 +452,7 @@ export function renderHtml(webview: { cspSource: string }): string {
   onEnter('viewPostId', 'viewPostBtn');
   document.getElementById('fileSendBtn').addEventListener('click', () => {
     const peerId = document.getElementById('filePeerId').value.trim();
-    if (!peerId) { showBanner('Önce alıcının Peer ID’sini gir.', false); return; }
+    if (!peerId) { showBanner(${j("Önce alıcının Peer ID’sini gir.")}, false); return; }
     vscode.postMessage({ type: 'pickFileToSend', peerId });
   });
   document.getElementById('siteNewBtn').addEventListener('click', () => vscode.postMessage({ type: 'siteNew' }));
@@ -458,7 +491,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     const li = document.createElement('li');
     li.className = 'msg' + (own ? ' own' : '');
     li.style.setProperty('--h', String(hue(opts.hueKey || from)));
-    const initial = (String(from).trim().charAt(0) || '?').toLocaleUpperCase('tr');
+    const initial = (String(from).trim().charAt(0) || '?').toLocaleUpperCase(DIL);
     const state = opts.state ? '<span class="state' + (opts.stateErr ? ' err' : '') + '">' + esc(opts.state) + '</span>' : '';
     li.innerHTML = '<span class="avatar" aria-hidden="true">' + esc(initial) + '</span>' +
       '<div><span class="who">' + esc(from) + '</span><time>' + esc(fmtTime(ts)) + '</time>' + state + '</div>' +
@@ -483,7 +516,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     const ul = document.getElementById('dmConvs');
     ul.innerHTML = dmConvs.map(k => {
       const last = k.mesajlar[k.mesajlar.length - 1];
-      const preview = last ? (last.giden ? 'Sen: ' : '') + last.metin : '';
+      const preview = last ? (last.giden ? tf(${j("Sen: %s")}, last.metin) : last.metin) : '';
       return '<li class="conv' + (k.peerId === dmSelected ? ' sel' : '') + '" tabindex="0" data-conv="' + esc(k.peerId) + '">' +
         '<div class="conv-top"><span class="who" style="--h:' + hue(k.peerId) + '">' + esc(k.ad || shortId(k.peerId)) + '</span>' +
         '<span class="count">' + (k.okunmamis ? k.okunmamis : '') + '</span></div>' +
@@ -497,16 +530,16 @@ export function renderHtml(webview: { cspSource: string }): string {
     document.getElementById('dmList').innerHTML = '';
     if (!dmSelected) {
       head.className = 'dm-head muted';
-      head.textContent = 'Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.';
+      head.textContent = ${j("Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.")};
       return;
     }
     const k = dmConvs.find(x => x.peerId === dmSelected);
     head.className = 'dm-head';
-    head.innerHTML = '<strong>' + esc(k ? convName(k) : 'Yeni konuşma') + '</strong><span class="mono muted">' + esc(dmSelected) + '</span>';
-    (k ? k.mesajlar : []).forEach(m => appendMsg('dmList', m.giden ? 'Sen' : convName(k), m.metin, m.at, {
+    head.innerHTML = '<strong>' + esc(k ? convName(k) : ${j("Yeni konuşma")}) + '</strong><span class="mono muted">' + esc(dmSelected) + '</span>';
+    (k ? k.mesajlar : []).forEach(m => appendMsg('dmList', m.giden ? ${j("Sen")} : convName(k), m.metin, m.at, {
       own: m.giden,
       hueKey: m.giden ? 'ben' : k.peerId,
-      state: m.basarisiz ? 'gönderilemedi' : (m.bekliyor ? 'bekliyor' : ''),
+      state: m.basarisiz ? ${j("gönderilemedi")} : (m.bekliyor ? ${j("bekliyor")} : ''),
       stateErr: !!m.basarisiz,
     }));
   }
@@ -526,15 +559,15 @@ export function renderHtml(webview: { cspSource: string }): string {
   function renderIdentity(identity, role) {
     const body = document.getElementById('identityBody');
     const roller = [];
-    if (role.is_founder) roller.push('Kurucu');
-    if (role.is_moderator) roller.push('Moderatör');
-    const rol = roller.length ? '<span class="role">' + roller.join(', ') + '</span>' : 'Üye';
-    const kopya = (deger, etiket) => '<button class="icon-btn" data-copy="' + esc(deger) + '" data-label="' + esc(etiket) + '" title="' + esc(etiket) + ' kopyala" aria-label="' + esc(etiket) + ' kopyala">' + COPY_ICON + '</button>';
+    if (role.is_founder) roller.push(${j("Kurucu")});
+    if (role.is_moderator) roller.push(${j("Moderatör")});
+    const rol = roller.length ? '<span class="role">' + esc(roller.join(', ')) + '</span>' : esc(${j("Üye")});
+    const kopya = (deger, etiket) => '<button class="icon-btn" data-copy="' + esc(deger) + '" data-label="' + esc(etiket) + '" title="' + esc(tf(${j("%s kopyala")}, etiket)) + '" aria-label="' + esc(tf(${j("%s kopyala")}, etiket)) + '">' + COPY_ICON + '</button>';
     body.innerHTML =
-      '<dt>Ad</dt><dd><strong>' + esc(identity.name || 'adsız') + '</strong></dd>' +
-      '<dt>Rol</dt><dd>' + rol + '</dd>' +
+      '<dt>' + esc(${j("Ad")}) + '</dt><dd><strong>' + esc(identity.name || ${j("adsız")}) + '</strong></dd>' +
+      '<dt>' + esc(${j("Rol")}) + '</dt><dd>' + rol + '</dd>' +
       '<dt>Peer ID</dt><dd><span class="mono" title="' + esc(identity.peer_id) + '">' + esc(identity.peer_id) + '</span>' + kopya(identity.peer_id, 'Peer ID') + '</dd>' +
-      '<dt>Genel anahtar</dt><dd><span class="mono" title="' + esc(identity.pub_key) + '">' + esc(identity.pub_key) + '</span>' + kopya(identity.pub_key, 'Genel anahtar') + '</dd>';
+      '<dt>' + esc(${j("Genel anahtar")}) + '</dt><dd><span class="mono" title="' + esc(identity.pub_key) + '">' + esc(identity.pub_key) + '</span>' + kopya(identity.pub_key, ${j("Genel anahtar")}) + '</dd>';
     bindCopy(body);
     isModerator = role.is_founder || role.is_moderator;
     document.getElementById('modSection').style.display = isModerator ? '' : 'none';
@@ -546,7 +579,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     document.getElementById('peersBody').innerHTML = peers.map(p =>
       '<li><div class="grow"><div class="mono">' + esc(p.peer_id) + '</div>' +
       '<div class="muted mono">' + p.addrs.map(esc).join('<br>') + '</div></div>' +
-      '<button class="icon-btn" data-copy="' + esc(p.peer_id) + '" data-label="Peer ID" title="Peer ID kopyala" aria-label="Peer ID kopyala">' + COPY_ICON + '</button></li>'
+      '<button class="icon-btn" data-copy="' + esc(p.peer_id) + '" data-label="Peer ID" title="' + esc(tf(${j("%s kopyala")}, 'Peer ID')) + '" aria-label="' + esc(tf(${j("%s kopyala")}, 'Peer ID')) + '">' + COPY_ICON + '</button></li>'
     ).join('');
     bindCopy(document.getElementById('peersBody'));
     document.getElementById('peerIdsList').innerHTML = peers.map(p => '<option value="' + esc(p.peer_id) + '"></option>').join('');
@@ -556,14 +589,14 @@ export function renderHtml(webview: { cspSource: string }): string {
     const body = document.getElementById('postDetailBody');
     const yanitlar = d.replies || [];
     let html = '<article class="post"><h2>' + esc(d.title) + '</h2>' +
-      '<p class="muted"><span class="who" style="--h:' + hue(d.author_key || d.author_name) + '">' + esc(d.author_name) + '</span> yazdı, ' + esc(d.category) + ' kategorisinde.</p>' +
+      '<p class="muted">' + th(${j("%s yazdı, %s kategorisinde.")}, '<span class="who" style="--h:' + hue(d.author_key || d.author_name) + '">' + esc(d.author_name) + '</span>', esc(kat(d.category))) + '</p>' +
       '<div class="body">' + esc(d.body) + '</div>' +
-      '<h3>' + (yanitlar.length ? yanitlar.length + ' yanıt' : 'Henüz yanıt yok') + '</h3>' +
+      '<h3>' + esc(yanitlar.length ? tf(${j("%d yanıt")}, yanitlar.length) : ${j("Henüz yanıt yok")}) + '</h3>' +
       '<ul class="list replies">' + yanitlar.map(r =>
         '<li><div class="grow"><span class="who" style="--h:' + hue(r.author_key || r.author_name) + '">' + esc(r.author_name) + '</span>' +
         '<div class="body">' + esc(r.body) + '</div></div></li>').join('') + '</ul>' +
-      '<div class="composer" style="margin-top:10px"><input type="text" id="replyBody" placeholder="Yanıtını yaz…" />' +
-      '<button class="btn primary" id="replySend">Yanıtla</button></div></article>';
+      '<div class="composer" style="margin-top:10px"><input type="text" id="replyBody" placeholder="' + esc(${j("Yanıtını yaz…")}) + '" />' +
+      '<button class="btn primary" id="replySend">' + esc(${j("Yanıtla")}) + '</button></div></article>';
     body.innerHTML = html;
     document.getElementById('replySend').addEventListener('click', () => {
       const el = document.getElementById('replyBody');
@@ -576,8 +609,8 @@ export function renderHtml(webview: { cspSource: string }): string {
   function renderMod(all) {
     const list = document.getElementById('allPostsBody');
     list.innerHTML = (all || []).map(p =>
-      '<li><div class="grow"><strong>' + esc(p.title) + '</strong><div class="muted">' + esc(p.category) + ', ' + esc(p.author_name) + '</div></div>' +
-      '<button class="btn ghost sm danger" data-delete="' + esc(p.id) + '">Sil</button></li>'
+      '<li><div class="grow"><strong>' + esc(p.title) + '</strong><div class="muted">' + esc(kat(p.category)) + ', ' + esc(p.author_name) + '</div></div>' +
+      '<button class="btn ghost sm danger" data-delete="' + esc(p.id) + '">' + esc(${j("Sil")}) + '</button></li>'
     ).join('');
     list.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'deletePost', postId: b.dataset.delete })));
   }
@@ -586,16 +619,16 @@ export function renderHtml(webview: { cspSource: string }): string {
     const body = document.getElementById('siteBody');
     document.getElementById('siteCount').textContent = data.pages.length + '/' + data.max;
     document.getElementById('siteNewBtn').disabled = data.pages.length >= data.max;
-    if (!data.pages.length) { body.innerHTML = '<p class="muted">Henüz bir sayfan yok. İlk sayfanı oluşturmak için Yeni sayfa’yı kullan.</p>'; return; }
-    const sayi = (n) => Number(n).toLocaleString('tr-TR');
+    if (!data.pages.length) { body.innerHTML = '<p class="muted">' + esc(${j("Henüz bir sayfan yok. İlk sayfanı oluşturmak için Yeni sayfa’yı kullan.")}) + '</p>'; return; }
+    const sayi = (n) => Number(n).toLocaleString(DIL);
     body.innerHTML = '<ul class="list">' + data.pages.map(p =>
       '<li><div class="grow"><div><span class="title-link" tabindex="0" data-site-open="' + esc(p.slug) + '">' + esc(p.title || p.slug) + '</span>' +
       ' <span class="mono muted">/' + esc(p.slug) + '</span></div>' +
       (p.preview ? '<p class="preview">' + esc(p.preview) + '</p>' : '') +
-      '<div class="muted">' + esc(new Date(p.updated_at).toLocaleString()) + ' güncellendi, ' + sayi(p.bytes) + ' / ' + sayi(data.maxBody) + ' bayt</div></div>' +
-      '<div class="actions"><button class="btn secondary sm" data-site-open="' + esc(p.slug) + '">Düzenle</button>' +
-      '<button class="btn ghost sm" data-site-code="' + esc(p.slug) + '">Paylaşım kodu</button>' +
-      '<button class="btn ghost sm danger" data-site-delete="' + esc(p.slug) + '">Sil</button></div></li>'
+      '<div class="muted">' + th(${j("%s güncellendi, %s / %s bayt")}, esc(new Date(p.updated_at).toLocaleString(DIL)), esc(sayi(p.bytes)), esc(sayi(data.maxBody))) + '</div></div>' +
+      '<div class="actions"><button class="btn secondary sm" data-site-open="' + esc(p.slug) + '">' + esc(${j("Düzenle")}) + '</button>' +
+      '<button class="btn ghost sm" data-site-code="' + esc(p.slug) + '">' + esc(${j("Paylaşım kodu")}) + '</button>' +
+      '<button class="btn ghost sm danger" data-site-delete="' + esc(p.slug) + '">' + esc(${j("Sil")}) + '</button></div></li>'
     ).join('') + '</ul>';
     body.querySelectorAll('[data-site-open]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'siteOpen', slug: b.dataset.siteOpen })));
     body.querySelectorAll('[data-site-code]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'siteCopyCode', slug: b.dataset.siteCode })));
@@ -610,8 +643,8 @@ export function renderHtml(webview: { cspSource: string }): string {
     body.innerHTML = pendingConsents.map(c =>
       '<li><div class="grow"><strong>' + esc(c.filename) + '</strong> <span class="muted">' + formatSize(c.size) + '</span>' +
       '<div class="muted mono">' + esc(c.sender_id) + '</div></div>' +
-      '<div class="actions"><button class="btn primary sm" data-accept="' + esc(c.transfer_id) + '">Kabul et</button>' +
-      '<button class="btn ghost sm" data-reject="' + esc(c.transfer_id) + '">Reddet</button></div></li>'
+      '<div class="actions"><button class="btn primary sm" data-accept="' + esc(c.transfer_id) + '">' + esc(${j("Kabul et")}) + '</button>' +
+      '<button class="btn ghost sm" data-reject="' + esc(c.transfer_id) + '">' + esc(${j("Reddet")}) + '</button></div></li>'
     ).join('');
     body.querySelectorAll('[data-accept]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'respondConsent', transferId: b.dataset.accept, accept: true })));
     body.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'respondConsent', transferId: b.dataset.reject, accept: false })));
@@ -621,8 +654,8 @@ export function renderHtml(webview: { cspSource: string }): string {
     const body = document.getElementById('receivedFilesBody');
     body.innerHTML = receivedFiles.map((f, i) =>
       '<li><div class="grow"><strong>' + esc(f.filename) + '</strong> <span class="muted">' + formatSize(f.size) + '</span>' +
-      '<div class="muted">' + esc(f.from) + ' gönderdi, ' + esc(new Date(f.received_at).toLocaleString()) + '</div></div>' +
-      '<button class="btn ghost sm" data-reveal="' + i + '">Klasörde göster</button></li>'
+      '<div class="muted">' + th(${j("%s gönderdi, %s")}, esc(f.from), esc(new Date(f.received_at).toLocaleString(DIL))) + '</div></div>' +
+      '<button class="btn ghost sm" data-reveal="' + i + '">' + esc(${j("Klasörde göster")}) + '</button></li>'
     ).join('');
     body.querySelectorAll('[data-reveal]').forEach(b => b.addEventListener('click', () => {
       const f = receivedFiles[Number(b.dataset.reveal)];
@@ -635,7 +668,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     switch (msg.type) {
       case 'connectionState': {
         const badge = document.getElementById('connBadge');
-        badge.textContent = msg.connected ? 'bağlı' : 'bağlı değil';
+        badge.textContent = msg.connected ? ${j("bağlı")} : ${j("bağlı değil")};
         badge.className = 'conn' + (msg.connected ? ' ok' : '');
         break;
       }
@@ -661,7 +694,7 @@ export function renderHtml(webview: { cspSource: string }): string {
         renderSite(msg.data);
         break;
       case 'siteUnavailable':
-        document.getElementById('siteBody').innerHTML = '<p class="muted">Kişisel site sayfaları alınamadı: ' + esc(msg.message) + '</p>';
+        document.getElementById('siteBody').innerHTML = '<p class="muted">' + th(${j("Kişisel site sayfaları alınamadı: %s")}, esc(msg.message)) + '</p>';
         break;
       case 'dmData': {
         const d = msg.data || {};
@@ -670,8 +703,8 @@ export function renderHtml(webview: { cspSource: string }): string {
           mesajlar: (k.mesajlar || []).filter(m => String(m.metin).indexOf('AND-PROJEAG/') !== 0),
         })).filter(k => k.mesajlar.length > 0);
         document.getElementById('dmLede').textContent = d.gecmisYok
-          ? 'Bu AND sürümü mesaj geçmişi tutmuyor: yalnızca bu oturumda gelen ve gönderilen mesajlar görünür.'
-          : 'Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.';
+          ? ${j("Bu AND sürümü mesaj geçmişi tutmuyor: yalnızca bu oturumda gelen ve gönderilen mesajlar görünür.")}
+          : ${j("Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.")};
         renderDmList();
         renderDmThread();
         dmMarkRead();
@@ -704,7 +737,7 @@ export function renderHtml(webview: { cspSource: string }): string {
         setOrClear('--and-selbg', t.selBg);
         setOrClear('--and-selfg', t.selFg);
         setOrClear('--and-badge', t.badge);
-        document.getElementById('themeName').textContent = t.themeName ? t.themeName + ' teması' : '';
+        document.getElementById('themeName').textContent = t.themeName ? tf(${j("%s teması")}, TEMA[t.themeName] || t.themeName) : '';
         break;
       }
       case 'info':

@@ -1,5 +1,34 @@
 # Değişiklik Günlüğü
 
+## 0.9.0
+
+**Uzantı artık AND'ın altı dilinde: Türkçe, English, Deutsch, Español, Français, Русский.**
+
+- Bütün çalışma anı metinleri çevrildi: bildirimler ve sorular, Gruplar ve Projeler ağacı, durum
+  çubuğu, kaynak denetimi (SCM), Canlı Panel, commit günlüğü paneli, site editörünün durum çubuğu ve
+  tanıları, hata mesajları.
+- Dil kendiliğinden seçiliyor: önce AND'ın seçimi (`AND_DIL`, sonra AND'ın `dil.json`'u), o yoksa
+  VS Code'un görüntüleme dili. Yeni `and.language` ayarı dili sabitleyebilir. AND'da dil değişince
+  açık ağaç, durum çubukları, SCM, Canlı Panel ve günlük panelleri yeniden başlatmadan yeni dile
+  geçiyor.
+- Komut başlıkları, ayar açıklamaları ve görünüm adları `package.nls.*.json` ile VS Code'un
+  görüntüleme dilinde. Varsayılan (bilinmeyen dil) İngilizce.
+- Forum kategorileri ve AND tema adları panelde ve kategori seçicide etkin dilde görünüyor. Ağa
+  giden kategori değeri Türkçe kalıyor, yani eski AND'larla uyum bozulmuyor.
+- Kurallar AND'ın Go `dil` paketiyle aynı (`src/dil/dil.ts`): Türkçe kaynak metin anahtar, tekil ve
+  çoğul biçimler `|` ile ayrılıyor, Rusçada üç biçim var. Panelin betiği aynı kuralları uzantının
+  kendi kodundan alıyor.
+- Tarih ve sayılar etkin dilin biçiminde yazılıyor. Önceden bazı yerler sabit `tr-TR`, bazıları
+  VS Code'un dilini kullanıyordu.
+
+Testler 97'den 120'ye çıktı:
+
+- Kapsam testi kaynağı TypeScript'in sözdizimi ağacıyla tarıyor. Çevrilmemiş Türkçe metin, eksik ya
+  da kullanılmayan çeviri ya da `%s`/`%d` fiili uyuşmayan çeviri testi düşürüyor.
+- Panel beş dilde sahte DOM'da çiziliyor; kalıntı metin, çoğul biçim, kategori ve tema adı
+  denetleniyor.
+- Manifestin her yer tutucusunun her dilde karşılığı olduğu denetleniyor.
+
 ## 0.8.0
 
 **Mesajlar artık kaybolmuyor; Doğrudan mesaj sekmesi gerçek bir sohbet ekranı oldu.**

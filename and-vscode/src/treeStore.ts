@@ -3,6 +3,7 @@ import * as path from "path";
 import { readIgnorePatterns, isIgnored } from "./ignoreRules";
 import { readObject, writeObject, writeBlobWithKnownHash, blobHashOf, objectExists } from "./objectStore";
 import { Agac, AgacGirdi, DurumSonucu } from "./types";
+import { t } from "./dil/dil";
 
 // vcs.go'daki "Çalışma dizini ↔ ağaç" bölümünün TypeScript karşılığı.
 
@@ -14,7 +15,7 @@ export function readTree(root: string, projeId: string, hash: string): Agac {
   }
   const { tip, payload } = readObject(root, projeId, hash);
   if (tip !== "T".charCodeAt(0)) {
-    throw new Error("beklenmeyen nesne tipi: ağaç bekleniyordu");
+    throw new Error(t("beklenmeyen nesne tipi: ağaç bekleniyordu"));
   }
   return JSON.parse(payload.toString("utf8")) as Agac;
 }

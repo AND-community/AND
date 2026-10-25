@@ -2,6 +2,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { projeNesneDizini } from "./paths";
+import { t } from "./dil/dil";
 
 // vcs.go'daki nesne deposunun TypeScript karşılığı: nesneler tip baytı +
 // payload'ın sha256'sıyla adreslenir ve nesneler/<hash[:2]>/<hash[2:]>
@@ -67,7 +68,7 @@ export function writeVerifiedRawObject(root: string, projeId: string, hash: stri
 
 export function objectPath(root: string, projeId: string, hash: string): string {
   if (!HEX64.test(hash)) {
-    throw new Error(`geçersiz nesne hash'i: ${hash}`);
+    throw new Error(t("geçersiz nesne hash'i: %s", hash));
   }
   return path.join(projeNesneDizini(root, projeId), hash.slice(0, 2), hash.slice(2));
 }
@@ -81,7 +82,7 @@ export function readObject(root: string, projeId: string, hash: string): RawObje
   const file = objectPath(root, projeId, hash);
   const full = fs.readFileSync(file);
   if (full.length < 1) {
-    throw new Error(`bozuk nesne: ${hash}`);
+    throw new Error(t("bozuk nesne: %s", hash));
   }
   return { tip: full[0], payload: full.subarray(1) };
 }

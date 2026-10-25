@@ -12,6 +12,7 @@ import {
   utf8Bytes,
   validatePage,
 } from "./sitePage";
+import { t } from "../../dil/dil";
 
 /**
  * Kişisel site sayfalarını GERÇEK VS Code editör belgeleri olarak açan sanal
@@ -138,7 +139,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
   }
 
   createDirectory(): void {
-    throw vscode.FileSystemError.NoPermissions("Kişisel sitede klasör yoktur — her sayfa tek bir slug'dır.");
+    throw vscode.FileSystemError.NoPermissions(t("Kişisel sitede klasör yoktur — her sayfa tek bir slug'dır."));
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
@@ -155,7 +156,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
     if (reason === vscode.TextDocumentSaveReason.AfterDelay || reason === vscode.TextDocumentSaveReason.FocusOut) {
       // package.json bu dil için otomatik kaydetmeyi zaten kapatır; kullanıcı
       // yine de açtıysa yarım bir taslağın ağa yayılmasına izin verilmez.
-      throw new Error("Otomatik kaydetme bir site sayfasını ağa YAYINLAMAZ — sayfa hazır olduğunda Ctrl+S ile kaydet.");
+      throw new Error(t("Otomatik kaydetme bir site sayfasını ağa YAYINLAMAZ — sayfa hazır olduğunda Ctrl+S ile kaydet."));
     }
     const page = parsePage(Buffer.from(content).toString("utf8"));
     const problem = validatePage(slug, page);
@@ -179,7 +180,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
 
   rename(): void {
     throw vscode.FileSystemError.NoPermissions(
-      "Bir sayfanın slug'ı değiştirilemez — yeni bir sayfa oluşturup içeriği taşıyabilir, eskisini silebilirsin."
+      t("Bir sayfanın slug'ı değiştirilemez — yeni bir sayfa oluşturup içeriği taşıyabilir, eskisini silebilirsin.")
     );
   }
 
@@ -189,7 +190,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
     const wait = publishDelayMs(this.lastPublishedAt(slug), Date.now());
     if (wait > 0) {
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Window, title: `AND: "${slug}" ${Math.ceil(wait / 1000)} sn içinde yayınlanacak…` },
+        { location: vscode.ProgressLocation.Window, title: t("AND: \"%s\" %d sn içinde yayınlanacak…", slug, Math.ceil(wait / 1000)) },
         () => sleep(wait)
       );
     }
@@ -202,7 +203,10 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
       // Eski AND sürümleri, silinmiş (tombstone'lu) bir slug'ın yayınını hata
       // vermeden sessizce yok sayar — "yayınlandı" demeden önce doğrula.
       throw new Error(
-        `AND "${slug}" sayfasını kaydetmedi — bu slug daha önce silinmiş olabilir (silinen bir slug yeniden kullanılamaz). Farklı bir slug ile yeni bir sayfa oluştur.`
+        t(
+          "AND \"%s\" sayfasını kaydetmedi — bu slug daha önce silinmiş olabilir (silinen bir slug yeniden kullanılamaz). Farklı bir slug ile yeni bir sayfa oluştur.",
+          slug
+        )
       );
     }
     this.drafts.delete(slug);
@@ -294,7 +298,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
     const client = await this.conn.ensureConnected();
     if (!client) {
       throw vscode.FileSystemError.Unavailable(
-        "AND'a canlı bağlantı yok — AND açık ve AND_ENABLE_EXTERNAL_API=1 ile başlatılmış olmalı."
+        t("AND'a canlı bağlantı yok — AND açık ve AND_ENABLE_EXTERNAL_API=1 ile başlatılmış olmalı.")
       );
     }
     return client;

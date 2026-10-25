@@ -8,6 +8,7 @@ import { Agac, Commit } from "../../types";
 import { decrypt } from "./crypto";
 import { isMember } from "./groupOps";
 import { buildTarGz, parseTarGz, TarEntry } from "./tarball";
+import { t } from "../../dil/dil";
 
 // sync.go'nun "Paket oluşturma/uygulama" ve "Gönder (push)"/"Gelen paket
 // işleme" bölümlerinin (paketOlustur/paketUygula/paketDosyaAdi/paketAyristir/
@@ -177,24 +178,24 @@ export interface AppliedPack {
 export function applyIncomingPackFile(root: string, filePath: string, senderPeerId: string): AppliedPack {
   const parsed = parsePackFileName(filePath);
   if (!parsed) {
-    throw new Error("proje ağı paketi değil");
+    throw new Error(t("proje ağı paketi değil"));
   }
   const { grupId, projeId } = parsed;
   let g;
   try {
     g = readGroup(root, grupId);
   } catch (err) {
-    throw new Error(`bilinmeyen grup: ${describeError(err)}`);
+    throw new Error(t("bilinmeyen grup: %s", describeError(err)));
   }
   if (!isMember(g, senderPeerId)) {
-    throw new Error(`gönderen ${g.ad} grubunun üyesi değil`);
+    throw new Error(t("gönderen %s grubunun üyesi değil", g.ad));
   }
   const sealed = fs.readFileSync(filePath);
   let plain: Buffer;
   try {
     plain = decrypt(g.sir, sealed);
   } catch (err) {
-    throw new Error(`paket çözülemedi (yanlış grup anahtarı olabilir): ${describeError(err)}`);
+    throw new Error(t("paket çözülemedi (yanlış grup anahtarı olabilir): %s", describeError(err)));
   }
   ensureProjectSkeleton(root, projeId, grupId);
   const { manifest, objectCount } = applyPack(root, projeId, plain);

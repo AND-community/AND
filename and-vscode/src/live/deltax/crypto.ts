@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import { t } from "../../dil/dil";
 
 // Go crypto.go'nun ("grup paketleri için AES-256-GCM şifreleme") birebir
 // karşılığı. Go: gcm.Seal(nonce, nonce, data, nil) -> nonce(12) || ciphertext || tag(16).
@@ -16,7 +17,7 @@ export function generateSecret(): string {
 function keyFrom(secretHex: string): Buffer {
   const key = Buffer.from(secretHex, "hex");
   if (key.length !== KEY_BYTES) {
-    throw new Error("geçersiz grup anahtarı");
+    throw new Error(t("geçersiz grup anahtarı"));
   }
   return key;
 }
@@ -33,7 +34,7 @@ export function encrypt(secretHex: string, plain: Buffer): Buffer {
 export function decrypt(secretHex: string, sealed: Buffer): Buffer {
   const key = keyFrom(secretHex);
   if (sealed.length < NONCE_BYTES + TAG_BYTES) {
-    throw new Error("şifreli veri çok kısa");
+    throw new Error(t("şifreli veri çok kısa"));
   }
   const nonce = sealed.subarray(0, NONCE_BYTES);
   const tag = sealed.subarray(sealed.length - TAG_BYTES);

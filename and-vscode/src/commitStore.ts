@@ -1,10 +1,11 @@
 import { readObject, writeObject } from "./objectStore";
 import { Commit, LogGirdisi } from "./types";
+import { t } from "./dil/dil";
 
 export function readCommit(root: string, projeId: string, hash: string): Commit {
   const { tip, payload } = readObject(root, projeId, hash);
   if (tip !== "C".charCodeAt(0)) {
-    throw new Error("beklenmeyen nesne tipi: commit bekleniyordu");
+    throw new Error(t("beklenmeyen nesne tipi: commit bekleniyordu"));
   }
   return JSON.parse(payload.toString("utf8")) as Commit;
 }

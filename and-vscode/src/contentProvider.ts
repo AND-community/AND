@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { readObject } from "./objectStore";
+import { t } from "./dil/dil";
 
 /**
  * "deltax" URI şeması: DeltaX'in içerik-adresli nesne deposundaki bir blob'u
@@ -46,11 +47,11 @@ export class DeltaXContentProvider implements vscode.TextDocumentContentProvider
     try {
       const { payload } = readObject(this.getRoot(), projeId, hash);
       if (isBinary(payload)) {
-        return "(ikili dosya — önizleme desteklenmiyor)";
+        return t("(ikili dosya — önizleme desteklenmiyor)");
       }
       return payload.toString("utf8");
     } catch (err) {
-      return `(nesne okunamadı: ${err instanceof Error ? err.message : String(err)})`;
+      return t("(nesne okunamadı: %s)", err instanceof Error ? err.message : String(err));
     }
   }
 }

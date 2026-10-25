@@ -35,6 +35,7 @@ import {
   push,
   sendInviteResponse,
 } from "./protocol";
+import { t } from "../../dil/dil";
 
 export interface ZarfOrtami {
   /** DeltaX kök dizini (gruplar/, projeler/). */
@@ -118,7 +119,7 @@ async function davetYaDaUyeListesi(o: ZarfOrtami, gonderen: string, z: Envelope,
     mevcut.yoneticiler = dp.yoneticiler;
     mevcut.ad = dp.grup_ad;
     saveGroup(o.root(), mevcut);
-    o.bildir(`"${dp.grup_ad}" grubunun üye listesi güncellendi.`);
+    o.bildir(t("\"%s\" grubunun üye listesi güncellendi.", dp.grup_ad));
     o.gruplarDegisti();
     return;
   }
@@ -153,12 +154,12 @@ async function davetYaniti(o: ZarfOrtami, gonderen: string, z: Envelope, alindi:
   // Yanıt ne olursa olsun davet kullanılmıştır: reddeden biri sonradan aynı davetle "kabul" edemez.
   davetKullanildi(o.defterDosyasi(), z.grup_id, gonderen);
   if (!yp.kabul) {
-    o.bildir(`${yp.uye.ad} "${g.ad}" grubuna davetini reddetti.`);
+    o.bildir(t("%s \"%s\" grubuna davetini reddetti.", yp.uye.ad, g.ad));
     return;
   }
   upsertMember(g, yp.uye);
   saveGroup(o.root(), g);
-  o.bildir(`${yp.uye.ad} "${g.ad}" grubuna katıldı.`);
+  o.bildir(t("%s \"%s\" grubuna katıldı.", yp.uye.ad, g.ad));
   o.gruplarDegisti();
   const client = o.istemci();
   if (client) {
@@ -171,7 +172,7 @@ function pushBildirimi(o: ZarfOrtami, z: Envelope): void {
   if (typeof bp?.dal !== "string" || typeof bp.nesne_sayisi !== "number") {
     return;
   }
-  o.bildir(`Bir üye değişiklik gönderiyor (${bp.dal}, ${bp.nesne_sayisi} nesne); kabul edilince Uzak Dallar'da görünecek.`);
+  o.bildir(t("Bir üye değişiklik gönderiyor (%s, %d nesne); kabul edilince Uzak Dallar'da görünecek.", bp.dal, bp.nesne_sayisi));
 }
 
 async function cekIstegi(o: ZarfOrtami, gonderen: string, z: Envelope, alindi: Date): Promise<void> {
@@ -201,7 +202,7 @@ async function cekIstegi(o: ZarfOrtami, gonderen: string, z: Envelope, alindi: D
   try {
     await push(client, o.root(), g, p, pp.isteyen, pp.bilinen_hash ?? "");
   } catch (err) {
-    o.bildir(`Çek isteği karşılanamadı: ${describeError(err)}`, true);
+    o.bildir(t("Çek isteği karşılanamadı: %s", describeError(err)), true);
   }
 }
 
@@ -219,7 +220,7 @@ async function ayrilma(o: ZarfOrtami, gonderen: string, z: Envelope): Promise<vo
   removeMember(g, gonderen);
   setAdmin(g, ap.uye, false);
   saveGroup(o.root(), g);
-  o.bildir(`${ap.uye.ad} "${g.ad}" grubundan ayrıldı.`);
+  o.bildir(t("%s \"%s\" grubundan ayrıldı.", ap.uye.ad, g.ad));
   o.gruplarDegisti();
   const client = o.istemci();
   if (client) {
@@ -237,7 +238,7 @@ function grupKapatma(o: ZarfOrtami, gonderen: string, z: Envelope): void {
     return;
   }
   deleteGroup(o.root(), g.id);
-  o.bildir(`"${g.ad}" grubu kurucusu tarafından kapatıldı.`, true);
+  o.bildir(t("\"%s\" grubu kurucusu tarafından kapatıldı.", g.ad), true);
   o.gruplarDegisti();
 }
 
@@ -250,7 +251,7 @@ export async function davetiYanitla(o: ZarfOrtami, d: BekleyenDavet, kabul: bool
   const client = o.istemci();
   const ben = await o.ben();
   if (!client || !ben) {
-    throw new Error("AND'a canlı bağlantı yok.");
+    throw new Error(t("AND'a canlı bağlantı yok."));
   }
   let g: Grup | undefined;
   if (kabul) {

@@ -1,10 +1,7 @@
 import * as vscode from "vscode";
 import { SITE_EDIT_SCHEME } from "./siteFileSystem";
 import { SITE_MAX_BODY_BYTES, SITE_MAX_TITLE_BYTES, bodyOverflowOffset, parsePage, utf8Bytes } from "./sitePage";
-
-function formatCount(n: number): string {
-  return n.toLocaleString("tr-TR");
-}
+import { binlik, t } from "../../dil/dil";
 
 /**
  * Açık bir site sayfası editöründe, Eklentiler/site'ın düzenleme formundaki
@@ -58,7 +55,7 @@ export class SiteEditorStatus implements vscode.Disposable {
       found.push(
         new vscode.Diagnostic(
           doc.lineAt(0).range,
-          `Başlık en fazla ${SITE_MAX_TITLE_BYTES} bayt olabilir (şu an ${titleBytes} bayt) — AND bu sayfayı kabul etmez.`,
+          t("Başlık en fazla %d bayt olabilir (şu an %d bayt) — AND bu sayfayı kabul etmez.", SITE_MAX_TITLE_BYTES, titleBytes),
           vscode.DiagnosticSeverity.Error
         )
       );
@@ -68,7 +65,7 @@ export class SiteEditorStatus implements vscode.Disposable {
       found.push(
         new vscode.Diagnostic(
           new vscode.Range(doc.positionAt(overflow), doc.positionAt(text.length)),
-          `Sayfa en fazla ${SITE_MAX_BODY_BYTES} bayt olabilir (şu an ${utf8Bytes(page.body)} bayt) — işaretli kısım sığmıyor.`,
+          t("Sayfa en fazla %d bayt olabilir (şu an %d bayt) — işaretli kısım sığmıyor.", SITE_MAX_BODY_BYTES, utf8Bytes(page.body)),
           vscode.DiagnosticSeverity.Error
         )
       );
@@ -90,11 +87,18 @@ export class SiteEditorStatus implements vscode.Disposable {
     const bodyBytes = utf8Bytes(page.body);
     const over = titleBytes > SITE_MAX_TITLE_BYTES || bodyBytes > SITE_MAX_BODY_BYTES;
     this.item.text =
-      `${over ? "$(error)" : "$(globe)"} başlık ${formatCount(titleBytes)}/${formatCount(SITE_MAX_TITLE_BYTES)}` +
-      ` · gövde ${formatCount(bodyBytes)}/${formatCount(SITE_MAX_BODY_BYTES)} bayt`;
+      `${over ? "$(error)" : "$(globe)"} ` +
+      t(
+        "başlık %s/%s · gövde %s/%s bayt",
+        binlik(titleBytes),
+        binlik(SITE_MAX_TITLE_BYTES),
+        binlik(bodyBytes),
+        binlik(SITE_MAX_BODY_BYTES)
+      );
     this.item.tooltip =
-      "AND kişisel site sayfası — kaydetmek (Ctrl+S) sayfayı ağa yayınlar. Sınırlar AND'ın kendisiyle aynıdır " +
-      "ve karakter değil BAYT sayar (ğ, ş gibi Türkçe karakterler 2 bayttır).";
+      t(
+        "AND kişisel site sayfası — kaydetmek (Ctrl+S) sayfayı ağa yayınlar. Sınırlar AND'ın kendisiyle aynıdır ve karakter değil BAYT sayar (ğ, ş gibi Türkçe karakterler 2 bayttır)."
+      );
     this.item.backgroundColor = over ? new vscode.ThemeColor("statusBarItem.errorBackground") : undefined;
     this.item.show();
   }

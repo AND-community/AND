@@ -3,6 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import JSZip from "jszip";
 import { projeKokDizini } from "./paths";
+import { t } from "./dil/dil";
 
 // export.go'daki projeDisaAktar'ın TypeScript karşılığı: proje kök dizinini
 // (meta.json, nesneler/, calisma/) "<proje adı>-<zaman>.zip" olarak paketler.
@@ -63,10 +64,10 @@ export async function exportProject(
 ): Promise<string> {
   const kok = projeKokDizini(root, projeId);
   if (!fs.existsSync(kok)) {
-    throw new Error(`proje bulunamadı: ${kok}`);
+    throw new Error(t("proje bulunamadı: %s", kok));
   }
   if (!hedefKlasor.trim()) {
-    throw new Error("hedef klasör boş olamaz");
+    throw new Error(t("hedef klasör boş olamaz"));
   }
   fs.mkdirSync(hedefKlasor, { recursive: true, mode: 0o700 });
 

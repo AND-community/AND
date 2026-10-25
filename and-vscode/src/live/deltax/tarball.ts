@@ -1,4 +1,5 @@
 import * as zlib from "zlib";
+import { t } from "../../dil/dil";
 
 // Bağımlılıksız, minimal USTAR tar okuyucu/yazıcı + gzip (Node'un yerleşik
 // zlib'i Go'nun compress/gzip'iyle tamamen uyumludur). Yalnızca sync.go'nun
@@ -16,7 +17,7 @@ export interface TarEntry {
 function padOctal(value: number, len: number): Buffer {
   const digits = value.toString(8).padStart(len - 1, "0");
   if (digits.length > len - 1) {
-    throw new Error(`tar sayısal alanı taştı: ${value}`);
+    throw new Error(t("tar sayısal alanı taştı: %d", value));
   }
   const buf = Buffer.alloc(len, 0);
   buf.write(digits, 0, "ascii");
@@ -35,7 +36,7 @@ function formatChecksum(sum: number): Buffer {
 function buildHeader(name: string, size: number, mtimeSec: number): Buffer {
   const nameBytes = Buffer.from(name, "utf8");
   if (nameBytes.length > 100) {
-    throw new Error(`tar girdi adı çok uzun (>100 bayt): ${name}`);
+    throw new Error(t("tar girdi adı çok uzun (>100 bayt): %s", name));
   }
   const header = Buffer.alloc(BLOCK, 0);
   nameBytes.copy(header, 0);
@@ -75,7 +76,7 @@ export function buildTarGz(entries: TarEntry[]): Buffer {
 function readOctalField(header: Buffer, start: number, len: number): number {
   const raw = header.subarray(start, start + len);
   if (raw.length > 0 && (raw[0] & 0x80) !== 0) {
-    throw new Error("desteklenmeyen tar sayısal biçimi (base-256)");
+    throw new Error(t("desteklenmeyen tar sayısal biçimi (base-256)"));
   }
   let s = raw.toString("ascii");
   const nulIdx = s.indexOf("\0");
@@ -110,7 +111,7 @@ export function parseTarGz(buf: Buffer): TarEntry[] {
       sum += i >= 148 && i < 156 ? 0x20 : header[i];
     }
     if (sum !== storedChecksum) {
-      throw new Error("bozuk tar başlığı (checksum uyuşmuyor)");
+      throw new Error(t("bozuk tar başlığı (checksum uyuşmuyor)"));
     }
     const name = readName(header);
     const size = readOctalField(header, 124, 12);
@@ -118,7 +119,7 @@ export function parseTarGz(buf: Buffer): TarEntry[] {
     offset += BLOCK;
     const data = tar.subarray(offset, offset + size);
     if (data.length !== size) {
-      throw new Error("beklenmeyen tar sonu");
+      throw new Error(t("beklenmeyen tar sonu"));
     }
     offset += Math.ceil(size / BLOCK) * BLOCK;
     if (typeflag === 0x30 || typeflag === 0) {

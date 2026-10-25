@@ -7,6 +7,7 @@ import { MAKINE_ONEKI } from "../dmCore";
 import { SendDMReq, SendFileReq } from "../liveTypes";
 import { encrypt } from "./crypto";
 import { buildPack, packFileName } from "./packSync";
+import { t } from "../../dil/dil";
 
 // sync.go'nun "grup üyeleri arasında merkezi ağdan bağımsız özel
 // senkronizasyon" protokolünün (zarf + davet/roster/push/pull mesajları)
@@ -184,7 +185,7 @@ export async function push(
 ): Promise<number> {
   const head = p.dallar[p.aktif_dal];
   if (!head) {
-    throw new Error("önce en az bir kayıt (commit) oluşturmalısın");
+    throw new Error(t("önce en az bir kayıt (commit) oluşturmalısın"));
   }
   const known = new Set<string>();
   if (knownHeadAtTarget) {
@@ -195,7 +196,7 @@ export async function push(
   }
   const { data, objectCount } = buildPack(root, p.id, p.aktif_dal, head, known);
   if (objectCount === 0) {
-    throw new Error(`${targetMember.ad} zaten güncel`);
+    throw new Error(t("%s zaten güncel", targetMember.ad));
   }
   const sealed = encrypt(g.sir, data);
 

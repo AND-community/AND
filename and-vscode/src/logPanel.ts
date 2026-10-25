@@ -5,6 +5,7 @@ import { makeBlobUri } from "./contentProvider";
 import { trackDisposable } from "./disposableBag";
 import { diffTrees, treeMap } from "./treeStore";
 import { ChangeKind, DeltaXRepository } from "./scmController";
+import { betikDegeri, etkin, ham, t } from "./dil/dil";
 
 interface DiffRequestMsg {
   type: "requestDiff";
@@ -60,7 +61,7 @@ export function showLogPanel(repo: DeltaXRepository, context: vscode.ExtensionCo
 
   const panel = vscode.window.createWebviewPanel(
     "deltaxLog",
-    `Günlük: ${repo.proje.ad}`,
+    t("Günlük: %s", repo.proje.ad),
     vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true }
   );
@@ -111,6 +112,14 @@ export function refreshLogPanel(repo: DeltaXRepository): void {
   }
 }
 
+/** Dil değişti: açık günlük panelleri etkin dilde yeniden çizilir. */
+export function redrawLogPanels(): void {
+  for (const entry of panels.values()) {
+    entry.panel.title = t("Günlük: %s", entry.repo.proje.ad);
+    renderLogInto(entry.panel, entry.repo);
+  }
+}
+
 async function openFileAtCommit(
   repo: DeltaXRepository,
   yol: string,
@@ -135,7 +144,7 @@ async function openFileAtCommit(
     return;
   }
   if (kind === "silinen" && parentEntry) {
-    const before = makeBlobUri(repo.proje.id, yol, parentEntry.hash, `${yol} (silinen — ${shortHash(parentHash)})`);
+    const before = makeBlobUri(repo.proje.id, yol, parentEntry.hash, `${yol} (${t("silinen — %s", shortHash(parentHash))})`);
     await vscode.commands.executeCommand("vscode.open", before, { preview: true });
   }
 }
@@ -170,13 +179,13 @@ function renderHtml(webview: vscode.Webview, projeAd: string, rows: LogRow[]): s
         <td class="ts">${escapeHtml(formatTs(r.ts))}</td>
       </tr>
       <tr class="detail-row" data-hash="${r.hash}" style="display:none">
-        <td colspan="4" class="detail-cell"><div class="detail-body">Yükleniyor…</div></td>
+        <td colspan="4" class="detail-cell"><div class="detail-body">${escapeHtml(t("Yükleniyor…"))}</div></td>
       </tr>`
     )
     .join("\n");
 
   return `<!doctype html>
-<html lang="tr">
+<html lang="${etkin()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -202,12 +211,12 @@ function renderHtml(webview: vscode.Webview, projeAd: string, rows: LogRow[]): s
 </style>
 </head>
 <body>
-  <h2>${escapeHtml(projeAd)} — Commit Günlüğü</h2>
-  <input id="search" type="text" placeholder="Mesaj, yazar ya da hash'e göre ara…" />
+  <h2>${escapeHtml(t("%s — Commit Günlüğü", projeAd))}</h2>
+  <input id="search" type="text" placeholder="${escapeHtml(t("Mesaj, yazar ya da hash'e göre ara…"))}" />
   <table>
-    <thead><tr><td><b>Hash</b></td><td><b>Mesaj</b></td><td><b>Yazar</b></td><td><b>Zaman</b></td></tr></thead>
+    <thead><tr><td><b>${escapeHtml(t("Hash"))}</b></td><td><b>${escapeHtml(t("Mesaj"))}</b></td><td><b>${escapeHtml(t("Yazar"))}</b></td><td><b>${escapeHtml(t("Zaman"))}</b></td></tr></thead>
     <tbody id="rows">
-      ${rowsHtml || '<tr><td colspan="4" class="empty">Henüz commit yok.</td></tr>'}
+      ${rowsHtml || `<tr><td colspan="4" class="empty">${escapeHtml(t("Henüz commit yok."))}</td></tr>`}
     </tbody>
   </table>
 <script nonce="${nonce}">
@@ -243,7 +252,7 @@ function renderHtml(webview: vscode.Webview, projeAd: string, rows: LogRow[]): s
     if (!detail) return;
     const body = detail.querySelector('.detail-body');
     if (msg.type === 'diffError') {
-      body.textContent = 'Fark hesaplanamadı: ' + msg.message;
+      body.textContent = ${betikDegeri(ham("Fark hesaplanamadı: %s"))}.replace('%s', () => msg.message);
       return;
     }
     if (msg.type === 'diffResult') {
@@ -254,7 +263,7 @@ function renderHtml(webview: vscode.Webview, projeAd: string, rows: LogRow[]): s
       for (const yol of msg.durum.degisen) list.push({ yol, kind: 'degisen', label: '~ ' + yol });
       for (const yol of msg.durum.silinen) list.push({ yol, kind: 'silinen', label: '- ' + yol });
       if (list.length === 0) {
-        body.innerHTML = '<span class="empty">Değişiklik yok.</span>';
+        body.innerHTML = '<span class="empty">' + ${betikDegeri(escapeHtml(t("Değişiklik yok.")))} + '</span>';
         return;
       }
       const ul = document.createElement('ul');
@@ -282,5 +291,5 @@ function formatTs(ts: string): string {
   if (isNaN(d.getTime())) {
     return ts;
   }
-  return d.toLocaleString();
+  return d.toLocaleString(etkin());
 }

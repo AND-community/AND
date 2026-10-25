@@ -1,0 +1,1308 @@
+{
+  "Devam Et": {"en": "Continue", "de": "Fortfahren", "es": "Continuar", "fr": "Continuer", "ru": "Продолжить"},
+  "Dal değiştirme, çalışma klasöründeki TÜM içeriği siler ve hedef dalın kaydedilmiş sürümüyle değiştirir (.projeagignore ile hariç tutulan ya da hiç izlenmeyen dosyalar dahil). Bu, DeltaX TUI'sinin kendi davranışıyla birebir aynıdır. Devam edilsin mi?": {
+    "en": "Switching branches deletes EVERYTHING in the working folder and replaces it with the committed version of the target branch (including files excluded via .projeagignore or never tracked). This matches the DeltaX TUI's own behavior exactly. Continue?",
+    "de": "Beim Branch-Wechsel wird der GESAMTE Inhalt des Arbeitsordners gelöscht und durch den committeten Stand des Ziel-Branches ersetzt (auch per .projeagignore ausgeschlossene oder nie verfolgte Dateien). Das entspricht genau dem Verhalten der DeltaX-TUI. Fortfahren?",
+    "es": "Cambiar de rama borra TODO el contenido de la carpeta de trabajo y lo sustituye por la versión guardada de la rama de destino (incluidos los archivos excluidos con .projeagignore o nunca seguidos). Es exactamente el mismo comportamiento que la TUI de DeltaX. ¿Continuar?",
+    "fr": "Changer de branche supprime TOUT le contenu du dossier de travail et le remplace par la version commitée de la branche cible (y compris les fichiers exclus via .projeagignore ou jamais suivis). C'est exactement le comportement de la TUI DeltaX. Continuer ?",
+    "ru": "Смена ветки удаляет ВСЁ содержимое рабочей папки и заменяет его закоммиченной версией целевой ветки (включая файлы, исключённые через .projeagignore или никогда не отслеживавшиеся). Так же ведёт себя и TUI DeltaX. Продолжить?"
+  },
+  "Az önce yeni değişiklikler tespit edildi — %s güvenlik için iptal edildi. Değişiklikleri kaydedip tekrar deneyin.": {
+    "en": "New changes were just detected — %s was cancelled for safety. Commit your changes and try again.",
+    "de": "Gerade wurden neue Änderungen erkannt — %s wurde zur Sicherheit abgebrochen. Committe die Änderungen und versuche es erneut.",
+    "es": "Se acaban de detectar cambios nuevos: %s se canceló por seguridad. Haz commit de los cambios y vuelve a intentarlo.",
+    "fr": "De nouvelles modifications viennent d'être détectées — opération « %s » annulée par sécurité. Commitez les modifications puis réessayez.",
+    "ru": "Только что обнаружены новые изменения — операция «%s» отменена ради безопасности. Закоммитьте изменения и повторите попытку."
+  },
+  "Bu projede hiç dal yok.": {
+    "en": "This project has no branches.",
+    "de": "Dieses Projekt hat keine Branches.",
+    "es": "Este proyecto no tiene ramas.",
+    "fr": "Ce projet n'a aucune branche.",
+    "ru": "В этом проекте нет веток."
+  },
+  "geçerli dal": {"en": "current branch", "de": "aktueller Branch", "es": "rama actual", "fr": "branche actuelle", "ru": "текущая ветка"},
+  "Geçiş yapılacak dalı seçin": {
+    "en": "Select the branch to switch to",
+    "de": "Branch auswählen, zu dem gewechselt werden soll",
+    "es": "Elige la rama a la que cambiar",
+    "fr": "Choisissez la branche vers laquelle basculer",
+    "ru": "Выберите ветку для переключения"
+  },
+  "Çalışma klasöründe kaydedilmemiş değişiklikler var. Önce Kaydet (Commit) yapın, sonra dal değiştirin.": {
+    "en": "The working folder has uncommitted changes. Commit first, then switch branches.",
+    "de": "Im Arbeitsordner gibt es nicht committete Änderungen. Committe zuerst und wechsle dann den Branch.",
+    "es": "La carpeta de trabajo tiene cambios sin guardar. Haz commit primero y luego cambia de rama.",
+    "fr": "Le dossier de travail contient des modifications non commitées. Commitez d'abord, puis changez de branche.",
+    "ru": "В рабочей папке есть незакоммиченные изменения. Сначала сделайте коммит, затем смените ветку."
+  },
+  "dal değiştirme": {"en": "the branch switch", "de": "der Branch-Wechsel", "es": "el cambio de rama", "fr": "changement de branche", "ru": "смена ветки"},
+  "Dal değiştirilemedi: %s": {
+    "en": "Could not switch branch: %s",
+    "de": "Branch konnte nicht gewechselt werden: %s",
+    "es": "No se pudo cambiar de rama: %s",
+    "fr": "Impossible de changer de branche : %s",
+    "ru": "Не удалось переключить ветку: %s"
+  },
+  "Dal değiştirildi: %s": {"en": "Switched branch: %s", "de": "Branch gewechselt: %s", "es": "Rama cambiada: %s", "fr": "Branche changée : %s", "ru": "Ветка переключена: %s"},
+  "Yeni dal adı": {"en": "New branch name", "de": "Name des neuen Branches", "es": "Nombre de la nueva rama", "fr": "Nom de la nouvelle branche", "ru": "Имя новой ветки"},
+  "Dal adı boş olamaz": {
+    "en": "Branch name cannot be empty",
+    "de": "Der Branch-Name darf nicht leer sein",
+    "es": "El nombre de la rama no puede estar vacío",
+    "fr": "Le nom de la branche ne peut pas être vide",
+    "ru": "Имя ветки не может быть пустым"
+  },
+  "Bu isimde bir dal zaten var": {
+    "en": "A branch with this name already exists",
+    "de": "Ein Branch mit diesem Namen existiert bereits",
+    "es": "Ya existe una rama con este nombre",
+    "fr": "Une branche portant ce nom existe déjà",
+    "ru": "Ветка с таким именем уже существует"
+  },
+  "Dal oluşturuldu: %s (henüz geçiş yapılmadı)": {
+    "en": "Branch created: %s (not switched to yet)",
+    "de": "Branch erstellt: %s (noch nicht gewechselt)",
+    "es": "Rama creada: %s (aún no se ha cambiado a ella)",
+    "fr": "Branche créée : %s (pas encore active)",
+    "ru": "Ветка создана: %s (переключение ещё не выполнено)"
+  },
+  "Bilinen bir uzak dal ucu yok. Önce AND TUI'sinden Gönder/Çek ile senkronize edin.": {
+    "en": "No known remote branch tips. Sync first with Push/Pull from the AND TUI.",
+    "de": "Keine bekannten Stände entfernter Branches. Synchronisiere zuerst per Push/Pull in der AND-TUI.",
+    "es": "No hay puntas de ramas remotas conocidas. Sincroniza primero con Enviar/Pull desde la TUI de AND.",
+    "fr": "Aucune pointe de branche distante connue. Synchronisez d'abord avec Envoyer/Pull depuis la TUI AND.",
+    "ru": "Нет известных вершин удалённых веток. Сначала синхронизируйтесь через Push/Pull в TUI AND."
+  },
+  "Birleştirilecek uzak dal ucunu seçin": {
+    "en": "Select the remote branch tip to merge",
+    "de": "Stand des entfernten Branches zum Zusammenführen auswählen",
+    "es": "Elige la punta de rama remota que fusionar",
+    "fr": "Choisissez la pointe de branche distante à fusionner",
+    "ru": "Выберите вершину удалённой ветки для слияния"
+  },
+  "Önce mevcut değişiklikleri kaydedin.": {
+    "en": "Commit your current changes first.",
+    "de": "Committe zuerst die aktuellen Änderungen.",
+    "es": "Primero haz commit de los cambios actuales.",
+    "fr": "Commitez d'abord les modifications en cours.",
+    "ru": "Сначала закоммитьте текущие изменения."
+  },
+  "Uzak commit bulunamadı — önce AND TUI'sinden Gönder/Çek ile nesneleri alın.": {
+    "en": "Remote commit not found — fetch the objects first with Push/Pull from the AND TUI.",
+    "de": "Entfernter Commit nicht gefunden — hol dir zuerst die Objekte per Push/Pull in der AND-TUI.",
+    "es": "No se encontró el commit remoto: obtén primero los objetos con Enviar/Pull desde la TUI de AND.",
+    "fr": "Commit distant introuvable — récupérez d'abord les objets avec Envoyer/Pull depuis la TUI AND.",
+    "ru": "Удалённый коммит не найден — сначала получите объекты через Push/Pull в TUI AND."
+  },
+  "Zaten güncel.": {"en": "Already up to date.", "de": "Bereits aktuell.", "es": "Ya está actualizado.", "fr": "Déjà à jour.", "ru": "Уже актуально."},
+  "birleştirme": {"en": "the merge", "de": "der Merge", "es": "la fusión", "fr": "fusion", "ru": "слияние"},
+  "Birleştirme (fast-forward) başarısız: %s": {
+    "en": "Merge (fast-forward) failed: %s",
+    "de": "Merge (Fast-Forward) fehlgeschlagen: %s",
+    "es": "La fusión (fast-forward) falló: %s",
+    "fr": "Échec de la fusion (fast-forward) : %s",
+    "ru": "Слияние (fast-forward) не удалось: %s"
+  },
+  "İleri sarma (fast-forward) tamamlandı: %s": {
+    "en": "Fast-forward complete: %s",
+    "de": "Fast-Forward abgeschlossen: %s",
+    "es": "Avance rápido (fast-forward) completado: %s",
+    "fr": "Avance rapide (fast-forward) terminée : %s",
+    "ru": "Перемотка вперёд (fast-forward) завершена: %s"
+  },
+  "Birleştirme uygulanamadı: %s": {
+    "en": "Could not apply the merge: %s",
+    "de": "Merge konnte nicht angewendet werden: %s",
+    "es": "No se pudo aplicar la fusión: %s",
+    "fr": "Impossible d'appliquer la fusion : %s",
+    "ru": "Не удалось применить слияние: %s"
+  },
+  "Çakışan Dosyaları Aç": {
+    "en": "Open Conflicting Files",
+    "de": "Dateien mit Konflikten öffnen",
+    "es": "Abrir archivos en conflicto",
+    "fr": "Ouvrir les fichiers en conflit",
+    "ru": "Открыть конфликтующие файлы"
+  },
+  "Birleştirme çakışmaları var (%d dosya). Dosyaları düzenleyip <<<<<<< / ======= / >>>>>>> işaretlerini kaldırdıktan sonra Kaydet ile tamamlayın.": {
+    "en": "The merge has conflicts (%d file). Edit the file, remove the <<<<<<< / ======= / >>>>>>> markers, then finish with Commit.|The merge has conflicts (%d files). Edit the files, remove the <<<<<<< / ======= / >>>>>>> markers, then finish with Commit.",
+    "de": "Der Merge hat Konflikte (%d Datei). Bearbeite die Datei, entferne die Markierungen <<<<<<< / ======= / >>>>>>> und schließe mit Commit ab.|Der Merge hat Konflikte (%d Dateien). Bearbeite die Dateien, entferne die Markierungen <<<<<<< / ======= / >>>>>>> und schließe mit Commit ab.",
+    "es": "La fusión tiene conflictos (%d archivo). Edita el archivo, quita las marcas <<<<<<< / ======= / >>>>>>> y termina con Commit.|La fusión tiene conflictos (%d archivos). Edita los archivos, quita las marcas <<<<<<< / ======= / >>>>>>> y termina con Commit.",
+    "fr": "La fusion comporte des conflits (%d fichier). Modifiez le fichier, retirez les marqueurs <<<<<<< / ======= / >>>>>>> puis terminez avec Commit.|La fusion comporte des conflits (%d fichiers). Modifiez les fichiers, retirez les marqueurs <<<<<<< / ======= / >>>>>>> puis terminez avec Commit.",
+    "ru": "При слиянии возникли конфликты (%d файл). Исправьте файл, удалите метки <<<<<<< / ======= / >>>>>>> и завершите коммитом.|При слиянии возникли конфликты (%d файла). Исправьте файлы, удалите метки <<<<<<< / ======= / >>>>>>> и завершите коммитом.|При слиянии возникли конфликты (%d файлов). Исправьте файлы, удалите метки <<<<<<< / ======= / >>>>>>> и завершите коммитом."
+  },
+  "Birleştirme: %s": {"en": "Merge: %s", "de": "Merge: %s", "es": "Fusión: %s", "fr": "Fusion : %s", "ru": "Слияние: %s"},
+  "Birleştirme tamamlandı: %s (%d dosya boyut sınırı nedeniyle atlandı)": {
+    "en": "Merge complete: %s (%d file skipped due to the size limit)|Merge complete: %s (%d files skipped due to the size limit)",
+    "de": "Merge abgeschlossen: %s (%d Datei wegen der Größenbegrenzung übersprungen)|Merge abgeschlossen: %s (%d Dateien wegen der Größenbegrenzung übersprungen)",
+    "es": "Fusión completada: %s (%d archivo omitido por el límite de tamaño)|Fusión completada: %s (%d archivos omitidos por el límite de tamaño)",
+    "fr": "Fusion terminée : %s (%d fichier ignoré à cause de la limite de taille)|Fusion terminée : %s (%d fichiers ignorés à cause de la limite de taille)",
+    "ru": "Слияние завершено: %s (%d файл пропущен из-за ограничения размера)|Слияние завершено: %s (%d файла пропущено из-за ограничения размера)|Слияние завершено: %s (%d файлов пропущено из-за ограничения размера)"
+  },
+  "Birleştirme tamamlandı: %s": {"en": "Merge complete: %s", "de": "Merge abgeschlossen: %s", "es": "Fusión completada: %s", "fr": "Fusion terminée : %s", "ru": "Слияние завершено: %s"},
+  "Aktif bir DeltaX projesi yok. Önce Gruplar ve Projeler görünümünden bir proje açın.": {
+    "en": "No active DeltaX project. Open a project from the Groups and Projects view first.",
+    "de": "Kein aktives DeltaX-Projekt. Öffne zuerst ein Projekt in der Ansicht „Gruppen und Projekte“.",
+    "es": "No hay ningún proyecto de DeltaX activo. Abre primero un proyecto desde la vista Grupos y proyectos.",
+    "fr": "Aucun projet DeltaX actif. Ouvrez d'abord un projet depuis la vue Groupes et projets.",
+    "ru": "Нет активного проекта DeltaX. Сначала откройте проект в представлении «Группы и проекты»."
+  },
+  "Henüz bir DeltaX grubun yok. Etkinlik çubuğundaki DeltaX görünümünün başlığından \"Yeni Grup\" ile oluşturabilirsin.": {
+    "en": "You don't have a DeltaX group yet. You can create one with \"New Group\" in the title of the DeltaX view in the Activity Bar.",
+    "de": "Du hast noch keine DeltaX-Gruppe. Du kannst eine über „Neue Gruppe“ im Titel der DeltaX-Ansicht in der Aktivitätsleiste erstellen.",
+    "es": "Aún no tienes ningún grupo de DeltaX. Puedes crear uno con \"Nuevo grupo\" en el título de la vista DeltaX de la barra de actividades.",
+    "fr": "Vous n'avez pas encore de groupe DeltaX. Vous pouvez en créer un avec « Nouveau groupe » dans le titre de la vue DeltaX de la barre d'activité.",
+    "ru": "У вас пока нет группы DeltaX. Её можно создать кнопкой «Новая группа» в заголовке представления DeltaX на панели действий."
+  },
+  "%d üye": {"en": "%d member|%d members", "de": "%d Mitglied|%d Mitglieder", "es": "%d miembro|%d miembros", "fr": "%d membre|%d membres", "ru": "%d участник|%d участника|%d участников"},
+  "Grup seçin": {"en": "Select a group", "de": "Gruppe auswählen", "es": "Elige un grupo", "fr": "Choisissez un groupe", "ru": "Выберите группу"},
+  "Açılacak projeyi seçin": {
+    "en": "Select the project to open",
+    "de": "Zu öffnendes Projekt auswählen",
+    "es": "Elige el proyecto que abrir",
+    "fr": "Choisissez le projet à ouvrir",
+    "ru": "Выберите проект для открытия"
+  },
+  "\"%s\" grubunda yeni proje adı": {
+    "en": "Name of the new project in group \"%s\"",
+    "de": "Name des neuen Projekts in der Gruppe „%s“",
+    "es": "Nombre del nuevo proyecto en el grupo \"%s\"",
+    "fr": "Nom du nouveau projet dans le groupe « %s »",
+    "ru": "Имя нового проекта в группе «%s»"
+  },
+  "Proje adı boş olamaz": {
+    "en": "Project name cannot be empty",
+    "de": "Der Projektname darf nicht leer sein",
+    "es": "El nombre del proyecto no puede estar vacío",
+    "fr": "Le nom du projet ne peut pas être vide",
+    "ru": "Имя проекта не может быть пустым"
+  },
+  "Aç": {"en": "Open", "de": "Öffnen", "es": "Abrir", "fr": "Ouvrir", "ru": "Открыть"},
+  "Proje oluşturuldu: %s": {"en": "Project created: %s", "de": "Projekt erstellt: %s", "es": "Proyecto creado: %s", "fr": "Projet créé : %s", "ru": "Проект создан: %s"},
+  "Kaydedildi: %s (%d dosya boyut sınırı nedeniyle atlandı)": {
+    "en": "Committed: %s (%d file skipped due to the size limit)|Committed: %s (%d files skipped due to the size limit)",
+    "de": "Committet: %s (%d Datei wegen der Größenbegrenzung übersprungen)|Committet: %s (%d Dateien wegen der Größenbegrenzung übersprungen)",
+    "es": "Commit hecho: %s (%d archivo omitido por el límite de tamaño)|Commit hecho: %s (%d archivos omitidos por el límite de tamaño)",
+    "fr": "Commit effectué : %s (%d fichier ignoré à cause de la limite de taille)|Commit effectué : %s (%d fichiers ignorés à cause de la limite de taille)",
+    "ru": "Закоммичено: %s (%d файл пропущен из-за ограничения размера)|Закоммичено: %s (%d файла пропущено из-за ограничения размера)|Закоммичено: %s (%d файлов пропущено из-за ограничения размера)"
+  },
+  "Kaydedildi: %s": {"en": "Committed: %s", "de": "Committet: %s", "es": "Commit hecho: %s", "fr": "Commit effectué : %s", "ru": "Закоммичено: %s"},
+  "Dışa aktarılacak bir proje seçilmedi.": {
+    "en": "No project selected to export.",
+    "de": "Kein Projekt zum Exportieren ausgewählt.",
+    "es": "No se ha elegido ningún proyecto para exportar.",
+    "fr": "Aucun projet sélectionné pour l'exportation.",
+    "ru": "Не выбран проект для экспорта."
+  },
+  "Bu klasöre dışa aktar": {"en": "Export to this folder", "de": "In diesen Ordner exportieren", "es": "Exportar a esta carpeta", "fr": "Exporter dans ce dossier", "ru": "Экспортировать в эту папку"},
+  "Klasörde Göster": {"en": "Show in Folder", "de": "Im Ordner anzeigen", "es": "Mostrar en la carpeta", "fr": "Afficher dans le dossier", "ru": "Показать в папке"},
+  "Dışa aktarıldı: %s": {"en": "Exported: %s", "de": "Exportiert: %s", "es": "Exportado: %s", "fr": "Exporté : %s", "ru": "Экспортировано: %s"},
+  "Dışa aktarma başarısız: %s": {"en": "Export failed: %s", "de": "Export fehlgeschlagen: %s", "es": "La exportación falló: %s", "fr": "Échec de l'exportation : %s", "ru": "Экспорт не удался: %s"},
+  "Her satıra bir desen (ör. node_modules, *.log)": {
+    "en": "One pattern per line (e.g. node_modules, *.log)",
+    "de": "Ein Muster pro Zeile (z. B. node_modules, *.log)",
+    "es": "Un patrón por línea (p. ej., node_modules, *.log)",
+    "fr": "Un motif par ligne (p. ex. node_modules, *.log)",
+    "ru": "По одному шаблону на строку (например, node_modules, *.log)"
+  },
+  "beklenmeyen nesne tipi: commit bekleniyordu": {
+    "en": "unexpected object type: expected a commit",
+    "de": "unerwarteter Objekttyp: Commit erwartet",
+    "es": "tipo de objeto inesperado: se esperaba un commit",
+    "fr": "type d'objet inattendu : commit attendu",
+    "ru": "неожиданный тип объекта: ожидался коммит"
+  },
+  "(ikili dosya — önizleme desteklenmiyor)": {
+    "en": "(binary file — preview not supported)",
+    "de": "(Binärdatei — keine Vorschau möglich)",
+    "es": "(archivo binario: vista previa no disponible)",
+    "fr": "(fichier binaire — aperçu non pris en charge)",
+    "ru": "(двоичный файл — предпросмотр не поддерживается)"
+  },
+  "(nesne okunamadı: %s)": {
+    "en": "(could not read object: %s)",
+    "de": "(Objekt konnte nicht gelesen werden: %s)",
+    "es": "(no se pudo leer el objeto: %s)",
+    "fr": "(impossible de lire l'objet : %s)",
+    "ru": "(не удалось прочитать объект: %s)"
+  },
+  "proje bulunamadı: %s": {"en": "project not found: %s", "de": "Projekt nicht gefunden: %s", "es": "proyecto no encontrado: %s", "fr": "projet introuvable : %s", "ru": "проект не найден: %s"},
+  "hedef klasör boş olamaz": {
+    "en": "the target folder cannot be empty",
+    "de": "Zielordner darf nicht leer sein",
+    "es": "la carpeta de destino no puede estar vacía",
+    "fr": "le dossier cible ne peut pas être vide",
+    "ru": "целевая папка не может быть пустой"
+  },
+  "AND — %d yeni doğrudan mesaj (%s)": {
+    "en": "AND — %d new direct message (%s)|AND — %d new direct messages (%s)",
+    "de": "AND — %d neue Direktnachricht (%s)|AND — %d neue Direktnachrichten (%s)",
+    "es": "AND — %d mensaje directo nuevo (%s)|AND — %d mensajes directos nuevos (%s)",
+    "fr": "AND — %d nouveau message direct (%s)|AND — %d nouveaux messages directs (%s)",
+    "ru": "AND — %d новое личное сообщение (%s)|AND — %d новых личных сообщения (%s)|AND — %d новых личных сообщений (%s)"
+  },
+  "Görüntüle": {"en": "View", "de": "Anzeigen", "es": "Ver", "fr": "Afficher", "ru": "Просмотреть"},
+  "Kabul Et": {"en": "Accept", "de": "Annehmen", "es": "Aceptar", "fr": "Accepter", "ru": "Принять"},
+  "Reddet": {"en": "Reject", "de": "Ablehnen", "es": "Rechazar", "fr": "Refuser", "ru": "Отклонить"},
+  "AND — %s bir dosya göndermek istiyor: %s (%s KB)": {
+    "en": "AND — %s wants to send you a file: %s (%s KB)",
+    "de": "AND — %s möchte dir eine Datei senden: %s (%s KB)",
+    "es": "AND — %s quiere enviarte un archivo: %s (%s KB)",
+    "fr": "AND — %s veut vous envoyer un fichier : %s (%s Ko)",
+    "ru": "AND — %s хочет отправить вам файл: %s (%s КБ)"
+  },
+  "AND: bağlı": {"en": "AND: connected", "de": "AND: verbunden", "es": "AND: conectado", "fr": "AND : connecté", "ru": "AND: подключено"},
+  "AND: bağlı değil": {"en": "AND: not connected", "de": "AND: nicht verbunden", "es": "AND: no conectado", "fr": "AND : non connecté", "ru": "AND: не подключено"},
+  "AND'a canlı bağlısınız — Forum/DM/Sohbet/Ağ paneli için tıklayın": {
+    "en": "Live connection to AND — click for the Forum/DM/Chat/Network panel",
+    "de": "Live mit AND verbunden — klicken für das Forum/DM/Chat/Netzwerk-Panel",
+    "es": "Conectado en vivo a AND: haz clic para abrir el panel Foro/MD/Chat/Red",
+    "fr": "Connecté en direct à AND — cliquez pour le panneau Forum/MP/Chat/Réseau",
+    "ru": "Подключено к AND — нажмите, чтобы открыть панель «Форум/ЛС/Чат/Сеть»"
+  },
+  "AND kapalı ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamış — canlı panel için tıklayın": {
+    "en": "AND is closed or AND_ENABLE_EXTERNAL_API=1 is not set — click for the live panel",
+    "de": "AND ist geschlossen oder AND_ENABLE_EXTERNAL_API=1 ist nicht gesetzt — klicken für das Live-Panel",
+    "es": "AND está cerrado o no se ha establecido AND_ENABLE_EXTERNAL_API=1: haz clic para abrir el panel en vivo",
+    "fr": "AND est fermé ou AND_ENABLE_EXTERNAL_API=1 n'est pas défini — cliquez pour le panneau en direct",
+    "ru": "AND закрыт или не задан AND_ENABLE_EXTERNAL_API=1 — нажмите, чтобы открыть живую панель"
+  },
+  "(birleştiriliyor)": {"en": "(merging)", "de": "(Merge läuft)", "es": "(fusionando)", "fr": "(fusion en cours)", "ru": "(идёт слияние)"},
+  "DeltaX proje: %s — dal değiştirmek için tıklayın": {
+    "en": "DeltaX project: %s — click to switch branch",
+    "de": "DeltaX-Projekt: %s — klicken, um den Branch zu wechseln",
+    "es": "Proyecto DeltaX: %s — haz clic para cambiar de rama",
+    "fr": "Projet DeltaX : %s — cliquez pour changer de branche",
+    "ru": "Проект DeltaX: %s — нажмите, чтобы сменить ветку"
+  },
+  "Kurucu: %s": {"en": "Founder: %s", "de": "Gründer: %s", "es": "Fundador: %s", "fr": "Fondateur : %s", "ru": "Основатель: %s"},
+  "Şu anda VS Code'da açık": {
+    "en": "Currently open in VS Code",
+    "de": "Derzeit in VS Code geöffnet",
+    "es": "Abierto ahora en VS Code",
+    "fr": "Actuellement ouvert dans VS Code",
+    "ru": "Сейчас открыт в VS Code"
+  },
+  "Açmak için tıklayın": {"en": "Click to open", "de": "Zum Öffnen klicken", "es": "Haz clic para abrir", "fr": "Cliquez pour ouvrir", "ru": "Нажмите, чтобы открыть"},
+  "Projeyi Aç": {"en": "Open Project", "de": "Projekt öffnen", "es": "Abrir proyecto", "fr": "Ouvrir le projet", "ru": "Открыть проект"},
+  "Bekleyen davetler": {"en": "Pending invitations", "de": "Offene Einladungen", "es": "Invitaciones pendientes", "fr": "Invitations en attente", "ru": "Ожидающие приглашения"},
+  "Gruba katılmak ya da daveti reddetmek için tıklayın": {
+    "en": "Click to join the group or reject the invitation",
+    "de": "Klicken, um der Gruppe beizutreten oder die Einladung abzulehnen",
+    "es": "Haz clic para unirte al grupo o rechazar la invitación",
+    "fr": "Cliquez pour rejoindre le groupe ou refuser l'invitation",
+    "ru": "Нажмите, чтобы вступить в группу или отклонить приглашение"
+  },
+  "Bekleyen Davetler": {"en": "Pending Invitations", "de": "Offene Einladungen", "es": "Invitaciones pendientes", "fr": "Invitations en attente", "ru": "Ожидающие приглашения"},
+  "geçersiz grup anahtarı": {"en": "invalid group key", "de": "ungültiger Gruppenschlüssel", "es": "clave de grupo no válida", "fr": "clé de groupe invalide", "ru": "неверный ключ группы"},
+  "şifreli veri çok kısa": {
+    "en": "encrypted data too short",
+    "de": "verschlüsselte Daten zu kurz",
+    "es": "datos cifrados demasiado cortos",
+    "fr": "données chiffrées trop courtes",
+    "ru": "зашифрованные данные слишком короткие"
+  },
+  "Peer ID boş olamaz": {
+    "en": "Peer ID cannot be empty",
+    "de": "Die Peer ID darf nicht leer sein",
+    "es": "El Peer ID no puede estar vacío",
+    "fr": "Le Peer ID ne peut pas être vide",
+    "ru": "Peer ID не может быть пустым"
+  },
+  "Bu bir Peer ID değil (12D3KooW… ile başlar)": {
+    "en": "This is not a Peer ID (it starts with 12D3KooW…)",
+    "de": "Das ist keine Peer ID (sie beginnt mit 12D3KooW…)",
+    "es": "Esto no es un Peer ID (empieza por 12D3KooW…)",
+    "fr": "Ce n'est pas un Peer ID (il commence par 12D3KooW…)",
+    "ru": "Это не Peer ID (он начинается с 12D3KooW…)"
+  },
+  "Kendini davet edemezsin": {
+    "en": "You can't invite yourself",
+    "de": "Du kannst dich nicht selbst einladen",
+    "es": "No puedes invitarte a ti mismo",
+    "fr": "Vous ne pouvez pas vous inviter vous-même",
+    "ru": "Нельзя пригласить самого себя"
+  },
+  "Bu kişi zaten grubun üyesi": {
+    "en": "This person is already a member of the group",
+    "de": "Diese Person ist bereits Mitglied der Gruppe",
+    "es": "Esta persona ya es miembro del grupo",
+    "fr": "Cette personne est déjà membre du groupe",
+    "ru": "Этот человек уже состоит в группе"
+  },
+  "Bu projenin grubu okunamadı.": {
+    "en": "Could not read this project's group.",
+    "de": "Die Gruppe dieses Projekts konnte nicht gelesen werden.",
+    "es": "No se pudo leer el grupo de este proyecto.",
+    "fr": "Impossible de lire le groupe de ce projet.",
+    "ru": "Не удалось прочитать группу этого проекта."
+  },
+  "Proje seçin": {"en": "Select a project", "de": "Projekt auswählen", "es": "Elige un proyecto", "fr": "Choisissez un projet", "ru": "Выберите проект"},
+  "Yeni grup adı": {"en": "New group name", "de": "Name der neuen Gruppe", "es": "Nombre del nuevo grupo", "fr": "Nom du nouveau groupe", "ru": "Имя новой группы"},
+  "Grup adı boş olamaz": {
+    "en": "Group name cannot be empty",
+    "de": "Der Gruppenname darf nicht leer sein",
+    "es": "El nombre del grupo no puede estar vacío",
+    "fr": "Le nom du groupe ne peut pas être vide",
+    "ru": "Имя группы не может быть пустым"
+  },
+  "Grup oluşturuldu: %s": {"en": "Group created: %s", "de": "Gruppe erstellt: %s", "es": "Grupo creado: %s", "fr": "Groupe créé : %s", "ru": "Группа создана: %s"},
+  "Yalnızca kurucu ya da bir yönetici üye davet edebilir.": {
+    "en": "Only the founder or an admin can invite members.",
+    "de": "Nur der Gründer oder ein Admin kann Mitglieder einladen.",
+    "es": "Solo el fundador o un administrador puede invitar miembros.",
+    "fr": "Seul le fondateur ou un administrateur peut inviter des membres.",
+    "ru": "Приглашать участников может только основатель или администратор."
+  },
+  "Peer ID'yi elle gir…": {
+    "en": "Enter Peer ID manually…",
+    "de": "Peer ID manuell eingeben…",
+    "es": "Escribir el Peer ID a mano…",
+    "fr": "Saisir le Peer ID manuellement…",
+    "ru": "Ввести Peer ID вручную…"
+  },
+  "Davet edilecek eş": {"en": "Peer to invite", "de": "Einzuladender Peer", "es": "Par al que invitar", "fr": "Pair à inviter", "ru": "Узел для приглашения"},
+  "Davet edilecek Peer ID (kişi kendi ID'sini AND'ın Kimlik ekranından paylaşabilir)": {
+    "en": "Peer ID to invite (the person can share their ID from AND's Identity screen)",
+    "de": "Einzuladende Peer ID (die Person kann ihre ID im Identitätsbildschirm von AND teilen)",
+    "es": "Peer ID al que invitar (la persona puede compartir su ID desde la pantalla Identidad de AND)",
+    "fr": "Peer ID à inviter (la personne peut partager son ID depuis l'écran Identité d'AND)",
+    "ru": "Peer ID для приглашения (человек может поделиться своим ID на экране «Личность» в AND)"
+  },
+  "Davet gönderildi. Kişi çevrimdışıysa AND daveti bekletir, bağlandığında iletir.": {
+    "en": "Invitation sent. If the person is offline, AND holds it and delivers it when they connect.",
+    "de": "Einladung gesendet. Ist die Person offline, hält AND sie zurück und stellt sie beim Verbinden zu.",
+    "es": "Invitación enviada. Si la persona está desconectada, AND la guarda y la entrega cuando se conecte.",
+    "fr": "Invitation envoyée. Si la personne est hors ligne, AND la garde et la transmet à sa connexion.",
+    "ru": "Приглашение отправлено. Если человек не в сети, AND задержит его и доставит при подключении."
+  },
+  "Davet gönderilemedi: %s": {
+    "en": "Could not send the invitation: %s",
+    "de": "Einladung konnte nicht gesendet werden: %s",
+    "es": "No se pudo enviar la invitación: %s",
+    "fr": "Impossible d'envoyer l'invitation : %s",
+    "ru": "Не удалось отправить приглашение: %s"
+  },
+  "Bekleyen davet yok.": {
+    "en": "No pending invitations.",
+    "de": "Keine offenen Einladungen.",
+    "es": "No hay invitaciones pendientes.",
+    "fr": "Aucune invitation en attente.",
+    "ru": "Нет ожидающих приглашений."
+  },
+  "davet eden: %s": {"en": "invited by: %s", "de": "eingeladen von: %s", "es": "invita: %s", "fr": "invité par : %s", "ru": "пригласил(а): %s"},
+  "%d üye, %s geldi": {
+    "en": "%d member, received %s|%d members, received %s",
+    "de": "%d Mitglied, eingegangen %s|%d Mitglieder, eingegangen %s",
+    "es": "%d miembro, recibida el %s|%d miembros, recibida el %s",
+    "fr": "%d membre, reçue le %s|%d membres, reçue le %s",
+    "ru": "%d участник, получено %s|%d участника, получено %s|%d участников, получено %s"
+  },
+  "Yanıtlanacak davet": {"en": "Invitation to answer", "de": "Zu beantwortende Einladung", "es": "Invitación que responder", "fr": "Invitation à traiter", "ru": "Приглашение для ответа"},
+  "Kabul et": {"en": "Accept", "de": "Annehmen", "es": "Aceptar", "fr": "Accepter", "ru": "Принять"},
+  "\"%s\" daveti": {"en": "Invitation to \"%s\"", "de": "Einladung zu „%s“", "es": "Invitación a \"%s\"", "fr": "Invitation à « %s »", "ru": "Приглашение в «%s»"},
+  "Yalnızca grubun kurucusu yönetici atayabilir.": {
+    "en": "Only the group's founder can appoint admins.",
+    "de": "Nur der Gründer der Gruppe kann Admins ernennen.",
+    "es": "Solo el fundador del grupo puede nombrar administradores.",
+    "fr": "Seul le fondateur du groupe peut nommer des administrateurs.",
+    "ru": "Назначать администраторов может только основатель группы."
+  },
+  "Grupta başka üye yok.": {
+    "en": "There are no other members in the group.",
+    "de": "Keine weiteren Mitglieder in der Gruppe.",
+    "es": "No hay más miembros en el grupo.",
+    "fr": "Aucun autre membre dans le groupe.",
+    "ru": "В группе больше нет участников."
+  },
+  "yönetici — kaldırmak için seç": {
+    "en": "admin — select to remove",
+    "de": "Admin — auswählen zum Entfernen",
+    "es": "administrador: elige para quitarlo",
+    "fr": "admin — sélectionnez pour retirer",
+    "ru": "администратор — выберите, чтобы снять"
+  },
+  "üye — yönetici yapmak için seç": {
+    "en": "member — select to make admin",
+    "de": "Mitglied — auswählen, um zum Admin zu machen",
+    "es": "miembro: elige para hacerlo administrador",
+    "fr": "membre — sélectionnez pour nommer admin",
+    "ru": "участник — выберите, чтобы назначить администратором"
+  },
+  "Yönetici durumu değiştirilecek üye": {
+    "en": "Member whose admin status to change",
+    "de": "Mitglied, dessen Admin-Status geändert werden soll",
+    "es": "Miembro cuyo rol de administrador cambiar",
+    "fr": "Membre dont changer le statut d'admin",
+    "ru": "Участник, чей статус администратора изменить"
+  },
+  "%s yönetici yapıldı.": {"en": "%s is now an admin.", "de": "%s ist jetzt Admin.", "es": "%s ahora es administrador.", "fr": "%s est maintenant administrateur.", "ru": "%s теперь администратор."},
+  "%s yöneticilikten çıkarıldı.": {
+    "en": "%s is no longer an admin.",
+    "de": "%s ist kein Admin mehr.",
+    "es": "%s ya no es administrador.",
+    "fr": "%s n'est plus administrateur.",
+    "ru": "%s больше не администратор."
+  },
+  "%d üyeye ulaşılamadı.": {
+    "en": "Could not reach %d member.|Could not reach %d members.",
+    "de": "%d Mitglied war nicht erreichbar.|%d Mitglieder waren nicht erreichbar.",
+    "es": "No se pudo contactar con %d miembro.|No se pudo contactar con %d miembros.",
+    "fr": "Impossible de joindre %d membre.|Impossible de joindre %d membres.",
+    "ru": "Не удалось связаться с %d участником.|Не удалось связаться с %d участниками.|Не удалось связаться с %d участниками."
+  },
+  "\"%s\" grubunu kapatmak üzeresin. Tüm üyelere bildirilir ve grup kalıcı olarak kapanır.": {
+    "en": "You are about to close the group \"%s\". All members will be notified and the group will be closed permanently.",
+    "de": "Du bist dabei, die Gruppe „%s“ zu schließen. Alle Mitglieder werden benachrichtigt und die Gruppe wird dauerhaft geschlossen.",
+    "es": "Vas a cerrar el grupo \"%s\". Se avisará a todos los miembros y el grupo se cerrará para siempre.",
+    "fr": "Vous êtes sur le point de fermer le groupe « %s ». Tous les membres seront prévenus et le groupe sera fermé définitivement.",
+    "ru": "Вы собираетесь закрыть группу «%s». Все участники будут уведомлены, и группа будет закрыта навсегда."
+  },
+  "\"%s\" grubundan ayrılmak üzeresin. Kurucuya ve yöneticilere bildirilir, üye listesinden çıkarılırsın.": {
+    "en": "You are about to leave the group \"%s\". The founder and admins will be notified and you will be removed from the member list.",
+    "de": "Du bist dabei, die Gruppe „%s“ zu verlassen. Gründer und Admins werden benachrichtigt und du wirst aus der Mitgliederliste entfernt.",
+    "es": "Vas a salir del grupo \"%s\". Se avisará al fundador y a los administradores, y se te quitará de la lista de miembros.",
+    "fr": "Vous êtes sur le point de quitter le groupe « %s ». Le fondateur et les admins seront prévenus et vous serez retiré de la liste des membres.",
+    "ru": "Вы собираетесь покинуть группу «%s». Основатель и администраторы будут уведомлены, а вы будете удалены из списка участников."
+  },
+  "Grubu Kapat": {"en": "Close Group", "de": "Gruppe schließen", "es": "Cerrar grupo", "fr": "Fermer le groupe", "ru": "Закрыть группу"},
+  "Gruptan Çık": {"en": "Leave Group", "de": "Gruppe verlassen", "es": "Salir del grupo", "fr": "Quitter le groupe", "ru": "Покинуть группу"},
+  "Grup kapatıldı, ancak %d üyeye bildirim ulaşmadı.": {
+    "en": "The group was closed, but the notice did not reach %d member.|The group was closed, but the notice did not reach %d members.",
+    "de": "Die Gruppe wurde geschlossen, aber %d Mitglied hat die Benachrichtigung nicht erhalten.|Die Gruppe wurde geschlossen, aber %d Mitglieder haben die Benachrichtigung nicht erhalten.",
+    "es": "El grupo se cerró, pero el aviso no llegó a %d miembro.|El grupo se cerró, pero el aviso no llegó a %d miembros.",
+    "fr": "Le groupe a été fermé, mais la notification n'a pas atteint %d membre.|Le groupe a été fermé, mais la notification n'a pas atteint %d membres.",
+    "ru": "Группа закрыта, но уведомление не дошло до %d участника.|Группа закрыта, но уведомление не дошло до %d участников.|Группа закрыта, но уведомление не дошло до %d участников."
+  },
+  "Gruptan ayrıldın, ancak %d üyeye bildirim ulaşmadı.": {
+    "en": "You left the group, but the notice did not reach %d member.|You left the group, but the notice did not reach %d members.",
+    "de": "Du hast die Gruppe verlassen, aber %d Mitglied hat die Benachrichtigung nicht erhalten.|Du hast die Gruppe verlassen, aber %d Mitglieder haben die Benachrichtigung nicht erhalten.",
+    "es": "Saliste del grupo, pero el aviso no llegó a %d miembro.|Saliste del grupo, pero el aviso no llegó a %d miembros.",
+    "fr": "Vous avez quitté le groupe, mais la notification n'a pas atteint %d membre.|Vous avez quitté le groupe, mais la notification n'a pas atteint %d membres.",
+    "ru": "Вы покинули группу, но уведомление не дошло до %d участника.|Вы покинули группу, но уведомление не дошло до %d участников.|Вы покинули группу, но уведомление не дошло до %d участников."
+  },
+  "Grup kapatıldı.": {"en": "Group closed.", "de": "Gruppe geschlossen.", "es": "Grupo cerrado.", "fr": "Groupe fermé.", "ru": "Группа закрыта."},
+  "Gruptan ayrıldın.": {"en": "You left the group.", "de": "Du hast die Gruppe verlassen.", "es": "Saliste del grupo.", "fr": "Vous avez quitté le groupe.", "ru": "Вы покинули группу."},
+  "Çevrimiçi üye yok.": {"en": "No members are online.", "de": "Kein Mitglied ist online.", "es": "No hay miembros conectados.", "fr": "Aucun membre en ligne.", "ru": "Нет участников в сети."},
+  "Çevrimiçi herkese gönder": {
+    "en": "Send to everyone online",
+    "de": "An alle Online-Mitglieder senden",
+    "es": "Enviar a todos los conectados",
+    "fr": "Envoyer à tous les membres en ligne",
+    "ru": "Отправить всем в сети"
+  },
+  "Hedef üye": {"en": "Target member", "de": "Zielmitglied", "es": "Miembro de destino", "fr": "Membre cible", "ru": "Участник-получатель"},
+  "%d üyeye gönderildi.": {
+    "en": "Sent to %d member.|Sent to %d members.",
+    "de": "An %d Mitglied gesendet.|An %d Mitglieder gesendet.",
+    "es": "Enviado a %d miembro.|Enviado a %d miembros.",
+    "fr": "Envoyé à %d membre.|Envoyé à %d membres.",
+    "ru": "Отправлено %d участнику.|Отправлено %d участникам.|Отправлено %d участникам."
+  },
+  "Gönderilemedi: %s": {"en": "Could not send: %s", "de": "Senden fehlgeschlagen: %s", "es": "No se pudo enviar: %s", "fr": "Échec de l'envoi : %s", "ru": "Не удалось отправить: %s"},
+  "Kimden çekilsin?": {"en": "Pull from whom?", "de": "Von wem pullen?", "es": "¿A quién pedir el pull?", "fr": "Pull depuis qui ?", "ru": "У кого запросить pull?"},
+  "Çek isteği gönderildi: %s": {
+    "en": "Pull request sent: %s",
+    "de": "Pull-Anfrage gesendet: %s",
+    "es": "Solicitud de pull enviada: %s",
+    "fr": "Demande de pull envoyée : %s",
+    "ru": "Запрос pull отправлен: %s"
+  },
+  "İstek gönderilemedi: %s": {
+    "en": "Could not send the request: %s",
+    "de": "Anfrage konnte nicht gesendet werden: %s",
+    "es": "No se pudo enviar la solicitud: %s",
+    "fr": "Impossible d'envoyer la demande : %s",
+    "ru": "Не удалось отправить запрос: %s"
+  },
+  "proje ağı paketi değil": {
+    "en": "not a project network package",
+    "de": "kein Projektnetz-Paket",
+    "es": "no es un paquete de la red de proyectos",
+    "fr": "ce n'est pas un paquet du réseau de projets",
+    "ru": "это не пакет сети проектов"
+  },
+  "bilinmeyen grup: %s": {"en": "unknown group: %s", "de": "unbekannte Gruppe: %s", "es": "grupo desconocido: %s", "fr": "groupe inconnu : %s", "ru": "неизвестная группа: %s"},
+  "gönderen %s grubunun üyesi değil": {
+    "en": "the sender is not a member of group %s",
+    "de": "der Absender ist kein Mitglied der Gruppe %s",
+    "es": "el remitente no es miembro del grupo %s",
+    "fr": "l'expéditeur n'est pas membre du groupe %s",
+    "ru": "отправитель не состоит в группе %s"
+  },
+  "paket çözülemedi (yanlış grup anahtarı olabilir): %s": {
+    "en": "could not decrypt the pack (possibly a wrong group key): %s",
+    "de": "Paket konnte nicht entschlüsselt werden (evtl. falscher Gruppenschlüssel): %s",
+    "es": "no se pudo descifrar el paquete (puede que la clave del grupo sea incorrecta): %s",
+    "fr": "impossible de déchiffrer le paquet (clé de groupe peut-être incorrecte) : %s",
+    "ru": "не удалось расшифровать пакет (возможно, неверный ключ группы): %s"
+  },
+  "önce en az bir kayıt (commit) oluşturmalısın": {
+    "en": "create at least one commit first",
+    "de": "erstelle zuerst mindestens einen Commit",
+    "es": "primero crea al menos un commit",
+    "fr": "créez d'abord au moins un commit",
+    "ru": "сначала создайте хотя бы один коммит"
+  },
+  "%s zaten güncel": {"en": "%s is already up to date", "de": "%s ist bereits aktuell", "es": "%s ya está al día", "fr": "%s est déjà à jour", "ru": "у %s всё уже актуально"},
+  "\"%s\" grubuna katıldın.": {
+    "en": "You joined the group \"%s\".",
+    "de": "Du bist der Gruppe \"%s\" beigetreten.",
+    "es": "Te uniste al grupo \"%s\".",
+    "fr": "Vous avez rejoint le groupe \"%s\".",
+    "ru": "Вы вступили в группу \"%s\"."
+  },
+  "Davet reddedildi.": {"en": "Invitation declined.", "de": "Einladung abgelehnt.", "es": "Invitación rechazada.", "fr": "Invitation refusée.", "ru": "Приглашение отклонено."},
+  "Davet yanıtlanamadı: %s. Davet bekleyenlerde duruyor.": {
+    "en": "Could not answer the invitation: %s. It is still in your pending invitations.",
+    "de": "Einladung konnte nicht beantwortet werden: %s. Sie bleibt bei den offenen Einladungen.",
+    "es": "No se pudo responder a la invitación: %s. Sigue en las invitaciones pendientes.",
+    "fr": "Impossible de répondre à l'invitation : %s. Elle reste dans les invitations en attente.",
+    "ru": "Не удалось ответить на приглашение: %s. Оно осталось в списке ожидающих."
+  },
+  "Yeni grup daveti: %s (davet eden: %s)": {
+    "en": "New group invitation: %s (from: %s)",
+    "de": "Neue Gruppeneinladung: %s (von: %s)",
+    "es": "Nueva invitación de grupo: %s (de: %s)",
+    "fr": "Nouvelle invitation de groupe : %s (de : %s)",
+    "ru": "Новое приглашение в группу: %s (от: %s)"
+  },
+  "%d yeni nesne alındı (%s) — Uzak Dallar'dan birleştirebilirsin.": {
+    "en": "%d new object received (%s) — you can merge it from Remote Branches.|%d new objects received (%s) — you can merge them from Remote Branches.",
+    "de": "%d neues Objekt empfangen (%s) — du kannst es unter Entfernte Branches zusammenführen.|%d neue Objekte empfangen (%s) — du kannst sie unter Entfernte Branches zusammenführen.",
+    "es": "%d objeto nuevo recibido (%s) — puedes fusionarlo desde Ramas remotas.|%d objetos nuevos recibidos (%s) — puedes fusionarlos desde Ramas remotas.",
+    "fr": "%d nouvel objet reçu (%s) — vous pouvez le fusionner depuis Branches distantes.|%d nouveaux objets reçus (%s) — vous pouvez les fusionner depuis Branches distantes.",
+    "ru": "Получен %d новый объект (%s) — его можно слить в разделе «Удалённые ветки».|Получено %d новых объекта (%s) — их можно слить в разделе «Удалённые ветки».|Получено %d новых объектов (%s) — их можно слить в разделе «Удалённые ветки»."
+  },
+  "Paket işlenemedi: %s": {
+    "en": "Could not process the pack: %s",
+    "de": "Paket konnte nicht verarbeitet werden: %s",
+    "es": "No se pudo procesar el paquete: %s",
+    "fr": "Impossible de traiter le paquet : %s",
+    "ru": "Не удалось обработать пакет: %s"
+  },
+  "tar sayısal alanı taştı: %d": {
+    "en": "tar numeric field overflowed: %d",
+    "de": "numerisches tar-Feld übergelaufen: %d",
+    "es": "desbordamiento de un campo numérico de tar: %d",
+    "fr": "dépassement d'un champ numérique tar : %d",
+    "ru": "переполнение числового поля tar: %d"
+  },
+  "tar girdi adı çok uzun (>100 bayt): %s": {
+    "en": "tar entry name too long (>100 bytes): %s",
+    "de": "tar-Eintragsname zu lang (>100 Byte): %s",
+    "es": "nombre de entrada tar demasiado largo (>100 bytes): %s",
+    "fr": "nom d'entrée tar trop long (>100 octets) : %s",
+    "ru": "слишком длинное имя записи tar (>100 байт): %s"
+  },
+  "desteklenmeyen tar sayısal biçimi (base-256)": {
+    "en": "unsupported tar numeric format (base-256)",
+    "de": "nicht unterstütztes numerisches tar-Format (base-256)",
+    "es": "formato numérico de tar no compatible (base-256)",
+    "fr": "format numérique tar non pris en charge (base-256)",
+    "ru": "неподдерживаемый числовой формат tar (base-256)"
+  },
+  "bozuk tar başlığı (checksum uyuşmuyor)": {
+    "en": "corrupt tar header (checksum mismatch)",
+    "de": "beschädigter tar-Header (Prüfsumme stimmt nicht)",
+    "es": "cabecera tar dañada (la suma de comprobación no coincide)",
+    "fr": "en-tête tar corrompu (somme de contrôle incorrecte)",
+    "ru": "повреждённый заголовок tar (контрольная сумма не совпадает)"
+  },
+  "beklenmeyen tar sonu": {"en": "unexpected end of tar", "de": "unerwartetes Ende des tar-Archivs", "es": "fin inesperado del tar", "fr": "fin inattendue du tar", "ru": "неожиданный конец tar"},
+  "\"%s\" grubunun üye listesi güncellendi.": {
+    "en": "Member list of group \"%s\" updated.",
+    "de": "Mitgliederliste der Gruppe \"%s\" aktualisiert.",
+    "es": "Lista de miembros del grupo \"%s\" actualizada.",
+    "fr": "Liste des membres du groupe \"%s\" mise à jour.",
+    "ru": "Список участников группы \"%s\" обновлён."
+  },
+  "%s \"%s\" grubuna davetini reddetti.": {
+    "en": "%s declined the invitation to group \"%s\".",
+    "de": "%s hat die Einladung in die Gruppe \"%s\" abgelehnt.",
+    "es": "%s rechazó la invitación al grupo \"%s\".",
+    "fr": "%s a refusé l'invitation au groupe \"%s\".",
+    "ru": "%s: приглашение в группу \"%s\" отклонено."
+  },
+  "%s \"%s\" grubuna katıldı.": {
+    "en": "%s joined the group \"%s\".",
+    "de": "%s ist der Gruppe \"%s\" beigetreten.",
+    "es": "%s se unió al grupo \"%s\".",
+    "fr": "%s a rejoint le groupe \"%s\".",
+    "ru": "%s теперь в группе \"%s\"."
+  },
+  "Bir üye değişiklik gönderiyor (%s, %d nesne); kabul edilince Uzak Dallar'da görünecek.": {
+    "en": "A member is sending changes (%s, %d object); once accepted they will appear in Remote Branches.|A member is sending changes (%s, %d objects); once accepted they will appear in Remote Branches.",
+    "de": "Ein Mitglied sendet Änderungen (%s, %d Objekt); nach dem Annehmen erscheinen sie unter Entfernte Branches.|Ein Mitglied sendet Änderungen (%s, %d Objekte); nach dem Annehmen erscheinen sie unter Entfernte Branches.",
+    "es": "Un miembro está enviando cambios (%s, %d objeto); al aceptarlos aparecerán en Ramas remotas.|Un miembro está enviando cambios (%s, %d objetos); al aceptarlos aparecerán en Ramas remotas.",
+    "fr": "Un membre envoie des modifications (%s, %d objet) ; une fois acceptées, elles apparaîtront dans Branches distantes.|Un membre envoie des modifications (%s, %d objets) ; une fois acceptées, elles apparaîtront dans Branches distantes.",
+    "ru": "Участник отправляет изменения (%s, %d объект); после принятия они появятся в «Удалённых ветках».|Участник отправляет изменения (%s, %d объекта); после принятия они появятся в «Удалённых ветках».|Участник отправляет изменения (%s, %d объектов); после принятия они появятся в «Удалённых ветках»."
+  },
+  "Çek isteği karşılanamadı: %s": {
+    "en": "Could not fulfil the pull request: %s",
+    "de": "Pull-Anfrage konnte nicht erfüllt werden: %s",
+    "es": "No se pudo atender la solicitud de pull: %s",
+    "fr": "Impossible de satisfaire la demande de pull : %s",
+    "ru": "Не удалось выполнить запрос pull: %s"
+  },
+  "%s \"%s\" grubundan ayrıldı.": {
+    "en": "%s left the group \"%s\".",
+    "de": "%s hat die Gruppe \"%s\" verlassen.",
+    "es": "%s salió del grupo \"%s\".",
+    "fr": "%s a quitté le groupe \"%s\".",
+    "ru": "%s больше не в группе \"%s\"."
+  },
+  "\"%s\" grubu kurucusu tarafından kapatıldı.": {
+    "en": "Group \"%s\" was closed by its founder.",
+    "de": "Die Gruppe \"%s\" wurde von ihrem Gründer geschlossen.",
+    "es": "El fundador cerró el grupo \"%s\".",
+    "fr": "Le groupe \"%s\" a été fermé par son fondateur.",
+    "ru": "Группа \"%s\" закрыта основателем."
+  },
+  "AND'a canlı bağlantı yok.": {
+    "en": "No live connection to AND.",
+    "de": "Keine Live-Verbindung zu AND.",
+    "es": "No hay conexión en vivo con AND.",
+    "fr": "Aucune connexion en direct à AND.",
+    "ru": "Нет живого подключения к AND."
+  },
+  "AND'a canlı bağlantı yok. AND açık ve AND_ENABLE_EXTERNAL_API=1 ayarlanmış olmalı.": {
+    "en": "No live connection to AND. AND must be running with AND_ENABLE_EXTERNAL_API=1 set.",
+    "de": "Keine Live-Verbindung zu AND. AND muss laufen und AND_ENABLE_EXTERNAL_API=1 muss gesetzt sein.",
+    "es": "No hay conexión en vivo con AND. AND debe estar abierto y con AND_ENABLE_EXTERNAL_API=1.",
+    "fr": "Aucune connexion en direct à AND. AND doit être lancé avec AND_ENABLE_EXTERNAL_API=1.",
+    "ru": "Нет живого подключения к AND. AND должен быть запущен с AND_ENABLE_EXTERNAL_API=1."
+  },
+  "Paylaşılacak açık bir dosya yok.": {
+    "en": "There is no open file to share.",
+    "de": "Es ist keine Datei zum Teilen geöffnet.",
+    "es": "No hay ningún archivo abierto para compartir.",
+    "fr": "Aucun fichier ouvert à partager.",
+    "ru": "Нет открытого файла для публикации."
+  },
+  "Paylaşılacak bir içerik yok.": {
+    "en": "There is nothing to share.",
+    "de": "Es gibt nichts zu teilen.",
+    "es": "No hay contenido para compartir.",
+    "fr": "Il n'y a rien à partager.",
+    "ru": "Нечего публиковать."
+  },
+  "Kategori seçin": {"en": "Select a category", "de": "Kategorie auswählen", "es": "Elige una categoría", "fr": "Choisissez une catégorie", "ru": "Выберите категорию"},
+  "Konu başlığı": {"en": "Topic title", "de": "Thementitel", "es": "Título del tema", "fr": "Titre du sujet", "ru": "Заголовок темы"},
+  "Başlık boş olamaz": {
+    "en": "Title cannot be empty",
+    "de": "Titel darf nicht leer sein",
+    "es": "El título no puede estar vacío",
+    "fr": "Le titre ne peut pas être vide",
+    "ru": "Заголовок не может быть пустым"
+  },
+  "Canlı Paneli Aç": {"en": "Open Live Panel", "de": "Live-Panel öffnen", "es": "Abrir panel en vivo", "fr": "Ouvrir le panneau en direct", "ru": "Открыть живую панель"},
+  "Gönderi oluşturuldu ve ağa yayınlandı.": {
+    "en": "The post was created and published to the network.",
+    "de": "Der Beitrag wurde erstellt und im Netzwerk veröffentlicht.",
+    "es": "La publicación se creó y se difundió en la red.",
+    "fr": "La publication a été créée et diffusée sur le réseau.",
+    "ru": "Публикация создана и разослана в сеть."
+  },
+  "Paylaşılamadı: %s": {"en": "Could not share: %s", "de": "Teilen fehlgeschlagen: %s", "es": "No se pudo compartir: %s", "fr": "Échec du partage : %s", "ru": "Не удалось опубликовать: %s"},
+  "Gönderilecek bir dosya seçilmedi.": {
+    "en": "No file selected to send.",
+    "de": "Keine Datei zum Senden ausgewählt.",
+    "es": "No se ha elegido ningún archivo para enviar.",
+    "fr": "Aucun fichier sélectionné à envoyer.",
+    "ru": "Не выбран файл для отправки."
+  },
+  "Hedef eş": {"en": "Target peer", "de": "Ziel-Peer", "es": "Par de destino", "fr": "Pair cible", "ru": "Узел-получатель"},
+  "Hedef Peer ID": {"en": "Target Peer ID", "de": "Ziel-Peer-ID", "es": "Peer ID de destino", "fr": "Peer ID cible", "ru": "Peer ID получателя"},
+  "Gönderiliyor: %s": {"en": "Sending: %s", "de": "Wird gesendet: %s", "es": "Enviando: %s", "fr": "Envoi en cours : %s", "ru": "Отправка: %s"},
+  "geçersiz yanıt: %s": {"en": "invalid response: %s", "de": "ungültige Antwort: %s", "es": "respuesta no válida: %s", "fr": "réponse invalide : %s", "ru": "недопустимый ответ: %s"},
+  "istek zaman aşımına uğradı": {
+    "en": "the request timed out",
+    "de": "Zeitüberschreitung der Anfrage",
+    "es": "la solicitud agotó el tiempo de espera",
+    "fr": "la requête a expiré",
+    "ru": "истекло время ожидания запроса"
+  },
+  "AND Ekosistemi": {"en": "AND Ecosystem", "de": "AND-Ökosystem", "es": "Ecosistema AND", "fr": "Écosystème AND", "ru": "Экосистема AND"},
+  "%s panoya kopyalandı.": {
+    "en": "%s copied to the clipboard.",
+    "de": "%s in die Zwischenablage kopiert.",
+    "es": "%s copiado al portapapeles.",
+    "fr": "%s copié dans le presse-papiers.",
+    "ru": "%s скопирован в буфер обмена."
+  },
+  "Metin": {"en": "Text", "de": "Text", "es": "Texto", "fr": "Texte", "ru": "Текст"},
+  "Mesajlar alınamadı: %s": {
+    "en": "Could not load messages: %s",
+    "de": "Nachrichten konnten nicht geladen werden: %s",
+    "es": "No se pudieron cargar los mensajes: %s",
+    "fr": "Impossible de charger les messages : %s",
+    "ru": "Не удалось загрузить сообщения: %s"
+  },
+  "Bu bir Peer ID değil (12D3KooW… ile başlar).": {
+    "en": "This is not a Peer ID (it starts with 12D3KooW…).",
+    "de": "Das ist keine Peer ID (sie beginnt mit 12D3KooW…).",
+    "es": "Esto no es un Peer ID (empieza por 12D3KooW…).",
+    "fr": "Ce n'est pas un Peer ID (il commence par 12D3KooW…).",
+    "ru": "Это не Peer ID (он начинается с 12D3KooW…)."
+  },
+  "Önce hedef Peer ID girin.": {
+    "en": "Enter the target Peer ID first.",
+    "de": "Gib zuerst die Ziel-Peer-ID ein.",
+    "es": "Escribe primero el Peer ID de destino.",
+    "fr": "Saisissez d'abord le Peer ID cible.",
+    "ru": "Сначала введите Peer ID получателя."
+  },
+  "Gönder": {"en": "Push", "de": "Push", "es": "Enviar", "fr": "Envoyer", "ru": "Отправка"},
+  "İşlem tamamlandı.": {"en": "Done.", "de": "Erledigt.", "es": "Hecho.", "fr": "Terminé.", "ru": "Готово."},
+  "Klasik": {"en": "Classic", "de": "Klassisch", "es": "Clásico", "fr": "Classique", "ru": "Классика"},
+  "Turkuaz": {"en": "Turquoise", "de": "Türkis", "es": "Turquesa", "fr": "Turquoise", "ru": "Бирюза"},
+  "Gece Moru": {"en": "Night Purple", "de": "Nachtviolett", "es": "Morado noche", "fr": "Violet nuit", "ru": "Сумерки"},
+  "Kehribar": {"en": "Amber", "de": "Bernstein", "es": "Ámbar", "fr": "Ambre", "ru": "Янтарь"},
+  "Orman": {"en": "Forest", "de": "Wald", "es": "Bosque", "fr": "Forêt", "ru": "Лес"},
+  "Mono": {"en": "Mono", "de": "Mono", "es": "Mono", "fr": "Mono", "ru": "Моно"},
+  "bağlanıyor…": {"en": "connecting…", "de": "verbinde…", "es": "conectando…", "fr": "connexion…", "ru": "подключение…"},
+  "Yenile": {"en": "Refresh", "de": "Aktualisieren", "es": "Actualizar", "fr": "Actualiser", "ru": "Обновить"},
+  "Bölümler": {"en": "Sections", "de": "Bereiche", "es": "Secciones", "fr": "Sections", "ru": "Разделы"},
+  "Kimlik": {"en": "Identity", "de": "Identität", "es": "Identidad", "fr": "Identité", "ru": "Личность"},
+  "Ağ": {"en": "Network", "de": "Netzwerk", "es": "Red", "fr": "Réseau", "ru": "Сеть"},
+  "Sohbet": {"en": "Chat", "de": "Chat", "es": "Chat", "fr": "Chat", "ru": "Чат"},
+  "Doğrudan mesaj": {"en": "Direct messages", "de": "Direktnachrichten", "es": "Mensajes directos", "fr": "Messages directs", "ru": "Личные сообщения"},
+  "Forum": {"en": "Forum", "de": "Forum", "es": "Foro", "fr": "Forum", "ru": "Форум"},
+  "Site": {"en": "Website", "de": "Website", "es": "Sitio web", "fr": "Site web", "ru": "Сайт"},
+  "Dosyalar": {"en": "Files", "de": "Dateien", "es": "Archivos", "fr": "Fichiers", "ru": "Файлы"},
+  "Bu AND düğümünün kimliği ve ağdaki rolün.": {
+    "en": "This AND node's identity and your role on the network.",
+    "de": "Die Identität dieses AND-Knotens und deine Rolle im Netzwerk.",
+    "es": "La identidad de este nodo AND y tu rol en la red.",
+    "fr": "L'identité de ce nœud AND et votre rôle sur le réseau.",
+    "ru": "Личность этого узла AND и ваша роль в сети."
+  },
+  "Durum": {"en": "Status", "de": "Status", "es": "Estado", "fr": "Statut", "ru": "Статус"},
+  "Yükleniyor…": {"en": "Loading…", "de": "Wird geladen…", "es": "Cargando…", "fr": "Chargement…", "ru": "Загрузка…"},
+  "Şu an doğrudan bağlı olduğun eşler.": {
+    "en": "The peers you are directly connected to right now.",
+    "de": "Die Peers, mit denen du gerade direkt verbunden bist.",
+    "es": "Los pares a los que estás conectado directamente ahora.",
+    "fr": "Les pairs auxquels vous êtes directement connecté en ce moment.",
+    "ru": "Узлы, к которым вы сейчас подключены напрямую."
+  },
+  "Bağlı eş yok. AND ağa bağlandıkça eşler burada görünür.": {
+    "en": "No connected peers. Peers appear here as AND connects to the network.",
+    "de": "Keine verbundenen Peers. Sobald AND sich mit dem Netzwerk verbindet, erscheinen sie hier.",
+    "es": "No hay pares conectados. Irán apareciendo aquí a medida que AND se conecte a la red.",
+    "fr": "Aucun pair connecté. Les pairs apparaissent ici à mesure qu'AND se connecte au réseau.",
+    "ru": "Нет подключённых узлов. Они появятся здесь, когда AND подключится к сети."
+  },
+  "Herkese açık genel kanal. Mesajlar imzalıdır ama şifreli değildir; ağdaki herkes okuyabilir.": {
+    "en": "Public channel open to everyone. Messages are signed but not encrypted; anyone on the network can read them.",
+    "de": "Öffentlicher Kanal für alle. Nachrichten sind signiert, aber nicht verschlüsselt; jeder im Netzwerk kann sie lesen.",
+    "es": "Canal público abierto a todos. Los mensajes están firmados pero no cifrados; cualquiera en la red puede leerlos.",
+    "fr": "Canal public ouvert à tous. Les messages sont signés mais pas chiffrés ; tout le monde sur le réseau peut les lire.",
+    "ru": "Общий канал, открытый для всех. Сообщения подписаны, но не зашифрованы; их может прочитать любой в сети."
+  },
+  "Henüz mesaj yok. İlk mesajı sen yaz.": {
+    "en": "No messages yet. Write the first one.",
+    "de": "Noch keine Nachrichten. Schreib die erste.",
+    "es": "Aún no hay mensajes. Escribe el primero.",
+    "fr": "Pas encore de messages. Écrivez le premier.",
+    "ru": "Сообщений пока нет. Напишите первое."
+  },
+  "Genel kanala yaz…": {
+    "en": "Write to the public channel…",
+    "de": "In den öffentlichen Kanal schreiben…",
+    "es": "Escribe en el canal público…",
+    "fr": "Écrire sur le canal public…",
+    "ru": "Написать в общий канал…"
+  },
+  "Uçtan uca şifreli; yalnızca karşı tarafa gider. Karşı taraf çevrimdışıysa AND mesajı bekletir ve bağlandığında iletir. Konuşmalar ve okunmamışlar AND ve Özel Chat ile ortaktır.": {
+    "en": "End-to-end encrypted; only the other person receives it. If they are offline, AND holds the message and delivers it when they connect. Conversations and unread counts are shared with AND and Private Chat.",
+    "de": "Ende-zu-Ende-verschlüsselt; nur die andere Person erhält sie. Ist sie offline, hält AND die Nachricht zurück und stellt sie zu, sobald sie sich verbindet. Unterhaltungen und Ungelesenes teilst du mit AND und Privatchat.",
+    "es": "Cifrado de extremo a extremo; solo lo recibe la otra persona. Si está desconectada, AND guarda el mensaje y lo entrega cuando se conecte. Las conversaciones y los no leídos se comparten con AND y Chat privado.",
+    "fr": "Chiffré de bout en bout ; seul votre interlocuteur le reçoit. S'il est hors ligne, AND garde le message et le transmet dès qu'il se connecte. Les conversations et les non-lus sont partagés avec AND et Chat privé.",
+    "ru": "Сквозное шифрование: сообщение получает только собеседник. Если он не в сети, AND придержит сообщение и доставит его при подключении. Беседы и непрочитанные общие с AND и «Личным чатом»."
+  },
+  "Yeni konuşma: Peer ID": {
+    "en": "New conversation: Peer ID",
+    "de": "Neue Unterhaltung: Peer ID",
+    "es": "Nueva conversación: Peer ID",
+    "fr": "Nouvelle conversation : Peer ID",
+    "ru": "Новая беседа: Peer ID"
+  },
+  "Henüz konuşma yok.": {"en": "No conversations yet.", "de": "Noch keine Unterhaltungen.", "es": "Aún no hay conversaciones.", "fr": "Aucune conversation pour l'instant.", "ru": "Бесед пока нет."},
+  "Bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.": {
+    "en": "Select a conversation or start a new one with a Peer ID.",
+    "de": "Wähle eine Unterhaltung oder beginne eine neue mit einer Peer ID.",
+    "es": "Elige una conversación o abre una nueva con un Peer ID.",
+    "fr": "Choisissez une conversation ou ouvrez-en une nouvelle avec un Peer ID.",
+    "ru": "Выберите беседу или начните новую по Peer ID."
+  },
+  "Bu konuşmada henüz mesaj yok.": {
+    "en": "No messages in this conversation yet.",
+    "de": "In dieser Unterhaltung gibt es noch keine Nachrichten.",
+    "es": "Aún no hay mensajes en esta conversación.",
+    "fr": "Aucun message dans cette conversation pour l'instant.",
+    "ru": "В этой беседе пока нет сообщений."
+  },
+  "Mesajını yaz…": {"en": "Write your message…", "de": "Nachricht schreiben…", "es": "Escribe tu mensaje…", "fr": "Écrivez votre message…", "ru": "Напишите сообщение…"},
+  "Yeni bir konu aç ya da ID'sini bildiğin bir konuyu görüntüle. Konular yayınlandığı anda ağa yayılır ve 5 gün sonra silinir.": {
+    "en": "Start a new topic or view a topic whose ID you know. Topics spread over the network as soon as they are published and are deleted after 5 days.",
+    "de": "Eröffne ein neues Thema oder sieh dir ein Thema an, dessen ID du kennst. Themen verbreiten sich sofort nach dem Veröffentlichen im Netzwerk und werden nach 5 Tagen gelöscht.",
+    "es": "Abre un tema nuevo o consulta uno cuyo ID conozcas. Los temas se difunden por la red en cuanto se publican y se borran a los 5 días.",
+    "fr": "Ouvrez un nouveau sujet ou consultez un sujet dont vous connaissez l'ID. Les sujets se propagent sur le réseau dès leur publication et sont supprimés au bout de 5 jours.",
+    "ru": "Создайте новую тему или откройте тему, ID которой вы знаете. Темы расходятся по сети сразу после публикации и удаляются через 5 дней."
+  },
+  "Kategori": {"en": "Category", "de": "Kategorie", "es": "Categoría", "fr": "Catégorie", "ru": "Категория"},
+  "Başlık": {"en": "Title", "de": "Titel", "es": "Título", "fr": "Titre", "ru": "Заголовок"},
+  "İçerik": {"en": "Content", "de": "Inhalt", "es": "Contenido", "fr": "Contenu", "ru": "Содержимое"},
+  "Konuyu yayınla": {"en": "Publish topic", "de": "Thema veröffentlichen", "es": "Publicar tema", "fr": "Publier le sujet", "ru": "Опубликовать тему"},
+  "Konu görüntüle": {"en": "View a topic", "de": "Thema ansehen", "es": "Ver un tema", "fr": "Consulter un sujet", "ru": "Просмотр темы"},
+  "Konu ID": {"en": "Topic ID", "de": "Themen-ID", "es": "ID del tema", "fr": "ID du sujet", "ru": "ID темы"},
+  "Göster": {"en": "Show", "de": "Anzeigen", "es": "Mostrar", "fr": "Afficher", "ru": "Показать"},
+  "Moderasyon": {"en": "Moderation", "de": "Moderation", "es": "Moderación", "fr": "Modération", "ru": "Модерация"},
+  "Ağdaki tüm konular. Silme, konuyu herkes için kaldırır.": {
+    "en": "All topics on the network. Deleting removes the topic for everyone.",
+    "de": "Alle Themen im Netzwerk. Löschen entfernt das Thema für alle.",
+    "es": "Todos los temas de la red. Borrar elimina el tema para todos.",
+    "fr": "Tous les sujets du réseau. La suppression retire le sujet pour tout le monde.",
+    "ru": "Все темы в сети. Удаление убирает тему у всех."
+  },
+  "Konu yok.": {"en": "No topics.", "de": "Keine Themen.", "es": "No hay temas.", "fr": "Aucun sujet.", "ru": "Тем нет."},
+  "Kişisel site": {"en": "Personal website", "de": "Persönliche Website", "es": "Sitio personal", "fr": "Site personnel", "ru": "Личный сайт"},
+  "Sayfaların VS Code editöründe açılır; %s. Paylaşım kodunu alan kişi sayfayı AND Arama Motoru'ndaki Kodla Git ekranında ya da %s bayrağıyla açabilir.": {
+    "en": "Your pages open in the VS Code editor; %s. Anyone with the share code can open the page in the \"Kodla Git\" screen of AND Search Engine or with the %s flag.",
+    "de": "Deine Seiten öffnen sich im VS-Code-Editor; %s. Wer den Teilungscode hat, kann die Seite im Bildschirm „Kodla Git“ der AND-Suchmaschine oder mit dem Flag %s öffnen.",
+    "es": "Tus páginas se abren en el editor de VS Code; %s. Quien tenga el código para compartir puede abrir la página en la pantalla \"Kodla Git\" del Buscador AND o con la opción %s.",
+    "fr": "Vos pages s'ouvrent dans l'éditeur VS Code ; %s. Toute personne disposant du code de partage peut ouvrir la page dans l'écran « Kodla Git » du moteur de recherche AND ou avec l'option %s.",
+    "ru": "Ваши страницы открываются в редакторе VS Code; %s. Получатель кода общего доступа может открыть страницу на экране «Kodla Git» поисковика AND или с флагом %s."
+  },
+  "kaydetmek (Ctrl+S) sayfayı ağa yayınlar": {
+    "en": "saving (Ctrl+S) publishes the page to the network",
+    "de": "Speichern (Strg+S) veröffentlicht die Seite im Netzwerk",
+    "es": "guardar (Ctrl+S) publica la página en la red",
+    "fr": "enregistrer (Ctrl+S) publie la page sur le réseau",
+    "ru": "сохранение (Ctrl+S) публикует страницу в сети"
+  },
+  "Yeni sayfa": {"en": "New page", "de": "Neue Seite", "es": "Página nueva", "fr": "Nouvelle page", "ru": "Новая страница"},
+  "Bir eşe dosya gönder; gelen istekleri onayla. Alınan dosyalar AND'ın veri dizinine kaydedilir.": {
+    "en": "Send a file to a peer; approve incoming requests. Received files are saved to AND's data folder.",
+    "de": "Sende einem Peer eine Datei; bestätige eingehende Anfragen. Empfangene Dateien werden im Datenordner von AND gespeichert.",
+    "es": "Envía un archivo a un par; aprueba las solicitudes entrantes. Los archivos recibidos se guardan en la carpeta de datos de AND.",
+    "fr": "Envoyez un fichier à un pair ; approuvez les demandes entrantes. Les fichiers reçus sont enregistrés dans le dossier de données d'AND.",
+    "ru": "Отправьте файл узлу; подтверждайте входящие запросы. Полученные файлы сохраняются в папке данных AND."
+  },
+  "Alıcı": {"en": "Recipient", "de": "Empfänger", "es": "Destinatario", "fr": "Destinataire", "ru": "Получатель"},
+  "Dosya seç ve gönder": {"en": "Choose a file and send", "de": "Datei auswählen und senden", "es": "Elegir archivo y enviar", "fr": "Choisir un fichier et envoyer", "ru": "Выбрать файл и отправить"},
+  "Bekleyen istekler": {"en": "Pending requests", "de": "Offene Anfragen", "es": "Solicitudes pendientes", "fr": "Demandes en attente", "ru": "Ожидающие запросы"},
+  "Bekleyen istek yok.": {"en": "No pending requests.", "de": "Keine offenen Anfragen.", "es": "No hay solicitudes pendientes.", "fr": "Aucune demande en attente.", "ru": "Нет ожидающих запросов."},
+  "Alınan dosyalar": {"en": "Received files", "de": "Empfangene Dateien", "es": "Archivos recibidos", "fr": "Fichiers reçus", "ru": "Полученные файлы"},
+  "Henüz dosya alınmadı.": {
+    "en": "No files received yet.",
+    "de": "Noch keine Dateien empfangen.",
+    "es": "Aún no se ha recibido ningún archivo.",
+    "fr": "Aucun fichier reçu pour l'instant.",
+    "ru": "Файлов пока не получено."
+  },
+  "Önce bir konuşma seç ya da Peer ID ile yeni bir konuşma aç.": {
+    "en": "First select a conversation or start a new one with a Peer ID.",
+    "de": "Wähle zuerst eine Unterhaltung oder beginne eine neue mit einer Peer ID.",
+    "es": "Primero elige una conversación o abre una nueva con un Peer ID.",
+    "fr": "Choisissez d'abord une conversation ou ouvrez-en une nouvelle avec un Peer ID.",
+    "ru": "Сначала выберите беседу или начните новую по Peer ID."
+  },
+  "Konuşmak istediğin kişinin Peer ID’sini gir.": {
+    "en": "Enter the Peer ID of the person you want to talk to.",
+    "de": "Gib die Peer ID der Person ein, mit der du sprechen möchtest.",
+    "es": "Escribe el Peer ID de la persona con la que quieres hablar.",
+    "fr": "Saisissez le Peer ID de la personne à qui vous voulez parler.",
+    "ru": "Введите Peer ID человека, с которым хотите поговорить."
+  },
+  "Başlık ve içerik boş olamaz.": {
+    "en": "Title and content cannot be empty.",
+    "de": "Titel und Inhalt dürfen nicht leer sein.",
+    "es": "El título y el contenido no pueden estar vacíos.",
+    "fr": "Le titre et le contenu ne peuvent pas être vides.",
+    "ru": "Заголовок и содержимое не могут быть пустыми."
+  },
+  "Önce alıcının Peer ID’sini gir.": {
+    "en": "Enter the recipient's Peer ID first.",
+    "de": "Gib zuerst die Peer ID des Empfängers ein.",
+    "es": "Escribe primero el Peer ID del destinatario.",
+    "fr": "Saisissez d'abord le Peer ID du destinataire.",
+    "ru": "Сначала введите Peer ID получателя."
+  },
+  "Sen: %s": {"en": "You: %s", "de": "Du: %s", "es": "Tú: %s", "fr": "Vous : %s", "ru": "Вы: %s"},
+  "Yeni konuşma": {"en": "New conversation", "de": "Neue Unterhaltung", "es": "Nueva conversación", "fr": "Nouvelle conversation", "ru": "Новая беседа"},
+  "Sen": {"en": "You", "de": "Du", "es": "Tú", "fr": "Vous", "ru": "Вы"},
+  "gönderilemedi": {"en": "not sent", "de": "nicht gesendet", "es": "no enviado", "fr": "non envoyé", "ru": "не отправлено"},
+  "bekliyor": {"en": "pending", "de": "ausstehend", "es": "pendiente", "fr": "en attente", "ru": "ожидает"},
+  "Kurucu": {"en": "Founder", "de": "Gründer", "es": "Fundador", "fr": "Fondateur", "ru": "Основатель"},
+  "Moderatör": {"en": "Moderator", "de": "Moderator", "es": "Moderador", "fr": "Modérateur", "ru": "Модератор"},
+  "Üye": {"en": "Member", "de": "Mitglied", "es": "Miembro", "fr": "Membre", "ru": "Участник"},
+  "%s kopyala": {"en": "Copy %s", "de": "%s kopieren", "es": "Copiar %s", "fr": "Copier %s", "ru": "Копировать: %s"},
+  "Ad": {"en": "Name", "de": "Name", "es": "Nombre", "fr": "Nom", "ru": "Имя"},
+  "adsız": {"en": "unnamed", "de": "unbenannt", "es": "sin nombre", "fr": "sans nom", "ru": "без имени"},
+  "Rol": {"en": "Role", "de": "Rolle", "es": "Rol", "fr": "Rôle", "ru": "Роль"},
+  "Genel anahtar": {"en": "Public key", "de": "Public Key", "es": "Clave pública", "fr": "Clé publique", "ru": "Открытый ключ"},
+  "%s yazdı, %s kategorisinde.": {"en": "Posted by %s in %s.", "de": "Geschrieben von %s in %s.", "es": "Publicado por %s en %s.", "fr": "Publié par %s dans %s.", "ru": "Автор: %s, категория: %s."},
+  "%d yanıt": {"en": "%d reply|%d replies", "de": "%d Antwort|%d Antworten", "es": "%d respuesta|%d respuestas", "fr": "%d réponse|%d réponses", "ru": "%d ответ|%d ответа|%d ответов"},
+  "Henüz yanıt yok": {"en": "No replies yet", "de": "Noch keine Antworten", "es": "Aún no hay respuestas", "fr": "Aucune réponse pour l'instant", "ru": "Ответов пока нет"},
+  "Yanıtını yaz…": {"en": "Write your reply…", "de": "Antwort schreiben…", "es": "Escribe tu respuesta…", "fr": "Écrivez votre réponse…", "ru": "Напишите ответ…"},
+  "Yanıtla": {"en": "Reply", "de": "Antworten", "es": "Responder", "fr": "Répondre", "ru": "Ответить"},
+  "Sil": {"en": "Delete", "de": "Löschen", "es": "Eliminar", "fr": "Supprimer", "ru": "Удаление"},
+  "Henüz bir sayfan yok. İlk sayfanı oluşturmak için Yeni sayfa’yı kullan.": {
+    "en": "You don't have any pages yet. Use New page to create your first one.",
+    "de": "Du hast noch keine Seiten. Erstelle deine erste mit „Neue Seite“.",
+    "es": "Aún no tienes páginas. Usa Nueva página para crear la primera.",
+    "fr": "Vous n'avez encore aucune page. Utilisez Nouvelle page pour créer la première.",
+    "ru": "У вас пока нет страниц. Создайте первую кнопкой «Новая страница»."
+  },
+  "%s güncellendi, %s / %s bayt": {
+    "en": "updated %s, %s / %s bytes",
+    "de": "aktualisiert %s, %s / %s Byte",
+    "es": "actualizada el %s, %s / %s bytes",
+    "fr": "mise à jour le %s, %s / %s octets",
+    "ru": "обновлено %s, %s / %s байт"
+  },
+  "Düzenle": {"en": "Edit", "de": "Bearbeiten", "es": "Editar", "fr": "Modifier", "ru": "Редактирование"},
+  "Paylaşım kodu": {"en": "Share code", "de": "Teilungscode", "es": "Código para compartir", "fr": "Code de partage", "ru": "Код общего доступа"},
+  "%s gönderdi, %s": {"en": "sent by %s, %s", "de": "gesendet von %s, %s", "es": "enviado por %s, %s", "fr": "envoyé par %s, %s", "ru": "отправитель %s, %s"},
+  "Klasörde göster": {"en": "Show in folder", "de": "Im Ordner anzeigen", "es": "Mostrar en la carpeta", "fr": "Afficher dans le dossier", "ru": "Показать в папке"},
+  "bağlı": {"en": "connected", "de": "verbunden", "es": "conectado", "fr": "connecté", "ru": "подключено"},
+  "bağlı değil": {"en": "not connected", "de": "nicht verbunden", "es": "no conectado", "fr": "non connecté", "ru": "не подключено"},
+  "Kişisel site sayfaları alınamadı: %s": {
+    "en": "Could not load personal site pages: %s",
+    "de": "Seiten der persönlichen Website konnten nicht geladen werden: %s",
+    "es": "No se pudieron cargar las páginas del sitio personal: %s",
+    "fr": "Impossible de charger les pages du site personnel : %s",
+    "ru": "Не удалось загрузить страницы личного сайта: %s"
+  },
+  "Bu AND sürümü mesaj geçmişi tutmuyor: yalnızca bu oturumda gelen ve gönderilen mesajlar görünür.": {
+    "en": "This AND version keeps no message history: only messages received and sent in this session are shown.",
+    "de": "Diese AND-Version speichert keinen Nachrichtenverlauf: Es werden nur in dieser Sitzung empfangene und gesendete Nachrichten angezeigt.",
+    "es": "Esta versión de AND no guarda historial de mensajes: solo se muestran los recibidos y enviados en esta sesión.",
+    "fr": "Cette version d'AND ne conserve pas d'historique : seuls les messages reçus et envoyés pendant cette session sont affichés.",
+    "ru": "Эта версия AND не хранит историю сообщений: видны только сообщения, полученные и отправленные в этом сеансе."
+  },
+  "%s teması": {"en": "%s theme", "de": "Design: %s", "es": "Tema %s", "fr": "Thème %s", "ru": "Тема «%s»"},
+  "Yeni Sayfa": {"en": "New Page", "de": "Neue Seite", "es": "Nueva página", "fr": "Nouvelle page", "ru": "Новая страница"},
+  "Henüz bir site sayfan yok.": {
+    "en": "You don't have any site pages yet.",
+    "de": "Du hast noch keine Website-Seiten.",
+    "es": "Aún no tienes páginas en tu sitio.",
+    "fr": "Vous n'avez encore aucune page de site.",
+    "ru": "У вас пока нет страниц сайта."
+  },
+  "%s/%s bayt": {"en": "%s/%s bytes", "de": "%s/%s Byte", "es": "%s/%s bytes", "fr": "%s/%s octets", "ru": "%s/%s байт"},
+  "En fazla %d sayfan olabilir — yenisi için önce birini sil.": {
+    "en": "You can have at most %d page — delete one first to add a new one.|You can have at most %d pages — delete one first to add a new one.",
+    "de": "Du kannst höchstens %d Seite haben — lösche zuerst eine, um eine neue anzulegen.|Du kannst höchstens %d Seiten haben — lösche zuerst eine, um eine neue anzulegen.",
+    "es": "Puedes tener como máximo %d página: borra una antes de crear otra.|Puedes tener como máximo %d páginas: borra una antes de crear otra.",
+    "fr": "Vous pouvez avoir au plus %d page — supprimez-en une pour en créer une nouvelle.|Vous pouvez avoir au plus %d pages — supprimez-en une pour en créer une nouvelle.",
+    "ru": "У вас может быть не больше %d страницы — чтобы создать новую, удалите одну из старых.|У вас может быть не больше %d страниц — чтобы создать новую, удалите одну из старых.|У вас может быть не больше %d страниц — чтобы создать новую, удалите одну из старых."
+  },
+  "Yeni Site Sayfası (1/2) — slug": {
+    "en": "New Site Page (1/2) — slug",
+    "de": "Neue Website-Seite (1/2) — Slug",
+    "es": "Nueva página del sitio (1/2): slug",
+    "fr": "Nouvelle page de site (1/2) — slug",
+    "ru": "Новая страница сайта (1/2) — slug"
+  },
+  "Sayfanın kalıcı adresi: küçük harf, rakam ve tire (ör. hakkimda, projeler). Sonradan değiştirilemez.": {
+    "en": "The page's permanent address: lowercase letters, digits and hyphens (e.g. about-me, projects). It cannot be changed later.",
+    "de": "Die dauerhafte Adresse der Seite: Kleinbuchstaben, Ziffern und Bindestriche (z. B. ueber-mich, projekte). Kann später nicht geändert werden.",
+    "es": "La dirección permanente de la página: minúsculas, dígitos y guiones (p. ej., sobre-mi, proyectos). No se puede cambiar después.",
+    "fr": "L'adresse permanente de la page : minuscules, chiffres et tirets (p. ex. a-propos, projets). Elle ne peut pas être modifiée ensuite.",
+    "ru": "Постоянный адрес страницы: строчные латинские буквы, цифры и дефисы (например, obo-mne, proekty). Позже изменить нельзя."
+  },
+  "hakkimda": {"en": "about-me", "de": "ueber-mich", "es": "sobre-mi", "fr": "a-propos", "ru": "obo-mne"},
+  "Yeni Site Sayfası (2/2) — başlık": {
+    "en": "New Site Page (2/2) — title",
+    "de": "Neue Website-Seite (2/2) — Titel",
+    "es": "Nueva página del sitio (2/2): título",
+    "fr": "Nouvelle page de site (2/2) — titre",
+    "ru": "Новая страница сайта (2/2) — заголовок"
+  },
+  "Sayfa başlığı — sonradan editördeki ilk satırdan da değiştirebilirsin.": {
+    "en": "Page title — you can also change it later on the first line in the editor.",
+    "de": "Seitentitel — du kannst ihn später auch in der ersten Zeile im Editor ändern.",
+    "es": "Título de la página: también puedes cambiarlo después en la primera línea del editor.",
+    "fr": "Titre de la page — vous pourrez aussi le modifier ensuite sur la première ligne de l'éditeur.",
+    "ru": "Заголовок страницы — позже его можно изменить и в первой строке редактора."
+  },
+  "Başlık en fazla %d bayt olabilir (şu an %d bayt).": {
+    "en": "The title can be at most %d bytes (currently %d bytes).",
+    "de": "Der Titel darf höchstens %d Byte lang sein (derzeit %d Byte).",
+    "es": "El título puede tener como máximo %d bytes (ahora tiene %d bytes).",
+    "fr": "Le titre peut faire au plus %d octets (actuellement %d octets).",
+    "ru": "Заголовок может занимать не больше %d байт (сейчас %d байт)."
+  },
+  "\"%s\" taslağı açıldı. İlk satır başlıktır; içeriği altına yaz. Hazır olduğunda kaydet (Ctrl+S) — kaydetmek sayfayı ağa yayınlar.": {
+    "en": "Draft \"%s\" opened. The first line is the title; write the content below it. When it's ready, save (Ctrl+S) — saving publishes the page to the network.",
+    "de": "Entwurf „%s“ geöffnet. Die erste Zeile ist der Titel; schreibe den Inhalt darunter. Wenn alles fertig ist, speichere (Strg+S) — Speichern veröffentlicht die Seite im Netzwerk.",
+    "es": "Borrador \"%s\" abierto. La primera línea es el título; escribe el contenido debajo. Cuando esté listo, guarda (Ctrl+S): guardar publica la página en la red.",
+    "fr": "Brouillon « %s » ouvert. La première ligne est le titre ; écrivez le contenu en dessous. Quand c'est prêt, enregistrez (Ctrl+S) — enregistrer publie la page sur le réseau.",
+    "ru": "Черновик «%s» открыт. Первая строка — заголовок; содержимое пишите ниже. Когда всё готово, сохраните (Ctrl+S) — сохранение публикует страницу в сети."
+  },
+  "Düzenlenecek sayfa": {"en": "Page to edit", "de": "Zu bearbeitende Seite", "es": "Página que editar", "fr": "Page à modifier", "ru": "Страница для правки"},
+  "\"%s\" açılamadı: %s": {
+    "en": "Could not open \"%s\": %s",
+    "de": "„%s“ konnte nicht geöffnet werden: %s",
+    "es": "No se pudo abrir \"%s\": %s",
+    "fr": "Impossible d'ouvrir « %s » : %s",
+    "ru": "Не удалось открыть «%s»: %s"
+  },
+  "Silinecek sayfa": {"en": "Page to delete", "de": "Zu löschende Seite", "es": "Página que borrar", "fr": "Page à supprimer", "ru": "Страница для удаления"},
+  "\"%s\" adlı yayınlanmış bir sayfan yok.": {
+    "en": "You have no published page named \"%s\".",
+    "de": "Du hast keine veröffentlichte Seite namens „%s“.",
+    "es": "No tienes ninguna página publicada llamada \"%s\".",
+    "fr": "Vous n'avez aucune page publiée nommée « %s ».",
+    "ru": "У вас нет опубликованной страницы «%s»."
+  },
+  "\"%s\" (%s) sayfası silinsin mi?": {
+    "en": "Delete the page \"%s\" (%s)?",
+    "de": "Seite „%s“ (%s) löschen?",
+    "es": "¿Borrar la página \"%s\" (%s)?",
+    "fr": "Supprimer la page « %s » (%s) ?",
+    "ru": "Удалить страницу «%s» (%s)?"
+  },
+  "Ağa bir silme kaydı yayınlanır; diğer eşlerdeki ve AND Arama Motoru indekslerindeki kopyalar da kaldırılır. Silinen bir slug bir daha kullanılamaz.": {
+    "en": "A deletion record is published to the network; copies on other peers and in AND Search Engine indexes are removed too. A deleted slug can never be used again.",
+    "de": "Ein Löschvermerk wird im Netzwerk veröffentlicht; Kopien bei anderen Peers und in den Indizes der AND-Suchmaschine werden ebenfalls entfernt. Ein gelöschter Slug kann nie wieder verwendet werden.",
+    "es": "Se publica en la red un registro de borrado; también se eliminan las copias de otros pares y de los índices del Buscador AND. Un slug borrado no se puede volver a usar.",
+    "fr": "Un enregistrement de suppression est publié sur le réseau ; les copies chez les autres pairs et dans les index du moteur de recherche AND sont aussi supprimées. Un slug supprimé ne peut plus jamais être réutilisé.",
+    "ru": "В сеть публикуется запись об удалении; копии у других узлов и в индексах поисковика AND тоже удаляются. Удалённый slug больше нельзя использовать."
+  },
+  "\"%s\" silindi.": {"en": "\"%s\" deleted.", "de": "„%s“ gelöscht.", "es": "\"%s\" borrada.", "fr": "« %s » supprimée.", "ru": "«%s» удалена."},
+  "\"%s\" silinemedi: %s": {
+    "en": "Could not delete \"%s\": %s",
+    "de": "„%s“ konnte nicht gelöscht werden: %s",
+    "es": "No se pudo borrar \"%s\": %s",
+    "fr": "Impossible de supprimer « %s » : %s",
+    "ru": "Не удалось удалить «%s»: %s"
+  },
+  "Paylaşım kodu kopyalanacak sayfa": {
+    "en": "Page whose share code to copy",
+    "de": "Seite, deren Teilungscode kopiert werden soll",
+    "es": "Página cuyo código copiar",
+    "fr": "Page dont copier le code de partage",
+    "ru": "Страница, код которой скопировать"
+  },
+  "\"%s\" henüz yayınlanmadı — önce kaydet (Ctrl+S), sonra paylaş.": {
+    "en": "\"%s\" is not published yet — save it first (Ctrl+S), then share.",
+    "de": "„%s“ ist noch nicht veröffentlicht — speichere zuerst (Strg+S) und teile dann.",
+    "es": "\"%s\" aún no está publicada: guarda primero (Ctrl+S) y luego comparte.",
+    "fr": "« %s » n'est pas encore publiée — enregistrez d'abord (Ctrl+S), puis partagez.",
+    "ru": "«%s» ещё не опубликована — сначала сохраните (Ctrl+S), затем делитесь."
+  },
+  "\"%s\" paylaşım kodu panoya kopyalandı — alan kişi AND Arama Motoru'nda \"Kodla Git\" ekranına yapıştırarak (ya da -site ile) sayfayı açabilir.": {
+    "en": "Share code for \"%s\" copied to the clipboard — the recipient can open the page by pasting it into the \"Kodla Git\" screen of AND Search Engine (or with -site).",
+    "de": "Teilungscode für „%s“ in die Zwischenablage kopiert — der Empfänger kann die Seite öffnen, indem er ihn im Bildschirm „Kodla Git“ der AND-Suchmaschine einfügt (oder mit -site).",
+    "es": "Código de \"%s\" copiado al portapapeles: quien lo reciba puede abrir la página pegándolo en la pantalla \"Kodla Git\" del Buscador AND (o con -site).",
+    "fr": "Code de partage de « %s » copié dans le presse-papiers — le destinataire peut ouvrir la page en le collant dans l'écran « Kodla Git » du moteur de recherche AND (ou avec -site).",
+    "ru": "Код общего доступа для «%s» скопирован — получатель может открыть страницу, вставив его на экране «Kodla Git» поисковика AND (или через -site)."
+  },
+  "and-site:// Bağlantısını Kopyala": {
+    "en": "Copy and-site:// Link",
+    "de": "and-site://-Link kopieren",
+    "es": "Copiar enlace and-site://",
+    "fr": "Copier le lien and-site://",
+    "ru": "Копировать ссылку and-site://"
+  },
+  "Paylaşım kodu alınamadı: %s": {
+    "en": "Could not get the share code: %s",
+    "de": "Teilungscode konnte nicht abgerufen werden: %s",
+    "es": "No se pudo obtener el código para compartir: %s",
+    "fr": "Impossible d'obtenir le code de partage : %s",
+    "ru": "Не удалось получить код общего доступа: %s"
+  },
+  "Başlık en fazla %d bayt olabilir (şu an %d bayt) — AND bu sayfayı kabul etmez.": {
+    "en": "The title can be at most %d bytes (currently %d bytes) — AND will not accept this page.",
+    "de": "Der Titel darf höchstens %d Byte lang sein (derzeit %d Byte) — AND nimmt diese Seite nicht an.",
+    "es": "El título puede tener como máximo %d bytes (ahora tiene %d bytes): AND no aceptará esta página.",
+    "fr": "Le titre peut faire au plus %d octets (actuellement %d octets) — AND n'acceptera pas cette page.",
+    "ru": "Заголовок может занимать не больше %d байт (сейчас %d байт) — AND не примет эту страницу."
+  },
+  "Sayfa en fazla %d bayt olabilir (şu an %d bayt) — işaretli kısım sığmıyor.": {
+    "en": "A page can be at most %d bytes (currently %d bytes) — the highlighted part does not fit.",
+    "de": "Eine Seite darf höchstens %d Byte groß sein (derzeit %d Byte) — der markierte Teil passt nicht hinein.",
+    "es": "Una página puede tener como máximo %d bytes (ahora tiene %d bytes): la parte marcada no cabe.",
+    "fr": "Une page peut faire au plus %d octets (actuellement %d octets) — la partie surlignée ne tient pas.",
+    "ru": "Страница может занимать не больше %d байт (сейчас %d байт) — выделенная часть не помещается."
+  },
+  "başlık %s/%s · gövde %s/%s bayt": {
+    "en": "title %s/%s · body %s/%s bytes",
+    "de": "Titel %s/%s · Inhalt %s/%s Byte",
+    "es": "título %s/%s · cuerpo %s/%s bytes",
+    "fr": "titre %s/%s · corps %s/%s octets",
+    "ru": "заголовок %s/%s · текст %s/%s байт"
+  },
+  "AND kişisel site sayfası — kaydetmek (Ctrl+S) sayfayı ağa yayınlar. Sınırlar AND'ın kendisiyle aynıdır ve karakter değil BAYT sayar (ğ, ş gibi Türkçe karakterler 2 bayttır).": {
+    "en": "AND personal site page — saving (Ctrl+S) publishes the page to the network. The limits are the same as AND's own and count BYTES, not characters (non-ASCII letters such as é or ş take 2 bytes).",
+    "de": "Seite der persönlichen AND-Website — Speichern (Strg+S) veröffentlicht die Seite im Netzwerk. Die Grenzen entsprechen denen von AND und zählen BYTES, nicht Zeichen (Umlaute wie ä oder ü belegen 2 Byte).",
+    "es": "Página del sitio personal de AND: guardar (Ctrl+S) publica la página en la red. Los límites son los mismos que los de AND y cuentan BYTES, no caracteres (letras como ñ o á ocupan 2 bytes).",
+    "fr": "Page du site personnel AND — enregistrer (Ctrl+S) publie la page sur le réseau. Les limites sont celles d'AND et comptent des OCTETS, pas des caractères (les lettres accentuées comme é ou ç occupent 2 octets).",
+    "ru": "Страница личного сайта AND — сохранение (Ctrl+S) публикует её в сети. Ограничения те же, что и в самом AND, и считаются в БАЙТАХ, а не символах (каждая буква кириллицы занимает 2 байта)."
+  },
+  "Kişisel sitede klasör yoktur — her sayfa tek bir slug'dır.": {
+    "en": "A personal site has no folders — each page is a single slug.",
+    "de": "Eine persönliche Website hat keine Ordner — jede Seite ist ein einzelner Slug.",
+    "es": "Un sitio personal no tiene carpetas: cada página es un único slug.",
+    "fr": "Un site personnel n'a pas de dossiers — chaque page est un slug unique.",
+    "ru": "В личном сайте нет папок — каждая страница это отдельный slug."
+  },
+  "Otomatik kaydetme bir site sayfasını ağa YAYINLAMAZ — sayfa hazır olduğunda Ctrl+S ile kaydet.": {
+    "en": "Auto save does NOT publish a site page to the network — save with Ctrl+S when the page is ready.",
+    "de": "Automatisches Speichern veröffentlicht eine Website-Seite NICHT im Netzwerk — speichere mit Strg+S, wenn die Seite fertig ist.",
+    "es": "El guardado automático NO publica una página del sitio en la red: guarda con Ctrl+S cuando la página esté lista.",
+    "fr": "L'enregistrement automatique NE publie PAS une page de site sur le réseau — enregistrez avec Ctrl+S quand la page est prête.",
+    "ru": "Автосохранение НЕ публикует страницу сайта в сети — сохраните её через Ctrl+S, когда она будет готова."
+  },
+  "Bir sayfanın slug'ı değiştirilemez — yeni bir sayfa oluşturup içeriği taşıyabilir, eskisini silebilirsin.": {
+    "en": "A page's slug cannot be changed — you can create a new page, move the content over and delete the old one.",
+    "de": "Der Slug einer Seite kann nicht geändert werden — du kannst eine neue Seite anlegen, den Inhalt übertragen und die alte löschen.",
+    "es": "El slug de una página no se puede cambiar: puedes crear una página nueva, mover el contenido y borrar la antigua.",
+    "fr": "Le slug d'une page ne peut pas être modifié — vous pouvez créer une nouvelle page, y déplacer le contenu et supprimer l'ancienne.",
+    "ru": "Slug страницы изменить нельзя — можно создать новую страницу, перенести в неё содержимое и удалить старую."
+  },
+  "AND: \"%s\" %d sn içinde yayınlanacak…": {
+    "en": "AND: \"%s\" will be published in %d second…|AND: \"%s\" will be published in %d seconds…",
+    "de": "AND: „%s“ wird in %d Sekunde veröffentlicht…|AND: „%s“ wird in %d Sekunden veröffentlicht…",
+    "es": "AND: \"%s\" se publicará en %d segundo…|AND: \"%s\" se publicará en %d segundos…",
+    "fr": "AND : « %s » sera publiée dans %d seconde…|AND : « %s » sera publiée dans %d secondes…",
+    "ru": "AND: «%s» будет опубликована через %d секунду…|AND: «%s» будет опубликована через %d секунды…|AND: «%s» будет опубликована через %d секунд…"
+  },
+  "AND \"%s\" sayfasını kaydetmedi — bu slug daha önce silinmiş olabilir (silinen bir slug yeniden kullanılamaz). Farklı bir slug ile yeni bir sayfa oluştur.": {
+    "en": "AND did not save the page \"%s\" — this slug may have been deleted before (a deleted slug cannot be reused). Create a new page with a different slug.",
+    "de": "AND hat die Seite „%s“ nicht gespeichert — dieser Slug wurde möglicherweise schon einmal gelöscht (ein gelöschter Slug kann nicht wiederverwendet werden). Lege eine neue Seite mit einem anderen Slug an.",
+    "es": "AND no guardó la página \"%s\": puede que este slug se haya borrado antes (un slug borrado no se puede reutilizar). Crea una página nueva con otro slug.",
+    "fr": "AND n'a pas enregistré la page « %s » — ce slug a peut-être déjà été supprimé (un slug supprimé ne peut pas être réutilisé). Créez une nouvelle page avec un autre slug.",
+    "ru": "AND не сохранил страницу «%s» — возможно, этот slug уже удалялся (удалённый slug нельзя использовать снова). Создайте новую страницу с другим slug."
+  },
+  "AND'a canlı bağlantı yok — AND açık ve AND_ENABLE_EXTERNAL_API=1 ile başlatılmış olmalı.": {
+    "en": "No live connection to AND — AND must be running and started with AND_ENABLE_EXTERNAL_API=1.",
+    "de": "Keine Live-Verbindung zu AND — AND muss laufen und mit AND_ENABLE_EXTERNAL_API=1 gestartet worden sein.",
+    "es": "No hay conexión en vivo con AND: AND debe estar abierto e iniciado con AND_ENABLE_EXTERNAL_API=1.",
+    "fr": "Aucune connexion en direct à AND — AND doit être lancé avec AND_ENABLE_EXTERNAL_API=1.",
+    "ru": "Нет живого подключения к AND — AND должен быть запущен с AND_ENABLE_EXTERNAL_API=1."
+  },
+  "Geçersiz slug \"%s\" — yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla %d karakter.": {
+    "en": "Invalid slug \"%s\" — only lowercase letters, digits and hyphens (no leading/trailing hyphen), at most %d characters.",
+    "de": "Ungültiger Slug „%s“ — nur Kleinbuchstaben, Ziffern und Bindestriche (kein Bindestrich am Anfang/Ende), höchstens %d Zeichen.",
+    "es": "Slug no válido \"%s\": solo minúsculas, dígitos y guiones (sin guion al principio ni al final), como máximo %d caracteres.",
+    "fr": "Slug invalide « %s » — uniquement des minuscules, des chiffres et des tirets (pas de tiret au début ni à la fin), %d caractères au plus.",
+    "ru": "Недопустимый slug «%s» — только строчные латинские буквы, цифры и дефисы (без дефиса в начале и в конце), не больше %d символов."
+  },
+  "Sayfa içeriği boş olamaz — başlık satırının altına bir şeyler yaz.": {
+    "en": "The page content cannot be empty — write something below the title line.",
+    "de": "Der Seiteninhalt darf nicht leer sein — schreibe etwas unter die Titelzeile.",
+    "es": "El contenido de la página no puede estar vacío: escribe algo debajo de la línea del título.",
+    "fr": "Le contenu de la page ne peut pas être vide — écrivez quelque chose sous la ligne de titre.",
+    "ru": "Содержимое страницы не может быть пустым — напишите что-нибудь под строкой заголовка."
+  },
+  "Sayfa en fazla %d bayt olabilir (şu an %d bayt).": {
+    "en": "A page can be at most %d bytes (currently %d bytes).",
+    "de": "Eine Seite darf höchstens %d Byte groß sein (derzeit %d Byte).",
+    "es": "Una página puede tener como máximo %d bytes (ahora tiene %d bytes).",
+    "fr": "Une page peut faire au plus %d octets (actuellement %d octets).",
+    "ru": "Страница может занимать не больше %d байт (сейчас %d байт)."
+  },
+  "Slug boş olamaz.": {
+    "en": "Slug cannot be empty.",
+    "de": "Der Slug darf nicht leer sein.",
+    "es": "El slug no puede estar vacío.",
+    "fr": "Le slug ne peut pas être vide.",
+    "ru": "Slug не может быть пустым."
+  },
+  "Yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla %d karakter.": {
+    "en": "Only lowercase letters, digits and hyphens (no leading/trailing hyphen), at most %d characters.",
+    "de": "Nur Kleinbuchstaben, Ziffern und Bindestriche (kein Bindestrich am Anfang/Ende), höchstens %d Zeichen.",
+    "es": "Solo minúsculas, dígitos y guiones (sin guion al principio ni al final), como máximo %d caracteres.",
+    "fr": "Uniquement des minuscules, des chiffres et des tirets (pas de tiret au début ni à la fin), %d caractères au plus.",
+    "ru": "Только строчные латинские буквы, цифры и дефисы (без дефиса в начале и в конце), не больше %d символов."
+  },
+  "\"%s\" adlı bir sayfan zaten var — onu düzenlemek için \"Site Sayfası Aç\" komutunu kullan.": {
+    "en": "You already have a page named \"%s\" — use the \"Open Site Page\" command to edit it.",
+    "de": "Du hast bereits eine Seite namens „%s“ — bearbeite sie mit dem Befehl „Website-Seite öffnen“.",
+    "es": "Ya tienes una página llamada \"%s\": usa el comando \"Abrir página del sitio\" para editarla.",
+    "fr": "Vous avez déjà une page nommée « %s » — utilisez la commande « Ouvrir une page du site » pour la modifier.",
+    "ru": "У вас уже есть страница «%s» — откройте её командой «Открыть страницу сайта»."
+  },
+  "Günlük: %s": {"en": "Log: %s", "de": "Verlauf: %s", "es": "Historial: %s", "fr": "Historique : %s", "ru": "Журнал: %s"},
+  "silinen — %s": {"en": "deleted — %s", "de": "gelöscht — %s", "es": "borrado — %s", "fr": "supprimé — %s", "ru": "удалён — %s"},
+  "%s — Commit Günlüğü": {"en": "%s — Commit Log", "de": "%s — Commit-Verlauf", "es": "%s — Historial de commits", "fr": "%s — Historique des commits", "ru": "%s — журнал коммитов"},
+  "Mesaj, yazar ya da hash'e göre ara…": {
+    "en": "Search by message, author or hash…",
+    "de": "Nach Nachricht, Autor oder Hash suchen…",
+    "es": "Buscar por mensaje, autor o hash…",
+    "fr": "Rechercher par message, auteur ou hash…",
+    "ru": "Поиск по сообщению, автору или хешу…"
+  },
+  "Hash": {"en": "Hash", "de": "Hash", "es": "Hash", "fr": "Hash", "ru": "Хеш"},
+  "Mesaj": {"en": "Message", "de": "Nachricht", "es": "Mensaje", "fr": "Message", "ru": "Сообщение"},
+  "Yazar": {"en": "Author", "de": "Autor", "es": "Autor", "fr": "Auteur", "ru": "Автор"},
+  "Zaman": {"en": "Time", "de": "Zeit", "es": "Fecha", "fr": "Date", "ru": "Время"},
+  "Henüz commit yok.": {"en": "No commits yet.", "de": "Noch keine Commits.", "es": "Aún no hay commits.", "fr": "Aucun commit pour l'instant.", "ru": "Коммитов пока нет."},
+  "Fark hesaplanamadı: %s": {
+    "en": "Could not compute the diff: %s",
+    "de": "Unterschied konnte nicht berechnet werden: %s",
+    "es": "No se pudo calcular la diferencia: %s",
+    "fr": "Impossible de calculer la différence : %s",
+    "ru": "Не удалось вычислить разницу: %s"
+  },
+  "Değişiklik yok.": {"en": "No changes.", "de": "Keine Änderungen.", "es": "No hay cambios.", "fr": "Aucune modification.", "ru": "Изменений нет."},
+  "geçersiz nesne hash'i: %s": {
+    "en": "invalid object hash: %s",
+    "de": "ungültiger Objekt-Hash: %s",
+    "es": "hash de objeto no válido: %s",
+    "fr": "hash d'objet invalide : %s",
+    "ru": "недопустимый хеш объекта: %s"
+  },
+  "bozuk nesne: %s": {"en": "corrupt object: %s", "de": "beschädigtes Objekt: %s", "es": "objeto dañado: %s", "fr": "objet corrompu : %s", "ru": "повреждённый объект: %s"},
+  "Eklendi": {"en": "Added", "de": "Hinzugefügt", "es": "Añadido", "fr": "Ajouté", "ru": "Добавлен"},
+  "Değişti": {"en": "Modified", "de": "Geändert", "es": "Modificado", "fr": "Modifié", "ru": "Изменён"},
+  "Silindi": {"en": "Deleted", "de": "Gelöscht", "es": "Eliminado", "fr": "Supprimé", "ru": "Удалён"},
+  "Değişiklikler": {"en": "Changes", "de": "Änderungen", "es": "Cambios", "fr": "Modifications", "ru": "Изменения"},
+  "DeltaX durum hesaplanamadı: %s": {
+    "en": "Could not compute the DeltaX status: %s",
+    "de": "DeltaX-Status konnte nicht berechnet werden: %s",
+    "es": "No se pudo calcular el estado de DeltaX: %s",
+    "fr": "Impossible de calculer l'état DeltaX : %s",
+    "ru": "Не удалось вычислить состояние DeltaX: %s"
+  },
+  "Commit mesajı (Ctrl+Enter ile Kaydet)": {
+    "en": "Commit message (Ctrl+Enter to commit)",
+    "de": "Commit-Nachricht (Strg+Eingabe zum Committen)",
+    "es": "Mensaje del commit (Ctrl+Intro para hacer commit)",
+    "fr": "Message de commit (Ctrl+Entrée pour commiter)",
+    "ru": "Сообщение коммита (Ctrl+Enter — закоммитить)"
+  },
+  "Kaydet": {"en": "Commit", "de": "Commit", "es": "Commit", "fr": "Commit", "ru": "Коммит"},
+  "Değişiklikler — dal: %s": {"en": "Changes — branch: %s", "de": "Änderungen — Branch: %s", "es": "Cambios — rama: %s", "fr": "Modifications — branche : %s", "ru": "Изменения — ветка: %s"},
+  "Değişikliği Görüntüle": {"en": "View Change", "de": "Änderung anzeigen", "es": "Ver cambio", "fr": "Afficher la modification", "ru": "Просмотреть изменение"},
+  "silinen — HEAD sürümü": {"en": "deleted — HEAD version", "de": "gelöscht — HEAD-Version", "es": "borrado — versión de HEAD", "fr": "supprimé — version HEAD", "ru": "удалён — версия HEAD"},
+  "HEAD ↔ Çalışma Klasörü": {"en": "HEAD ↔ Working Folder", "de": "HEAD ↔ Arbeitsordner", "es": "HEAD ↔ Carpeta de trabajo", "fr": "HEAD ↔ Dossier de travail", "ru": "HEAD ↔ рабочая папка"},
+  "Commit mesajı boş olamaz": {
+    "en": "The commit message cannot be empty",
+    "de": "Die Commit-Nachricht darf nicht leer sein",
+    "es": "El mensaje del commit no puede estar vacío",
+    "fr": "Le message de commit ne peut pas être vide",
+    "ru": "Сообщение коммита не может быть пустым"
+  },
+  "Kaydedilecek değişiklik yok": {
+    "en": "There are no changes to commit",
+    "de": "Es gibt keine Änderungen zum Committen",
+    "es": "No hay cambios para hacer commit",
+    "fr": "Aucune modification à commiter",
+    "ru": "Нет изменений для коммита"
+  },
+  "beklenmeyen nesne tipi: ağaç bekleniyordu": {
+    "en": "unexpected object type: expected a tree",
+    "de": "unerwarteter Objekttyp: Baum erwartet",
+    "es": "tipo de objeto inesperado: se esperaba un árbol",
+    "fr": "type d'objet inattendu : arbre attendu",
+    "ru": "неожиданный тип объекта: ожидалось дерево"
+  }
+}
