@@ -21,7 +21,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-func newTestForum(t *testing.T) *Forum {
+func newTestForum(t testing.TB) *Forum {
 	t.Helper()
 	id, err := stdcrypto.GenerateIdentity()
 	if err != nil {

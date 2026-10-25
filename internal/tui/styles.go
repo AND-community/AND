@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/ui"
 )
 
@@ -135,7 +136,7 @@ func SaveTheme(dataDir string, t ThemeConfig) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(dataDir, ThemeFile), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(dataDir, ThemeFile), data, 0o600)
 }
 
 func loadAndApplyTheme(dataDir string) {

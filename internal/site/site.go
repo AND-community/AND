@@ -32,6 +32,7 @@ import (
 	"time"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/timewin"
@@ -199,7 +200,7 @@ func (s *Store) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			s.handleWireMessage(data)
+			guvenli.Isle("site iletisi", func() { s.handleWireMessage(data) })
 		case <-ctx.Done():
 			return
 		}

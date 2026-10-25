@@ -24,6 +24,7 @@ import (
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/githubverify"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
@@ -213,7 +214,7 @@ func (s *Store) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			s.handleMessage(data)
+			guvenli.Isle("profil iletisi", func() { s.handleMessage(data) })
 		case <-ctx.Done():
 			return
 		}

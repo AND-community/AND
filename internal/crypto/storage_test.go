@@ -196,3 +196,29 @@ func TestLoadEncrypted_CorruptedFile(t *testing.T) {
 		t.Fatal("expected an error when loading a truncated file, got nil")
 	}
 }
+
+// TestSaveEncrypted_UzerineYazmaAtomik: ad değişince kimlik dosyası yeniden
+// yazılır; yazma "ya tamamı ya hiç"tir (bkz. dosya.AtomikYaz) — geriye
+// geçici dosya kalmaz, dosya her an çözülebilir durumdadır.
+func TestSaveEncrypted_UzerineYazmaAtomik(t *testing.T) {
+	dizin := t.TempDir()
+	yol := filepath.Join(dizin, "identity.dat")
+	id, err := GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ad := range []string{"ilk", "ikinci ad"} {
+		id.SetName(ad)
+		if err := id.SaveEncrypted(yol, "parola-123456"); err != nil {
+			t.Fatal(err)
+		}
+		yuklenen, err := LoadEncrypted(yol, "parola-123456")
+		if err != nil || yuklenen.Name() != ad {
+			t.Fatalf("yeniden yazılan kimlik: ad %q, hata %v", yuklenen.Name(), err)
+		}
+	}
+	girdiler, _ := os.ReadDir(dizin)
+	if len(girdiler) != 1 {
+		t.Errorf("dizinde yalnızca identity.dat olmalı: %v", girdiler)
+	}
+}

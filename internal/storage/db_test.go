@@ -390,3 +390,72 @@ func TestDeleteChatMessage_RemovesOnlyThatMessage(t *testing.T) {
 		t.Errorf("yalnızca 'a' silinmeliydi, 'b' kalmalıydı, got %+v", got)
 	}
 }
+
+// TestOpen_AyarlarHerBaglantidaUygulanir: busy_timeout, WAL ve synchronous
+// havuzun açtığı her yeni bağlantıda geçerlidir.
+func TestOpen_AyarlarHerBaglantidaUygulanir(t *testing.T) {
+	db := openTestDB(t)
+	for tur := range 2 {
+		var bekleme, senkron int
+		var gunluk string
+		if err := db.db.QueryRow("PRAGMA busy_timeout").Scan(&bekleme); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.db.QueryRow("PRAGMA synchronous").Scan(&senkron); err != nil {
+			t.Fatal(err)
+		}
+		if err := db.db.QueryRow("PRAGMA journal_mode").Scan(&gunluk); err != nil {
+			t.Fatal(err)
+		}
+		if bekleme != 5000 || senkron != 1 || gunluk != "wal" {
+			t.Fatalf("bağlantı %d: busy_timeout=%d synchronous=%d journal_mode=%s", tur, bekleme, senkron, gunluk)
+		}
+		// Boştaki bağlantıyı kapat: sonraki sorgu yeni bir bağlantı açar.
+		db.db.SetMaxIdleConns(0)
+		db.db.SetMaxIdleConns(2)
+	}
+}
+
+// TestOpen_KilitliDosyadaBekler: dosyayı başka bir bağlantı (ör. aynı
+// veri dizinini kullanan andmod) yazmak için kilitlemişken yazma hemen
+// "database is locked" ile düşmez, kilit kalkınca tamamlanır.
+func TestOpen_KilitliDosyadaBekler(t *testing.T) {
+	yol := filepath.Join(t.TempDir(), "forum.db")
+	a, err := Open(yol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := Open(yol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	if _, err := a.db.Exec("CREATE TABLE deneme(x INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := a.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec("INSERT INTO deneme VALUES(1)"); err != nil {
+		t.Fatal(err)
+	}
+	sonuc := make(chan error, 1)
+	go func() {
+		_, err := b.db.Exec("INSERT INTO deneme VALUES(2)")
+		sonuc <- err
+	}()
+	time.Sleep(200 * time.Millisecond)
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-sonuc:
+		if err != nil {
+			t.Fatalf("kilit kalkınca yazma tamamlanmalıydı: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("yazma kilit kalktıktan sonra da bitmedi")
+	}
+}

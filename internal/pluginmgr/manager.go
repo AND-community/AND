@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/pluginapi"
 )
 
@@ -111,7 +112,7 @@ func writeState(dataDir string, st pluginsState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, stateFile), data, 0o600)
+	return dosya.AtomikYaz(filepath.Join(dataDir, stateFile), data, 0o600)
 }
 
 // IzinOnayli, kullanıcının eklenti için istenen izinlerin hepsini daha önce

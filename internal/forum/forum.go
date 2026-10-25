@@ -14,6 +14,7 @@ import (
 	"time"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/storage"
@@ -184,7 +185,7 @@ func (f *Forum) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			f.handleMessage(data)
+			guvenli.Isle("forum iletisi", func() { f.handleMessage(data) })
 		case <-ctx.Done():
 			return
 		}
@@ -554,6 +555,11 @@ func (f *Forum) PostByID(id string) *Post {
 // persist their own data alongside the forum's (e.g. profile) can share the
 // single SQLite connection rather than opening a second one on the same file.
 func (f *Forum) DB() *storage.DB { return f.db }
+
+// Close, forumun (ve onu paylaşan sohbet, profil, site depolarının)
+// veritabanını kapatır; WAL günlüğü ana dosyaya işlenir. Run döngüleri ve
+// senkronlar durduktan sonra çağrılmalıdır.
+func (f *Forum) Close() error { return f.db.Close() }
 
 // AuthorStats reports what the forum currently knows about authorKey's
 // activity: how many topics and replies they've posted, and the earliest

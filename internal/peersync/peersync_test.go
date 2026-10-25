@@ -3,6 +3,9 @@ package peersync
 import (
 	"context"
 	"errors"
+	"io"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -231,5 +234,40 @@ func TestRun_StopsWithContext(t *testing.T) {
 	}
 	if r.count("a") != 1 {
 		t.Fatal("Run bağlantı olayını işlemeli")
+	}
+}
+
+// TestPanik_BasarisizSayilirVeYuvaSerbestKalir: eşten gelen veriyi çözen
+// senkron panik yaparsa düğüm çökmez; deneme başarısız sayılır ve eşzamanlı
+// senkron yuvası serbest kalır (yoksa MaxParallel panikten sonra tükenirdi).
+func TestPanik_BasarisizSayilirVeYuvaSerbestKalir(t *testing.T) {
+	log.SetOutput(io.Discard)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	clk := &fakeClock{t: time.Unix(1_000_000, 0)}
+	var tamamlanan atomic.Int32
+	s := New(Config{
+		Sync: func(_ context.Context, p peer.ID) error {
+			if p == "bozuk" {
+				var m map[string]int
+				m["x"] = 1 // nil haritaya yazma: panik
+			}
+			tamamlanan.Add(1)
+			return nil
+		},
+		Supports:     func(peer.ID) Support { return SupportYes },
+		ConnectDelay: time.Millisecond,
+		MaxParallel:  1,
+		Now:          clk.Now,
+	})
+	ctx := context.Background()
+	s.onConnect(ctx, "bozuk")
+	s.wait()
+	if st := s.Status(); st.Failures != 1 {
+		t.Fatalf("panik başarısız deneme sayılmalı: %+v", st)
+	}
+	s.onConnect(ctx, "saglam")
+	s.wait()
+	if tamamlanan.Load() != 1 {
+		t.Fatal("panikten sonra yuva serbest kalmalı ve sonraki senkron çalışmalı")
 	}
 }

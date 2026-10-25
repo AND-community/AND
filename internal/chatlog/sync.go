@@ -11,6 +11,7 @@ import (
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/protokol"
 )
 
@@ -50,6 +51,9 @@ func (s *Store) RegisterSync(h libp2phost.Host) {
 // missing (signed messages only — see handleMessage/persist).
 func (s *Store) handleSyncStream(st libp2pnet.Stream) {
 	defer st.Close()
+	// Eşin gönderdiği veri işleyicide bir hatayı tetiklerse yalnızca bu akış
+	// kapanır; düğüm çökmez (bkz. guvenli).
+	defer guvenli.Kurtar("sohbet senkron akışı", func() { _ = st.Reset() })
 	st.SetDeadline(time.Now().Add(syncTimeout)) //nolint:errcheck
 
 	var req syncRequest

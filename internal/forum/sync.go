@@ -11,6 +11,7 @@ import (
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/protokol"
 )
 
@@ -55,6 +56,9 @@ func (f *Forum) RegisterSync(h libp2phost.Host) {
 // everything they're missing and our own tombstones.
 func (f *Forum) handleSyncStream(s libp2pnet.Stream) {
 	defer s.Close()
+	// Eşin gönderdiği veri işleyicide bir hatayı tetiklerse yalnızca bu akış
+	// kapanır; düğüm çökmez (bkz. guvenli).
+	defer guvenli.Kurtar("forum senkron akışı", func() { _ = s.Reset() })
 
 	s.SetDeadline(time.Now().Add(syncTimeout)) //nolint:errcheck
 

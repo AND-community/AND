@@ -20,6 +20,8 @@ import (
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/dosya"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
@@ -292,6 +294,9 @@ func (b *Broker) SendFile(ctx context.Context, peerIDStr, senderName, localPath 
 
 func (b *Broker) handleStream(s libp2pnet.Stream) {
 	defer s.Close()
+	// Eşin gönderdiği veri işleyicide bir hatayı tetiklerse yalnızca bu akış
+	// kapanır; düğüm çökmez (bkz. guvenli).
+	defer guvenli.Kurtar("dosya akışı", func() { _ = s.Reset() })
 
 	if b.authorBanned(s.Conn().RemotePeer()) {
 		return
@@ -494,7 +499,7 @@ func (b *Broker) loadOrCreateState(tid, filename, senderName string, totalSize i
 
 func (b *Broker) saveState(st *recvState) {
 	raw, _ := json.Marshal(st)
-	_ = os.WriteFile(b.statePath(st.TransferID), raw, 0o600)
+	_ = dosya.HizliAtomikYaz(b.statePath(st.TransferID), raw, 0o600)
 }
 
 func (b *Broker) deleteState(tid string) {

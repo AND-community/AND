@@ -30,6 +30,8 @@ import (
 	"time"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/dosya"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/hizsiniri"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
@@ -524,7 +526,7 @@ func (s *Store) saveRates() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(s.dataDir, "chat_rates.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(s.dataDir, "chat_rates.json"), data, 0o600)
 }
 
 func (s *Store) loadRates() {
@@ -594,7 +596,7 @@ func (s *Store) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			s.handleMessage(data)
+			guvenli.Isle("sohbet iletisi", func() { s.handleMessage(data) })
 		case <-ctx.Done():
 			return
 		}

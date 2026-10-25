@@ -21,6 +21,7 @@ package peersync
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sort"
 	"sync"
@@ -29,6 +30,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/protocol"
+
+	"github.com/lucian95511/and/internal/guvenli"
 )
 
 // Support, bir eşin AND'ın senkron protokollerini konuşup konuşmadığıdır.
@@ -258,10 +261,18 @@ func (s *Scheduler) run(ctx context.Context, p peer.ID) {
 		s.finish(p, ctx.Err())
 		return
 	}
-	err := s.cfg.Sync(ctx, p)
+	// Senkron, eşin gönderdiği veriyi çözer: orada tetiklenen bir hata düğümü
+	// çökertmez, başarısız bir deneme sayılır (yuva da serbest kalır).
+	var err error
+	if !guvenli.Isle("eş senkronu", func() { err = s.cfg.Sync(ctx, p) }) {
+		err = errSenkronPanik
+	}
 	<-s.sem
 	s.finish(p, err)
 }
+
+// errSenkronPanik, panik yapan bir senkronun hatasıdır (ayrıntı günlükte).
+var errSenkronPanik = errors.New("peersync: senkron beklenmedik biçimde durdu (bkz. and.log)")
 
 func (s *Scheduler) finish(p peer.ID, err error) {
 	now := s.cfg.Now()

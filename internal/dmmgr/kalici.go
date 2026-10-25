@@ -29,6 +29,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/protokol"
 )
@@ -82,7 +83,7 @@ func (b *Broker) KaliciAc(yol string, anahtar []byte) error {
 	if len(anahtar) != 32 {
 		return errors.New("dmmgr: geçmiş anahtarı 32 bayt olmalı")
 	}
-	var dosya kayitDosyasi
+	var kayit kayitDosyasi
 	var yukleHatasi error
 	veri, err := os.ReadFile(yol)
 	switch {
@@ -92,23 +93,23 @@ func (b *Broker) KaliciAc(yol string, anahtar []byte) error {
 	default:
 		acik, err := coz(anahtar, veri)
 		if err == nil {
-			err = json.Unmarshal(acik, &dosya)
+			err = json.Unmarshal(acik, &kayit)
 		}
 		if err != nil {
 			yukleHatasi = fmt.Errorf("dmmgr: önceki DM geçmişi çözülemedi, %s.okunamadi olarak kenara alındı: %w", yol, err)
 			_ = os.Rename(yol, yol+".okunamadi")
-			dosya = kayitDosyasi{}
+			kayit = kayitDosyasi{}
 		}
 	}
 
 	b.mu.Lock()
 	b.kalici, b.anahtar = yol, anahtar
-	b.history = sinirla(append(dosya.Gecmis, b.history...))
-	b.giden = append(dosya.Giden, b.giden...)
+	b.history = sinirla(append(kayit.Gecmis, b.history...))
+	b.giden = append(kayit.Giden, b.giden...)
 	if b.okundu == nil {
 		b.okundu = map[string]time.Time{}
 	}
-	for p, t := range dosya.Okundu {
+	for p, t := range kayit.Okundu {
 		if t.After(b.okundu[p]) {
 			b.okundu[p] = t
 		}
@@ -132,7 +133,7 @@ func (b *Broker) kaydet() {
 		b.mu.Unlock()
 		return
 	}
-	dosya := kayitDosyasi{
+	kayit := kayitDosyasi{
 		Surum:  dosyaSurumu,
 		Gecmis: append([]pluginapi.DMRecord(nil), b.history...),
 		Giden:  append([]bekleyenDM(nil), b.giden...),
@@ -141,7 +142,7 @@ func (b *Broker) kaydet() {
 	yol, anahtar := b.kalici, b.anahtar
 	b.mu.Unlock()
 
-	acik, err := json.Marshal(dosya)
+	acik, err := json.Marshal(kayit)
 	if err != nil {
 		log.Printf("dmmgr: geçmiş kodlanamadı: %v", err)
 		return
@@ -151,13 +152,7 @@ func (b *Broker) kaydet() {
 		log.Printf("dmmgr: geçmiş şifrelenemedi: %v", err)
 		return
 	}
-	gecici := yol + ".yeni"
-	if err := os.WriteFile(gecici, kapali, 0o600); err != nil {
-		log.Printf("dmmgr: geçmiş yazılamadı: %v", err)
-		return
-	}
-	if err := os.Rename(gecici, yol); err != nil {
-		os.Remove(gecici)
+	if err := dosya.AtomikYaz(yol, kapali, 0o600); err != nil {
 		log.Printf("dmmgr: geçmiş yazılamadı: %v", err)
 	}
 }

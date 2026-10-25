@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucian95511/and/internal/dosya"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/network"
 
 	"github.com/libp2p/go-libp2p/core/control"
@@ -329,7 +331,7 @@ func (m *Moderator) Start(ctx context.Context, topic *network.Topic) {
 				if !ok {
 					return
 				}
-				m.handleEnvelope(data)
+				guvenli.Isle("moderasyon iletisi", func() { m.handleEnvelope(data) })
 			case <-ctx.Done():
 				return
 			}
@@ -1119,7 +1121,7 @@ func (m *Moderator) saveRates() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(m.dataDir, "mod_rates.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(m.dataDir, "mod_rates.json"), data, 0o600)
 }
 
 func (m *Moderator) loadRates() {
@@ -1346,7 +1348,7 @@ func (m *Moderator) saveHistory() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(m.historyPath(), data, 0o600)
+	_ = dosya.AtomikYaz(m.historyPath(), data, 0o600)
 }
 
 func (m *Moderator) loadHistory() {
@@ -1421,7 +1423,7 @@ func (m *Moderator) IssueGrant(founderPriv ed25519.PrivateKey, targetKeyHex stri
 			}
 			outPath := filepath.Join(outDir, "mod_"+shortKey+".json")
 			if data, merr := json.MarshalIndent(cert, "", "  "); merr == nil {
-				if os.WriteFile(outPath, data, 0o600) == nil {
+				if dosya.AtomikYaz(outPath, data, 0o600) == nil {
 					certPath = outPath
 				}
 			}
@@ -1468,7 +1470,7 @@ func (m *Moderator) saveGrants() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(m.grantsPath(), data, 0o600)
+	_ = dosya.AtomikYaz(m.grantsPath(), data, 0o600)
 }
 
 func (m *Moderator) loadGrants() {
@@ -1512,7 +1514,7 @@ func (m *Moderator) saveBans() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(m.dataDir, "active_bans.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(m.dataDir, "active_bans.json"), data, 0o600)
 }
 
 func (m *Moderator) loadBans() {
@@ -1566,7 +1568,7 @@ func (m *Moderator) saveRevocations() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(m.dataDir, "active_revocations.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(m.dataDir, "active_revocations.json"), data, 0o600)
 }
 
 func (m *Moderator) loadRevocations() {
@@ -1613,7 +1615,7 @@ func (m *Moderator) saveUnbanWatermarks() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(m.dataDir, "unban_watermarks.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(m.dataDir, "unban_watermarks.json"), data, 0o600)
 }
 
 func (m *Moderator) loadUnbanWatermarks() {

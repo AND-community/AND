@@ -45,6 +45,10 @@ type Discovery struct {
 	eventSub       event.Subscription
 	peerConnected  chan peer.ID
 	extraBootstrap []peer.AddrInfo
+
+	// uyan, bağlantı geri geldiğinde keşif döngüsünü geri çekilme süresini
+	// beklemeden çalıştırır (bkz. kesfiUyandir).
+	uyan chan struct{}
 }
 
 func (d *Discovery) PeerConnectedCh() <-chan peer.ID {
@@ -78,6 +82,7 @@ func StartDiscovery(ctx context.Context, node *Node, extraBootstrap []peer.AddrI
 		routing:        routing,
 		peerConnected:  make(chan peer.ID, 64),
 		extraBootstrap: extraBootstrap,
+		uyan:           make(chan struct{}, 1),
 	}
 
 	node.SetRelaySource(func(rCtx context.Context, num int) <-chan peer.AddrInfo {
@@ -170,23 +175,82 @@ func (d *Discovery) discoverLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(delay):
+		case <-d.uyan:
+			delay = dhtRefreshInterval
 		}
 	}
 }
 
+// kesfiUyandir, keşif döngüsünü (geri çekilmede bekliyorsa) hemen çalıştırır.
+func (d *Discovery) kesfiUyandir() {
+	select {
+	case d.uyan <- struct{}{}:
+	default:
+	}
+}
+
 func (d *Discovery) rebootstrapLoop(ctx context.Context) {
-	ticker := time.NewTicker(rebootstrapInterval)
+	ticker := time.NewTicker(yenidenBaglanmaKontrolu)
 	defer ticker.Stop()
+	y := yenidenBaglanma{sonDeneme: time.Now()} // StartDiscovery az önce bağlandı
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if len(d.host.Network().Peers()) < minPeersBeforeRebootstrap {
+			baglan, uyandir := y.adim(time.Now(), len(d.host.Network().Peers()))
+			if uyandir {
+				d.kesfiUyandir()
+			}
+			if baglan {
 				connectToBootstrapPeers(ctx, d.host, d.extraBootstrap)
 			}
 		}
 	}
+}
+
+// yenidenBaglanmaKontrolu, bağlı eş sayısının ne sıklıkla denetlendiğidir
+// (yalnızca sayıya bakılır; ucuzdur).
+const yenidenBaglanmaKontrolu = 15 * time.Second
+
+// yenidenBaglanmaBeklemesi, iki bootstrap denemesi arasındaki en kısa
+// süredir. Hiç eş yokken (uykudan uyanma, ağ değişikliği, kablo çıkması)
+// 15 sn'den başlar ve her sonuçsuz denemede ikiye katlanır (en çok
+// rebootstrapInterval); birkaç eş varken rutin aralık geçerlidir.
+func yenidenBaglanmaBeklemesi(esSayisi, ardisikBasarisiz int) time.Duration {
+	if esSayisi > 0 {
+		return rebootstrapInterval
+	}
+	return min(yenidenBaglanmaKontrolu<<min(ardisikBasarisiz, 5), rebootstrapInterval)
+}
+
+// yenidenBaglanma, bootstrap'a yeniden bağlanma kararlarıdır; zaman
+// dışarıdan verildiği için doğrudan test edilir.
+type yenidenBaglanma struct {
+	sonDeneme time.Time
+	ardisik   int  // üst üste sonuçsuz kalan deneme sayısı
+	bekleyen  bool // son denetimde bağlanma denendi, sonucu bu denetimde görülür
+	sifirdi   bool // önceki denetimde hiç eş yoktu
+}
+
+// adim, bir denetimde eş sayısına bakar: bootstrap'a bağlanılıp
+// bağlanılmayacağını ve (bağlantı yeni geri geldiyse) keşfin uyandırılıp
+// uyandırılmayacağını söyler.
+func (y *yenidenBaglanma) adim(simdi time.Time, esSayisi int) (baglan, uyandir bool) {
+	if y.bekleyen && esSayisi == 0 {
+		y.ardisik++
+	}
+	y.bekleyen = false
+	uyandir = y.sifirdi && esSayisi > 0
+	y.sifirdi = esSayisi == 0
+	if esSayisi > 0 {
+		y.ardisik = 0
+	}
+	if esSayisi >= minPeersBeforeRebootstrap || simdi.Sub(y.sonDeneme) < yenidenBaglanmaBeklemesi(esSayisi, y.ardisik) {
+		return false, uyandir
+	}
+	y.sonDeneme, y.bekleyen = simdi, true
+	return true, uyandir
 }
 
 // quietMDNSLogOnce ensures muteNoisyMDNSLog only ever installs its filter

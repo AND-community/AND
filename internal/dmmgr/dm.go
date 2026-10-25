@@ -13,6 +13,7 @@ import (
 	libp2pnet "github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/pluginapi"
@@ -200,6 +201,9 @@ func (b *Broker) gonder(ctx context.Context, pid peer.ID, senderName, message st
 
 func (b *Broker) handleStream(s libp2pnet.Stream) {
 	defer s.Close()
+	// Eşin gönderdiği veri işleyicide bir hatayı tetiklerse yalnızca bu akış
+	// kapanır; düğüm çökmez (bkz. guvenli).
+	defer guvenli.Kurtar("dm akışı", func() { _ = s.Reset() })
 
 	if b.authorBanned(s.Conn().RemotePeer()) {
 		return

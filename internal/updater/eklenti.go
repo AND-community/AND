@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/lucian95511/and/internal/dosya"
 )
 
 // indirmeAdresiGuvenli, sürüm dosyalarının indirildiği adres denetimidir.
@@ -152,13 +154,5 @@ func manifestYolu(exe string) string {
 }
 
 func atomikYaz(yol string, data []byte) error {
-	tmp := yol + ".new"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, yol); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return dosya.AtomikYaz(yol, data, 0o644)
 }

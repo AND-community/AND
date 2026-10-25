@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lucian95511/and/internal/crypto"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/moderation"
 
 	"golang.org/x/term"
@@ -175,7 +176,7 @@ func cmdGrant(args []string) error {
 	outPath := filepath.Join(outDir, "mod_"+shortKey+".json")
 
 	data, _ := json.MarshalIndent(cert, "", "  ")
-	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+	if err := dosya.AtomikYaz(outPath, data, 0o600); err != nil {
 		return fmt.Errorf("dosya yazılamadı: %w", err)
 	}
 
@@ -318,7 +319,7 @@ func cmdBan(args []string) error {
 	outPath := filepath.Join(outDir, "ban_"+shortPeer+".json")
 
 	data, _ := json.MarshalIndent(ban, "", "  ")
-	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+	if err := dosya.AtomikYaz(outPath, data, 0o600); err != nil {
 		return fmt.Errorf("dosya yazılamadı: %w", err)
 	}
 
@@ -410,7 +411,7 @@ func cmdUnban(args []string) error {
 	outPath := filepath.Join(outDir, "unban_"+shortPeer+".json")
 
 	data, _ := json.MarshalIndent(u, "", "  ")
-	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+	if err := dosya.AtomikYaz(outPath, data, 0o600); err != nil {
 		return fmt.Errorf("dosya yazılamadı: %w", err)
 	}
 
@@ -450,7 +451,7 @@ func cmdRevoke(args []string) error {
 	outPath := filepath.Join(outDir, "revoke_"+shortKey+".json")
 
 	data, _ := json.MarshalIndent(rev, "", "  ")
-	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+	if err := dosya.AtomikYaz(outPath, data, 0o600); err != nil {
 		return fmt.Errorf("dosya yazılamadı: %w", err)
 	}
 

@@ -19,7 +19,7 @@ type testEnv struct {
 	identity *stdcrypto.Identity
 }
 
-func newTestStore(t *testing.T) *testEnv {
+func newTestStore(t testing.TB) *testEnv {
 	t.Helper()
 	id, err := stdcrypto.GenerateIdentity()
 	if err != nil {

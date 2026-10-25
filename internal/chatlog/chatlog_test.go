@@ -33,7 +33,7 @@ func withNewIdentityGrace(t *testing.T, d time.Duration) {
 	t.Cleanup(func() { newIdentityGracePeriod = old })
 }
 
-func newTestStore(t *testing.T) (*Store, *stdcrypto.Identity) {
+func newTestStore(t testing.TB) (*Store, *stdcrypto.Identity) {
 	t.Helper()
 	id, err := stdcrypto.GenerateIdentity()
 	if err != nil {

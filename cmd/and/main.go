@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -22,8 +23,10 @@ import (
 	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/dmmgr"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/filemgr"
 	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/peersync"
@@ -45,18 +48,17 @@ func main() {
 	}
 }
 
-// kutuphaneGunlugu, kütüphane günlüklerinin yazılacağı dosyayı ekleme
-// kipinde açar; 5 MB'ı aşmışsa önce sıfırlar. Açılamazsa satırlar atılır —
-// hiçbir durumda terminale gitmezler. Dosya süreç boyunca açık kalır.
+// kutuphaneGunlugu, kütüphane günlüklerinin (ve guvenli'nin panik
+// kayıtlarının) yazılacağı dosyayı ekleme kipinde açar. Dosya 5 MB'ı aşınca
+// and.log.1'e döner — yalnızca açılışta değil, çalışırken de: uzun bir
+// oturumda gürültülü bir kütüphane diski dolduramaz. Açılamazsa satırlar
+// atılır; hiçbir durumda terminale gitmezler. Dosya süreç boyunca açık kalır.
 func kutuphaneGunlugu(yol string) io.Writer {
-	if st, err := os.Stat(yol); err == nil && st.Size() > 5<<20 {
-		_ = os.Remove(yol)
-	}
-	f, err := os.OpenFile(yol, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	g, err := dosya.GunlukAc(yol, 5<<20)
 	if err != nil {
 		return io.Discard
 	}
-	return f
+	return g
 }
 
 func appDir() (string, error) {
@@ -87,7 +89,7 @@ func appDir() (string, error) {
 			}
 			for _, c := range candidates {
 				if data, err2 := os.ReadFile(c); err2 == nil {
-					_ = os.WriteFile(appDataID, data, 0o600)
+					_ = dosya.AtomikYaz(appDataID, data, 0o600)
 					break
 				}
 			}
@@ -145,6 +147,10 @@ func run() error {
 		return err
 	}
 	identityFile := filepath.Join(dir, "identity.dat")
+	// Önceki bir çalıştırmada yazma yarıda kaldıysa (çökme, elektrik
+	// kesilmesi) geriye kalan geçici dosyalar silinir; asıl dosyalar
+	// dosya.AtomikYaz sayesinde sağlamdır.
+	dosya.ArtiklariTemizle(dir)
 
 	// Arayüz dili: AND_DIL, yoksa Ayarlar'da (ya da giriş ekranında) seçilen,
 	// yoksa Türkçe.
@@ -157,6 +163,18 @@ func run() error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+
+	// Uzun ömürlü arka plan işleri arka ile başlatılır: biri panik yaparsa
+	// AND tamamen çökmez (terminal ham kipte kalır, hata kaybolurdu); arayüz
+	// düzgün kapanır ve hata gösterilir. Kapanışta veritabanı, işler
+	// bittikten sonra kapatılır.
+	var arka guvenli.Grup
+	var olumcul atomic.Pointer[string]
+	arka.Olumcul(func(ad string, deger any) {
+		mesaj := fmt.Sprintf("%s: %v", ad, deger)
+		olumcul.CompareAndSwap(nil, &mesaj)
+		cancel()
+	})
 
 	myPubHex := hex.EncodeToString(id.PublicKey())
 	isFounder, err := moderation.LoadFounderKey(dir, myPubHex)
@@ -211,14 +229,14 @@ func run() error {
 	} else {
 		mod.Start(ctx, modTopic)
 		defer modTopic.Close()
-		go func() {
+		arka.Git("kayıtlı banlar", func() {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(5 * time.Second):
 			}
 			mod.PublishSavedBans(ctx, modTopic, dir)
-		}()
+		})
 	}
 
 	forumStore, err := forum.New(id, forumTopic, filepath.Join(dir, "forum.db"))
@@ -227,7 +245,7 @@ func run() error {
 	}
 	forumStore.SetModerator(mod)
 
-	go forumStore.Run(ctx)
+	arka.Git("forum", func() { forumStore.Run(ctx) })
 
 	forumStore.RegisterSync(node.Host)
 
@@ -236,7 +254,7 @@ func run() error {
 		return fmt.Errorf("init chatlog: %w", err)
 	}
 	chatStore.SetModerator(mod)
-	go chatStore.Run(ctx)
+	arka.Git("sohbet", func() { chatStore.Run(ctx) })
 	chatStore.RegisterSync(node.Host)
 
 	profileTopic, err := network.JoinTopic(ps, node.Host, profile.ProfileTopic)
@@ -250,13 +268,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init profile: %w", err)
 	}
-	go profileStore.Run(ctx)
+	arka.Git("profil", func() { profileStore.Run(ctx) })
 
 	// Kendi profilimizi (varsa) her başlangıçta bir kez yeniden yayınla —
 	// profil güncellemelerinin forum konuları gibi bir sync protokolü yoktur,
 	// bu yüzden yeni bağlanan bir peer'ın bunu görebilmesi ancak canlı bir
 	// gossip yayınıyla mümkündür (bkz. publishSavedBans'teki aynı desen).
-	go func() {
+	arka.Git("profil yayını", func() {
 		select {
 		case <-ctx.Done():
 			return
@@ -269,7 +287,7 @@ func run() error {
 				GitHubUser: existing.GitHubUser,
 			})
 		}
-	}()
+	})
 
 	siteTopic, err := network.JoinTopic(ps, node.Host, site.SiteTopic)
 	if err != nil {
@@ -282,7 +300,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("init site: %w", err)
 	}
-	go siteStore.Run(ctx)
+	arka.Git("site", func() { siteStore.Run(ctx) })
 	siteStore.RegisterSync(node.Host)
 
 	// Geçmiş senkronizasyonu: yeni bağlanan, uzun aradan sonra yeniden
@@ -305,7 +323,7 @@ func run() error {
 			return peersync.ProtocolSupport(node.Host.Peerstore(), pid, tui.ANDSyncProtocols()...)
 		},
 	})
-	go senkron.Run(ctx, discovery.PeerConnectedCh())
+	arka.Git("geçmiş senkronu", func() { senkron.Run(ctx, discovery.PeerConnectedCh()) })
 	tui.SyncStatus = senkron.Status
 
 	dmBroker := dmmgr.New(node)
@@ -389,22 +407,48 @@ func run() error {
 	restartCh := make(chan struct{}, 1)
 	// AND_AUTO_UPDATE=0 ile kapatılabilir; varsayılan (tanımsız/başka değer) açıktır.
 	if os.Getenv("AND_AUTO_UPDATE") != "0" {
-		go autoUpdate(ctx, updateCh, restartCh, eklentiHedefleri(plugins))
+		arka.Git("güncelleme", func() { autoUpdate(ctx, updateCh, restartCh, eklentiHedefleri(plugins)) })
 	}
 
 	// Tam ekran TUI açıkken terminale yazılan her satır ekranı bozar:
 	// kütüphane günlükleri (mDNS uyarıları, libp2p hataları) bu süre boyunca
 	// veri dizinindeki and.log'a gider.
-	network.RedirectLibraryLogs(kutuphaneGunlugu(filepath.Join(dir, "and.log")))
+	gunlukYolu := filepath.Join(dir, "and.log")
+	network.RedirectLibraryLogs(kutuphaneGunlugu(gunlukYolu))
 
-	if err := tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh); err != nil {
+	// Kapanış sırası: önce arka plan işleri durur, sonra paylaşılan
+	// veritabanı kapanır (WAL dosyası ana dosyaya işlenir), güncelleme
+	// indirildiyse yeni sürüm ancak bundan sonra başlatılır; konular ve düğüm
+	// daha önce kaydedilmiş defer'lerle en son kapanır.
+	yenidenBaslat := false
+	defer func() {
+		if yenidenBaslat {
+			fmt.Fprintln(os.Stderr, dil.T("Yeni sürüm yeniden başlatılıyor..."))
+			_ = updater.SelfRestart()
+		}
+	}()
+	defer func() {
+		cancel()
+		if !arka.Bekle(3 * time.Second) {
+			log.Printf("kapanış: arka plan işleri 3 sn içinde durmadı")
+		}
+		if err := forumStore.Close(); err != nil {
+			log.Printf("kapanış: veritabanı kapatılamadı: %v", err)
+		}
+	}()
+
+	err = tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh)
+	if m := olumcul.Load(); m != nil {
+		// Arayüz, bir arka plan işi panik yaptığı için kapatıldı.
+		return fmt.Errorf(dil.T("beklenmeyen bir hata nedeniyle kapandı (%s); ayrıntılar: %s"), *m, gunlukYolu)
+	}
+	if err != nil {
 		return err
 	}
 
 	select {
 	case <-restartCh:
-		fmt.Fprintln(os.Stderr, dil.T("Yeni sürüm yeniden başlatılıyor..."))
-		_ = updater.SelfRestart()
+		yenidenBaslat = true
 	default:
 	}
 	return nil

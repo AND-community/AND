@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/hizsiniri"
 	"github.com/lucian95511/and/internal/timewin"
 )
@@ -514,7 +515,7 @@ func (rl *rateLimiter) save() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(filepath.Join(rl.dataDir, "forum_rates.json"), data, 0o600)
+	_ = dosya.AtomikYaz(filepath.Join(rl.dataDir, "forum_rates.json"), data, 0o600)
 }
 
 func (rl *rateLimiter) load() {

@@ -31,7 +31,7 @@ type testEnv struct {
 	dataDir     string
 }
 
-func newTestStore(t *testing.T) *testEnv {
+func newTestStore(t testing.TB) *testEnv {
 	t.Helper()
 	id, err := stdcrypto.GenerateIdentity()
 	if err != nil {
@@ -61,7 +61,7 @@ func newTestStore(t *testing.T) *testEnv {
 	return &testEnv{store: s, identity: id, founderPriv: founderPriv, dataDir: dataDir}
 }
 
-func genKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
+func genKey(t testing.TB) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

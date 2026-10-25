@@ -153,6 +153,20 @@ Aynı anda en fazla 4 senkron çalışır ve aynı eşle iki senkron asla eşzam
 yüzlerce eş birden bağlansa da yüzlerce akış birden açılmaz. Ana menünün üst bölümü kaç
 bağlı eşin AND düğümü olduğunu ve son senkronun ne zaman yapıldığını gösterir.
 
+### Dayanıklılık
+
+AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün düğümü düşürmemesine
+çalışır:
+
+| Önlem | Ne sağlar |
+|---|---|
+| Atomik dosya yazımı (`internal/dosya`) | `identity.dat`, yasaklar, moderasyon geçmişi, eklenti izinleri, tema ve DM geçmişi önce geçici dosyaya yazılır, diske işlenir, sonra yerine taşınır. Yazma sırasında çökme ya da elektrik kesilmesi eski dosyayı bozmaz; yarım kalan geçici dosyalar açılışta silinir |
+| Panik koruması (`internal/guvenli`) | Bir gossip iletisini ya da eşin açtığı akışı işleyen kodda beklenmedik bir hata yalnızca o girdiyi düşürür (yığın izi `and.log`'a yazılır); düğüm çalışmaya devam eder. Arka plan döngülerinden biri durursa arayüz düzgün kapanır ve hata gösterilir — terminal bozuk kalmaz |
+| Fuzz testleri | Forum, sohbet, profil, site ve moderasyon iletileri ile dosya aktarımı çerçeveleri bozuk, rastgele ve saldırganın kendi anahtarıyla geçerli imzalanmış uç değerlerle denenir (`go test -fuzz`) |
+| SQLite ayarları | `busy_timeout` (5 sn), WAL ve `synchronous=NORMAL` her bağlantıda uygulanır; dosyayı aynı anda kullanan başka bir süreç (ör. `andmod`) hemen "database is locked" almaz. Kapanışta önce arka plan işleri durur, sonra veritabanı kapatılır |
+| Yeniden bağlanma | Uykudan uyanma ya da ağ değişikliğiyle bütün eşler düşerse bootstrap'a 15 sn içinde, sonuçsuz kaldıkça katlanan aralıklarla (en çok 5 dk) yeniden bağlanılır; bağlantı gelince keşif beklemeden yenilenir |
+| Günlük sınırı | `and.log` çalışırken de 5 MB'ta `and.log.1`'e döner; gürültülü bir kütüphane diski dolduramaz |
+
 ---
 
 ## Kurulum
@@ -670,7 +684,7 @@ Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) alt�
 | `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
 | `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
 | `dm_gecmis.bin` | Özel mesaj geçmişi, giden kutusu ve okundu bilgisi; kimlikten türetilen anahtarla AES-256-GCM şifreli (`AND_DM_GECMISI=0` ile yalnızca bellekte tutulur) |
-| `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider. 5 MB'ı aşınca açılışta sıfırlanır |
+| `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider; beklenmedik hataların yığın izleri de buradadır. 5 MB'ı aşınca (çalışırken de) `and.log.1`'e döner |
 
 > `identity.dat`, `founder.key` ve `bans/` içeriği asla başkalarıyla paylaşılmamalı, git'e eklenmemeli.
 

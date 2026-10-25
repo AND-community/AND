@@ -21,15 +21,29 @@ type DB struct {
 	db *sql.DB
 }
 
+// dsn, veritabanının bağlantı adresidir. Ayarlar sürücünün _pragma
+// parametreleriyle verilir: modernc.org/sqlite bunları açtığı HER bağlantıda
+// uygular. (Eskiden "?_busy_timeout=5000" yazıyordu — o mattn/go-sqlite3'ün
+// biçimi; bu sürücü tanımadığı parametreyi sessizce yok saydığı için meşgul
+// bekleme süresi 0'dı ve dosyayı aynı anda kullanan başka bir süreç
+// (ör. andmod) anında "database is locked" alıyordu. synchronous da yalnızca
+// ilk bağlantıda ayarlanıyordu.)
+func dsn(path string) string {
+	return "file:" + path +
+		"?_pragma=busy_timeout(5000)" + // kilitliyse 5 sn bekle, hemen hata verme
+		"&_pragma=journal_mode(WAL)" + // okurlar yazarı beklemez; çökmeye dayanıklı
+		"&_pragma=synchronous(NORMAL)" // WAL'da güvenli ve hızlı
+}
+
 func Open(path string) (*DB, error) {
-	db, err := sql.Open("sqlite", "file:"+path+"?_busy_timeout=5000")
+	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("storage: open: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;"); err != nil {
+	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("storage: set pragmas: %w", err)
+		return nil, fmt.Errorf("storage: open: %w", err)
 	}
 	s := &DB{db: db}
 	if err := s.migrate(); err != nil {

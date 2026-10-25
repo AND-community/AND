@@ -11,6 +11,8 @@ import (
 	"os"
 
 	"golang.org/x/crypto/argon2"
+
+	"github.com/lucian95511/and/internal/dosya"
 )
 
 // File layout for identity.dat.
@@ -120,7 +122,7 @@ func (id *Identity) SaveEncrypted(path, passphrase string) error {
 	blob = append(blob, nonce...)
 	blob = append(blob, ciphertext...)
 
-	if err := os.WriteFile(path, blob, 0o600); err != nil {
+	if err := dosya.AtomikYaz(path, blob, 0o600); err != nil {
 		return fmt.Errorf("crypto: write %s: %w", path, err)
 	}
 	return nil

@@ -23,7 +23,7 @@ func genKey(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub, priv
 }
 
-func newTestMod(t *testing.T, founderPub ed25519.PublicKey) *Moderator {
+func newTestMod(t testing.TB, founderPub ed25519.PublicKey) *Moderator {
 	t.Helper()
 	old := FounderPubKeyHex
 	FounderPubKeyHex = hex.EncodeToString(founderPub)
