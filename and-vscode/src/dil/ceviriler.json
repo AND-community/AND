@@ -871,11 +871,11 @@
   "Konu yok.": {"en": "No topics.", "de": "Keine Themen.", "es": "No hay temas.", "fr": "Aucun sujet.", "ru": "Тем нет."},
   "Kişisel site": {"en": "Personal website", "de": "Persönliche Website", "es": "Sitio personal", "fr": "Site personnel", "ru": "Личный сайт"},
   "Sayfaların VS Code editöründe açılır; %s. Paylaşım kodunu alan kişi sayfayı AND Arama Motoru'ndaki Kodla Git ekranında ya da %s bayrağıyla açabilir.": {
-    "en": "Your pages open in the VS Code editor; %s. Anyone with the share code can open the page in the \"Kodla Git\" screen of AND Search Engine or with the %s flag.",
-    "de": "Deine Seiten öffnen sich im VS-Code-Editor; %s. Wer den Teilungscode hat, kann die Seite im Bildschirm „Kodla Git“ der AND-Suchmaschine oder mit dem Flag %s öffnen.",
-    "es": "Tus páginas se abren en el editor de VS Code; %s. Quien tenga el código para compartir puede abrir la página en la pantalla \"Kodla Git\" del Buscador AND o con la opción %s.",
-    "fr": "Vos pages s'ouvrent dans l'éditeur VS Code ; %s. Toute personne disposant du code de partage peut ouvrir la page dans l'écran « Kodla Git » du moteur de recherche AND ou avec l'option %s.",
-    "ru": "Ваши страницы открываются в редакторе VS Code; %s. Получатель кода общего доступа может открыть страницу на экране «Kodla Git» поисковика AND или с флагом %s."
+    "en": "Your pages open in the VS Code editor; %s. Anyone with the share code can open the page in the \"Open by Code\" screen of AND Search Engine or with the %s flag.",
+    "de": "Deine Seiten öffnen sich im VS-Code-Editor; %s. Wer den Teilungscode hat, kann die Seite im Bildschirm „Per Code öffnen“ der AND-Suchmaschine oder mit dem Flag %s öffnen.",
+    "es": "Tus páginas se abren en el editor de VS Code; %s. Quien tenga el código para compartir puede abrir la página en la pantalla \"Abrir por código\" del Buscador AND o con la opción %s.",
+    "fr": "Vos pages s'ouvrent dans l'éditeur VS Code ; %s. Toute personne disposant du code de partage peut ouvrir la page dans l'écran « Ouvrir par code » du moteur de recherche AND ou avec l'option %s.",
+    "ru": "Ваши страницы открываются в редакторе VS Code; %s. Получатель кода общего доступа может открыть страницу на экране «Открыть по коду» поисковика AND или с флагом %s."
   },
   "kaydetmek (Ctrl+S) sayfayı ağa yayınlar": {
     "en": "saving (Ctrl+S) publishes the page to the network",
@@ -1098,11 +1098,11 @@
     "ru": "«%s» ещё не опубликована — сначала сохраните (Ctrl+S), затем делитесь."
   },
   "\"%s\" paylaşım kodu panoya kopyalandı — alan kişi AND Arama Motoru'nda \"Kodla Git\" ekranına yapıştırarak (ya da -site ile) sayfayı açabilir.": {
-    "en": "Share code for \"%s\" copied to the clipboard — the recipient can open the page by pasting it into the \"Kodla Git\" screen of AND Search Engine (or with -site).",
-    "de": "Teilungscode für „%s“ in die Zwischenablage kopiert — der Empfänger kann die Seite öffnen, indem er ihn im Bildschirm „Kodla Git“ der AND-Suchmaschine einfügt (oder mit -site).",
-    "es": "Código de \"%s\" copiado al portapapeles: quien lo reciba puede abrir la página pegándolo en la pantalla \"Kodla Git\" del Buscador AND (o con -site).",
-    "fr": "Code de partage de « %s » copié dans le presse-papiers — le destinataire peut ouvrir la page en le collant dans l'écran « Kodla Git » du moteur de recherche AND (ou avec -site).",
-    "ru": "Код общего доступа для «%s» скопирован — получатель может открыть страницу, вставив его на экране «Kodla Git» поисковика AND (или через -site)."
+    "en": "Share code for \"%s\" copied to the clipboard — the recipient can open the page by pasting it into the \"Open by Code\" screen of AND Search Engine (or with -site).",
+    "de": "Teilungscode für „%s“ in die Zwischenablage kopiert — der Empfänger kann die Seite öffnen, indem er ihn im Bildschirm „Per Code öffnen“ der AND-Suchmaschine einfügt (oder mit -site).",
+    "es": "Código de \"%s\" copiado al portapapeles: quien lo reciba puede abrir la página pegándolo en la pantalla \"Abrir por código\" del Buscador AND (o con -site).",
+    "fr": "Code de partage de « %s » copié dans le presse-papiers — le destinataire peut ouvrir la page en le collant dans l'écran « Ouvrir par code » du moteur de recherche AND (ou avec -site).",
+    "ru": "Код общего доступа для «%s» скопирован — получатель может открыть страницу, вставив его на экране «Открыть по коду» поисковика AND (или через -site)."
   },
   "and-site:// Bağlantısını Kopyala": {
     "en": "Copy and-site:// Link",
