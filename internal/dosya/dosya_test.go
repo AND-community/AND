@@ -103,3 +103,25 @@ func TestHizliAtomikYaz(t *testing.T) {
 		t.Errorf("içerik %q", veri)
 	}
 }
+
+// TestAtomikYaz_VarOlanIzinleriKorur: os.WriteFile gibi, var olan dosyanın
+// izinleri korunur (çalışma klasöründeki bir betik çalıştırılabilir kalır);
+// izin yalnızca yeni dosyada geçerlidir.
+func TestAtomikYaz_VarOlanIzinleriKorur(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows'ta Unix izin bitleri yok")
+	}
+	yol := filepath.Join(t.TempDir(), "betik.sh")
+	if err := os.WriteFile(yol, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(yol, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := AtomikYaz(yol, []byte("#!/bin/sh\necho x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if bilgi, _ := os.Stat(yol); bilgi.Mode().Perm() != 0o755 {
+		t.Errorf("izinler %o; 755 korunmalıydı", bilgi.Mode().Perm())
+	}
+}

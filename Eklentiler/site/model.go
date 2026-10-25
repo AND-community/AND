@@ -20,6 +20,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/ui"
 )
@@ -120,7 +121,7 @@ func taslakYaz(dataDir string, ts []taslak) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(taslakYolu(dataDir), data, 0o600)
+	_ = dosya.AtomikYaz(taslakYolu(dataDir), data, 0o600)
 }
 
 // taslakKaydet, slug için var olan taslağı (varsa) günceller, yoksa yeni
@@ -192,7 +193,7 @@ func siraYaz(dataDir string, slugs []string) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(siraYolu(dataDir), data, 0o600)
+	_ = dosya.AtomikYaz(siraYolu(dataDir), data, 0o600)
 }
 
 // siralaSayfalar, pages'i dataDir'de kayıtlı yerel sıraya göre YENİDEN

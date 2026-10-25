@@ -232,3 +232,21 @@ func TestKaydetYukleBaslat(t *testing.T) {
 		t.Errorf("bilinmeyen kayıtlı dil için Yukle = %q", kod)
 	}
 }
+
+// TestKaydet_GeciciDosyaBirakmaz: seçim atomik yazılır; dizinde yalnızca
+// dil.json kalır.
+func TestKaydet_GeciciDosyaBirakmaz(t *testing.T) {
+	dizin := t.TempDir()
+	for _, kod := range []string{"en", "de", "ru"} {
+		if err := Kaydet(dizin, kod); err != nil {
+			t.Fatal(err)
+		}
+	}
+	girdiler, _ := os.ReadDir(dizin)
+	if len(girdiler) != 1 || girdiler[0].Name() != dosyaAdi {
+		t.Errorf("dizinde yalnızca %s olmalı: %v", dosyaAdi, girdiler)
+	}
+	if kod := Yukle(dizin); kod != "ru" {
+		t.Errorf("son seçim %q; ru beklenirdi", kod)
+	}
+}

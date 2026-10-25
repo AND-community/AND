@@ -27,7 +27,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ozel_chat",
 	Label:       "Özel Chat",
-	Version:     "2.1.0",
+	Version:     "2.1.1",
 	Description: "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinDM, pluginapi.IzinDosya},

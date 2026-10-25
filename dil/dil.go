@@ -361,7 +361,33 @@ func Kaydet(dataDir, kod string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, dosyaAdi), veri, 0o600)
+	return atomikYaz(filepath.Join(dataDir, dosyaAdi), veri)
+}
+
+// atomikYaz, seçimi "ya tamamı ya hiç" yazar: geçici dosya, fsync, yerine
+// taşıma. AND'ın internal/dosya.AtomikYaz'ının küçük bir eşidir (bu paket
+// yalnızca standart kütüphaneyi kullanır); geçici dosya ekleri aynıdır, yarım
+// kalanları AND açılışta temizler.
+func atomikYaz(yol string, veri []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(yol), filepath.Base(yol)+".*.and-gecici")
+	if err != nil {
+		return err
+	}
+	gecici := f.Name()
+	_, err = f.Write(veri)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(gecici, yol)
+	}
+	if err != nil {
+		_ = os.Remove(gecici)
+	}
+	return err
 }
 
 // Baslat, AND'ın açılışta etkin dili belirlemesidir: AND_DIL ortam

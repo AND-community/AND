@@ -32,6 +32,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -47,7 +48,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ornek",
 	Label:       "Örnek Eklenti",
-	Version:     "1.2.0",
+	Version:     "1.2.1",
 	Description: "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici referansı",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinForum, pluginapi.IzinModerasyon, pluginapi.IzinDM},
@@ -204,7 +205,7 @@ func ayarlarKaydet(dataDir string, a ayarlar) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dataDir, "ornek_ayarlar.json"), data, 0o600)
+	return dosya.AtomikYaz(filepath.Join(dataDir, "ornek_ayarlar.json"), data, 0o600)
 }
 
 // ─── tea.Msg tipleri ──────────────────────────────────────────────────────────

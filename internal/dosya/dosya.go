@@ -27,6 +27,10 @@ const GeciciEk = ".and-gecici"
 // geçici bir dosyaya yazar, diske işler (fsync) ve hedefin yerine taşır.
 // Yazma sırasında bir sorun olursa hedef dosya olduğu gibi kalır.
 //
+// İzinler os.WriteFile'daki gibidir: izin yalnızca yeni oluşturulan dosyaya
+// uygulanır; var olan bir dosyanın izinleri (ör. çalıştırılabilir bir
+// betiğin 0755'i) korunur.
+//
 // Windows'ta hedef o an başka bir süreçte açıksa (ör. bir eklenti
 // theme.json'ı okurken) yerine taşıma kısa süre reddedilebilir; birkaç kez
 // yeniden denenir.
@@ -67,6 +71,9 @@ func yaz(yol string, veri []byte, izin fs.FileMode, diskeIsle bool) error {
 	}
 	if err := f.Close(); err != nil {
 		return err
+	}
+	if bilgi, err := os.Stat(yol); err == nil {
+		izin = bilgi.Mode().Perm()
 	}
 	if err := os.Chmod(gecici, izin); err != nil {
 		return err

@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
@@ -823,6 +824,6 @@ func okunduKaydet(dataDir string, okundu map[string]time.Time) {
 		return
 	}
 	if data, err := json.Marshal(okundu); err == nil {
-		_ = os.WriteFile(filepath.Join(dataDir, okunduDosyaAdi), data, 0o600)
+		_ = dosya.AtomikYaz(filepath.Join(dataDir, okunduDosyaAdi), data, 0o600)
 	}
 }

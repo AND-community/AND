@@ -27,7 +27,7 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "site",
 	Label:       "Site",
-	Version:     "1.3.0",
+	Version:     "1.3.1",
 	Description: "Kendi çok sayfalı kişisel sitenizi oluşturun, düzenleyin ve yayınlayın",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinSite},
