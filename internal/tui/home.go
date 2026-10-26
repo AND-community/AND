@@ -15,6 +15,7 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/lisans"
 	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
@@ -438,6 +439,14 @@ func (m appModel) homeDetailMain(w, h int) string {
 		b.WriteString(ui.KV(lw, dil.T("Eklentiler"), dil.F("%d yüklü, %d açık", len(m.plugins), acik)) + "\n")
 		b.WriteString(ui.KV(lw, dil.T("Veri dizini"), ui.Truncate(m.dataDir, w-lw)) + "\n\n")
 		b.WriteString(ui.S.Muted.Render(dil.T("Temayı değiştirmek için Ayarlar → Temalar.")))
+	case "AND hakkında":
+		baslik(dil.T("AND hakkında"), ui.S.Muted.Render(updater.Version))
+		aciklama(dil.T("Sürüm, telif ve lisans bildirimi, gizlilik özeti, topluluk kuralları ve üçüncü taraf bileşenlerin lisansları."))
+		lw := etiketGenisligi(14, "Lisans", "Kaynak kodu", "Bileşenler")
+		b.WriteString(ui.KV(lw, dil.T("Lisans"), lisans.Ad) + "\n")
+		b.WriteString(ui.KV(lw, dil.T("Kaynak kodu"), ui.Truncate(lisans.KaynakKodu, max(w-lw, 10))) + "\n")
+		b.WriteString(ui.KV(lw, dil.T("Bileşenler"), dil.F("%d açık kaynak bileşen", len(lisans.Moduller()))) + "\n\n")
+		b.WriteString(ui.S.Muted.Render(ui.Wrap(dil.T("Bu program HİÇBİR GARANTİ olmadan sunulur; GNU AGPL-3.0 koşullarıyla değiştirip yeniden dağıtabilirsin. Ayrıntılar için enter."), ui.Measure(w))))
 	case "Çıkış":
 		baslik(dil.T("Çıkış"), "")
 		aciklama(dil.T("AND'ı kapatır. Konular, sohbet geçmişi ve kimliğin bu bilgisayarda kalır; bir sonraki açılışta ağa yeniden bağlanırsın."))

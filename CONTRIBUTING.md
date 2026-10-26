@@ -15,6 +15,7 @@ Bu belge; hata bildirme, özellik önerme ve kod katkısı süreçlerini açıkl
 - [Kod Standartları](#kod-standartları)
 - [Pull Request Süreci](#pull-request-süreci)
 - [Eklenti Katkısı](#eklenti-katkısı)
+- [Lisans ve Bağımlılıklar](#lisans-ve-bağımlılıklar)
 - [Commit Mesajları](#commit-mesajları)
 
 ---
@@ -242,6 +243,31 @@ Detaylı şablon ve API referansı: [Eklentiler/ornek/README.md](Eklentiler/orne
 - `Eklentiler/admin/`, `Eklentiler/konu_ac/`, `Eklentiler/ozel_chat/` içindeki `main.go` dosyalarını düzenle.
 - Manifest'teki `version` alanını semantik versiyonlama ile güncelle.
 - İlgili `Eklentiler/<isim>/README.md`'yi güncelle.
+
+---
+
+## Lisans ve Bağımlılıklar
+
+- AND, [GNU AGPL-3.0](LICENSE) ile lisanslıdır. Bir katkı gönderdiğinde katkını aynı lisansla
+  sunmuş sayılırsın.
+- Başkasına ait kod kopyalayacaksan lisansının AGPL-3.0 ile uyumlu olduğundan emin ol ve
+  kaynağını belirt.
+- Yeni bir Go bağımlılığı eklediğinde ya da bir bağımlılığın sürümünü değiştirdiğinde lisans
+  bildirimlerini yeniden üret ve üretilen dosyaları değişikliğinle birlikte gönder:
+
+  ```bash
+  go generate ./internal/lisans
+  ```
+
+  `internal/lisans` testleri bildirimin `go.mod` ile aynı modülleri ve sürümleri taşıdığını, her
+  bağımlılığın lisansının AGPL-3.0 ile birlikte dağıtılabilir olduğunu (MIT, BSD, Apache-2.0, ISC,
+  MPL-2.0 …) denetler; CI üretilen dosyaların güncel olduğunu ayrıca doğrular. Üretici lisansını
+  tanıyamadığı bir bağımlılıkta durur: o bağımlılığın lisansını elle doğrulayıp
+  `internal/lisans/uret`'teki `elleDogrulanan` tablosuna ekle ya da başka bir bağımlılık seç.
+- [GIZLILIK.md](GIZLILIK.md) ya da [KULLANIM_KOSULLARI.md](KULLANIM_KOSULLARI.md)'de kullanıcıyı
+  etkileyen bir değişiklik yaparsan belgedeki sürüm numarasını ve `internal/tui/hakkinda.go`'daki
+  `kurallarSurumu`'nu birlikte artır; uygulamadaki özetleri de (`gizlilikMaddeleri`,
+  `kuralMaddeleri`) güncelle.
 
 ---
 

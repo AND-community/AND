@@ -54,6 +54,19 @@ jobs:
         if: runner.os == 'Linux'
         run: bash .github/scripts/govulncheck.sh
 
+      # Üçüncü taraf lisans bildirimleri go.mod'dan üretilir. Bağımlılık değişip
+      # bildirim yenilenmediyse internal/lisans testleri de kırılır; bu adım
+      # depodaki dosyaların üreticinin çıktısıyla bire bir aynı olduğunu doğrular.
+      - name: Lisans bildirimleri güncel mi
+        if: runner.os == 'Linux'
+        run: |
+          go generate ./internal/lisans
+          if ! git diff --quiet -- internal/lisans; then
+            echo "::error::Lisans bildirimleri güncel değil; 'go generate ./internal/lisans' çalıştırıp sonucu ekle"
+            git diff --stat -- internal/lisans
+            exit 1
+          fi
+
   # Veri yarışlarını arar. -race cgo ister; Linux koşucusunda gcc hazır.
   race:
     name: AND yarış testi

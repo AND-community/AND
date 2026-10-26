@@ -18,6 +18,7 @@ Hesap yok, kayıt yok, merkezi sunucu yok. Kimliğin tek bir kurtarma kodundan i
 - [Yapılandırma](#yapılandırma)
 - [Katkı](#katkı)
 - [Güvenlik](#güvenlik)
+- [Gizlilik ve kullanım koşulları](#gizlilik-ve-kullanım-koşulları)
 - [Lisans](#lisans)
 
 ---
@@ -279,7 +280,28 @@ AND başlangıçta `and-plugin-*` adındaki binary'leri otomatik bulur.
 3. **Kurtarma kodunu güvenli bir yere yaz** (`XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`, 32 karakter) — parolanı unutursan ya da başka bir bilgisayara geçersen kimliğini geri getirmenin tek yolu budur. Kod, yazdığını doğrulamak için bir kez daha sorulur
 
 Sonraki açılışlarda yalnızca parolanı girmen yeterlidir.  
-Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux/macOS: `~/.config/and/identity.dat`)
+Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux: `~/.config/and/identity.dat`, macOS:
+`~/Library/Application Support/and/identity.dat`)
+
+Kimlik hazır olunca AND, [Gizlilik Bildirimi](GIZLILIK.md) ile
+[Kullanım Koşulları](KULLANIM_KOSULLARI.md)'nın özetini bir kez onaya sunar. Onay veri dizinindeki
+`kurallar_onayi.json`'a yazılır; metinlerde kullanıcıyı etkileyen bir değişiklik olunca (sürüm
+numarası artınca) bir sonraki açılışta yeniden sorulur. Kurallar küçük bir terminalde ekrana
+sığmıyorsa kabul, metnin sonuna kadar kaydırıldıktan sonra geçerli olur.
+
+### Komut satırı
+
+Bayrak verilmezse AND tam ekran arayüzle açılır. Şu bayraklar arayüzü açmadan yanıt verir ve
+seçili arayüz diline uyar:
+
+| Bayrak | Ne yazar |
+|---|---|
+| `-v`, `--version` | Sürüm, Go sürümü ve platform, telif bildirimi, lisans ve kaynak kodu adresi |
+| `--lisans`, `--license` | AND'ın lisansının (GNU AGPL-3.0) tam metni |
+| `--ucuncu-taraf`, `--third-party` | AND'a giren üçüncü taraf bileşenlerin lisans bildirimleri |
+| `-h`, `--help` | Bayrakların listesi |
+
+Hata bildirirken `and --version` çıktısını ekle.
 
 Giriş ekranında `ctrl+l` (ya da `F2`) arayüz dilini değiştirir; seçim kaydedilir ve sonraki
 açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)).
@@ -315,6 +337,7 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 │                                │                                                                   │
 │  ▾ Sistem                      │  ▸ Ed25519 imzalarında sık yapılan hatalar                        │
 │    ├── Ayarlar                 │    Siber Güvenlik  ·  mehmet  ·  5 sa önce                        │
+│    ├── AND hakkında            │                                                                   │
 │    └── Çıkış                   │                                                                   │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────  │
 │  ↑↓ gezin · enter aç · q çıkış                                                                     │
@@ -665,7 +688,9 @@ Ayrıntılar için arama motorunun kendi README'sine bak (`../AND arama motoru/R
 
 ## Yapılandırma
 
-Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) altında saklanır:
+Tüm veriler `%APPDATA%\and\` (Windows), `~/.config/and/` (Linux) ya da
+`~/Library/Application Support/and/` (macOS) altında saklanır. Hangi verinin kimlere görünür
+olduğu [GIZLILIK.md](GIZLILIK.md)'de anlatılır.
 
 | Dosya / Dizin | Açıklama |
 |---|---|
@@ -683,6 +708,7 @@ Tüm veriler `%APPDATA%\and\` (Windows) veya `~/.config/and/` (Linux/macOS) alt�
 | `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
 | `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
 | `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
+| `kurallar_onayi.json` | Gizlilik özeti ve topluluk kurallarının hangi sürümünün ne zaman onaylandığı |
 | `dm_gecmis.bin` | Özel mesaj geçmişi, giden kutusu ve okundu bilgisi; kimlikten türetilen anahtarla AES-256-GCM şifreli (`AND_DM_GECMISI=0` ile yalnızca bellekte tutulur) |
 | `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider; beklenmedik hataların yığın izleri de buradadır. 5 MB'ı aşınca (çalışırken de) `and.log.1`'e döner |
 
@@ -703,6 +729,46 @@ Açıkları herkese açık issue olarak bildirme; doğrudan e-posta ile iletişi
 
 ---
 
+## Gizlilik ve kullanım koşulları
+
+- [GIZLILIK.md](GIZLILIK.md): AND'ın hangi verileri nerede tuttuğu, kimlerin görebileceği,
+  ağda kimlere bağlanıldığı ve verilerin nasıl silineceği. AND telemetri toplamaz.
+- [KULLANIM_KOSULLARI.md](KULLANIM_KOSULLARI.md): yasalara uygunluk, topluluk kuralları,
+  sorumluluk ve moderasyon.
+
+İkisinin özeti uygulamada **AND hakkında** ekranının Gizlilik ve Kurallar sekmelerindedir ve ilk
+açılışta onaya sunulur. Kullanıcıyı etkileyen bir değişiklikte belgelerdeki sürüm numarası ile
+`internal/tui/hakkinda.go`'daki `kurallarSurumu` birlikte artırılır; herkes yeni sürümü bir sonraki
+açılışta yeniden onaylar.
+
+---
+
 ## Lisans
 
-GNU Affero Genel Kamu Lisansı v3.0 (AGPL-3.0) — ayrıntılar için [LICENSE](LICENSE) dosyasına bak.
+Telif hakkı (C) 2026 AND katkıcıları.
+
+AND, GNU Affero Genel Kamu Lisansı'nın 3. sürümüyle (AGPL-3.0) lisanslıdır; tam metin
+[LICENSE](LICENSE) dosyasındadır. Yazılım yasaların izin verdiği ölçüde hiçbir garanti olmadan
+sunulur. AND'ı değiştirip ağ üzerinden başkalarının kullanımına sunarsan, lisansın 13. maddesi
+gereği değiştirdiğin sürümün kaynak kodunu da onlara sunman gerekir.
+
+Lisans bildirimleri programın içinde de bulunur: ana menüdeki **AND hakkında** ekranı, `and --lisans`
+ve `and --ucuncu-taraf`.
+
+### Üçüncü taraf bileşenler
+
+AND'ın ve eklentilerin ikili dosyaları 140'ı aşkın açık kaynak bileşen içerir (libp2p, Bubble Tea,
+modernc SQLite, Go standart kütüphanesi …). Bileşenlerin hepsi AGPL-3.0 ile birlikte dağıtılabilen
+lisanslardadır: MIT, BSD-2/3-Clause, Apache-2.0, ISC ve MPL-2.0. Her bileşenin sürümü ve tam
+lisans metni [internal/lisans/ucuncu_taraf.txt](internal/lisans/ucuncu_taraf.txt) dosyasındadır;
+bu dosya sürümlerde `THIRD_PARTY_NOTICES.txt` adıyla ikili dosyaların yanında yayımlanır.
+
+Bildirim `go.mod`'dan üretilir:
+
+```bash
+go generate ./internal/lisans
+```
+
+`internal/lisans` testleri, bildirimin `go.mod` ile aynı modülleri ve sürümleri taşıdığını ve her
+bağımlılığın lisansının AGPL-3.0 ile uyumlu olduğunu denetler; CI, üretilen dosyaların güncel
+olduğunu ayrıca doğrular.

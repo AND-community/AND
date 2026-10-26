@@ -127,6 +127,14 @@ jobs:
           merge-multiple: true
           path: dist/
 
+      # MIT, BSD ve Apache lisansları ikili dağıtımda lisans bildirimlerinin de
+      # verilmesini ister; AND'ın kendi lisansı ve üçüncü taraf bildirimleri
+      # ikili dosyaların yanında yayımlanır ve imzalı özet dosyasına girer.
+      - name: Lisans dosyalarını ekle
+        run: |
+          cp LICENSE dist/LICENSE.txt
+          cp internal/lisans/ucuncu_taraf.txt dist/THIRD_PARTY_NOTICES.txt
+
       - name: SHA256 özet dosyası oluştur
         run: |
           cd dist
@@ -179,5 +187,7 @@ jobs:
             dist/andmod_*
             dist/and-plugin-*
             dist/*.json
+            dist/LICENSE.txt
+            dist/THIRD_PARTY_NOTICES.txt
             dist/SHA256SUMS.txt
             dist/SHA256SUMS.txt.sig

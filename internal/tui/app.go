@@ -40,7 +40,9 @@ const (
 	screenChat
 	screenChatProfile
 	screenSettings
-	screenIzin // eklenti izin onayı (bkz. izin.go)
+	screenIzin     // eklenti izin onayı (bkz. izin.go)
+	screenHakkinda // sürüm, yasal bildirim ve lisanslar (bkz. hakkinda.go)
+	screenKurallar // açılışta kurallar ve gizlilik onayı (bkz. hakkinda.go)
 )
 
 type chatMsg struct {
@@ -198,6 +200,16 @@ type appModel struct {
 	// izinIstegi, onay ekranında (screenIzin) bekleyen eklenti başlatmasıdır.
 	izinIstegi *izinIstegi
 
+	// hakkindaTab/hakkindaVP: "AND hakkında" ekranının seçili sekmesi ve
+	// kaydırılan içeriği; kurallarVP açılıştaki onay ekranınınkidir.
+	hakkindaTab  int
+	hakkindaVP   viewport.Model
+	kurallarVP   viewport.Model
+	kurallarHata string
+	// kurallarSonaKaydir, metnin sonu görülmeden kabul denendiğini işaretler
+	// (uyarı, sona gelinince kalkar).
+	kurallarSonaKaydir bool
+
 	// settingsDiskStatsAt/DBSize/Bans cache syncSettingsVP's disk-derived
 	// "Depolama" fields (os.Stat/os.ReadDir) — see settingsDiskStats. Without
 	// this, every keystroke in Settings (and the 5s peerTickMsg while it's
@@ -246,7 +258,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 	loadAndApplyTheme(dataDir)
 	ui.FrameTag = updater.Version
 
-	m := newAppModel(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dataDir, chatStore, mod, modTopic)
+	m := newAppModel(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dataDir, chatStore, mod, modTopic).kurallarOnayiIste()
 	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithAltScreen())
 
 	if updateCh != nil {
@@ -351,9 +363,11 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		byIdx = append(byIdx, pl)
 		groups = append(groups, dil.K("Eklentiler"))
 	}
-	items = append(items, dil.K("Ayarlar"), dil.K("Çıkış"))
-	byIdx = append(byIdx, nil, nil)
-	groups = append(groups, dil.K("Sistem"), dil.K("Sistem"))
+	// "AND hakkında", AGPL-3.0'ın istediği yasal bildirimleri (telif, garanti
+	// olmadığı, lisansın nasıl görüleceği) menüde belirgin bir öğe yapar.
+	items = append(items, dil.K("Ayarlar"), dil.K("AND hakkında"), dil.K("Çıkış"))
+	byIdx = append(byIdx, nil, nil, nil)
+	groups = append(groups, dil.K("Sistem"), dil.K("Sistem"), dil.K("Sistem"))
 
 	// Sohbet geçmişi artık chatStore'un SQLite'a kalıcılaştırdığı,
 	// peer'lar arası senkronize edilen mesajlardan yükleniyor — bkz.
@@ -486,8 +500,13 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// bkz. Run()'daki themeCh goroutine'i.
 		applyThemeColors(msg.theme)
 		m.restyleInputs()
-		if m.screen == screenSettings {
+		switch m.screen {
+		case screenSettings:
 			m.syncSettingsVP()
+		case screenHakkinda:
+			m.hakkindaVP.SetContent(m.hakkindaIcerik(m.hakkindaVP.Width))
+		case screenKurallar:
+			m.syncKurallarVP()
 		}
 		return m, nil
 
@@ -530,6 +549,16 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.settingsVP.Width = vw
 		m.settingsVP.Height = svh
+		// "AND hakkında" Ayarlar'la aynı düzendedir; onay ekranında sekme
+		// satırı yoktur ama hata bildirimi için bir satır ayrılır.
+		m.hakkindaVP.Width, m.hakkindaVP.Height = vw, svh
+		m.kurallarVP.Width, m.kurallarVP.Height = vw, max(msg.Height-11, 4)
+		switch m.screen {
+		case screenHakkinda:
+			m.hakkindaVP.SetContent(m.hakkindaIcerik(vw))
+		case screenKurallar:
+			m.syncKurallarVP()
+		}
 		if m.screen == screenForum && m.forumModel != nil {
 			var cmd tea.Cmd
 			m.forumModel, cmd = m.forumModel.Update(msg)
@@ -740,6 +769,10 @@ func (m appModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleChatProfileKey(msg)
 	case screenSettings:
 		return m.handleSettingsKey(msg)
+	case screenHakkinda:
+		return m.handleHakkindaKey(msg)
+	case screenKurallar:
+		return m.handleKurallarKey(msg)
 	}
 	return m, nil
 }
@@ -794,6 +827,10 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenSettings
 			m.settingsIdx = 0
 			m.syncSettingsVP()
+		case label == "AND hakkında":
+			m.screen = screenHakkinda
+			m.hakkindaTab = hakkindaSekmeGenel
+			m.hakkindaSekmesiAc()
 		case pl != nil:
 			return m.eklentiAc(m.eklentiIndeksi(pl.Name()), nil)
 		}
@@ -1179,6 +1216,10 @@ func (m appModel) View() string {
 		return m.viewSettings()
 	case screenIzin:
 		return m.viewIzin()
+	case screenHakkinda:
+		return m.viewHakkinda()
+	case screenKurallar:
+		return m.viewKurallar()
 	default:
 		return m.viewMenu()
 	}

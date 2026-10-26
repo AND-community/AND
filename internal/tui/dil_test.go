@@ -72,6 +72,16 @@ func dilEkranlari(t *testing.T, w, h int) map[string]string {
 		ekranlar["ayarlar_"+string(rune('0'+sekme))] = m.View()
 	}
 
+	m.screen = screenHakkinda
+	for sekme := range hakkindaSekmeSayisi {
+		m.hakkindaTab = sekme
+		m.hakkindaSekmesiAc()
+		ekranlar["hakkinda_"+string(rune('0'+sekme))] = m.View()
+	}
+	m.screen = screenKurallar
+	m.syncKurallarVP()
+	ekranlar["kurallar"] = m.View()
+
 	m.screen = screenChat
 	ekranlar["sohbet"] = m.View()
 

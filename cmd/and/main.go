@@ -61,12 +61,20 @@ func kutuphaneGunlugu(yol string) io.Writer {
 	return g
 }
 
-func appDir() (string, error) {
+// veriDiziniYolu, AND'ın veri dizininin yoludur; dizini oluşturmaz.
+func veriDiziniYolu() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("find config dir: %w", err)
 	}
-	dir := filepath.Join(base, "and")
+	return filepath.Join(base, "and"), nil
+}
+
+func appDir() (string, error) {
+	dir, err := veriDiziniYolu()
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create app dir: %w", err)
 	}
@@ -142,6 +150,17 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 }
 
 func run() error {
+	if len(os.Args) > 1 {
+		// --version, --lisans gibi bayraklar arayüz açılmadan yanıtlanır ve
+		// seçili dile uyar; dil.json yalnızca okunur, veri dizini oluşturulmaz.
+		if yol, err := veriDiziniYolu(); err == nil {
+			dil.Baslat(yol)
+		}
+		if bitti, err := komutSatiri(os.Args[1:], os.Stdout); bitti || err != nil {
+			return err
+		}
+	}
+
 	dir, err := appDir()
 	if err != nil {
 		return err

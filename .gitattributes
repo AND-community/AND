@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Gömülen lisans metinleri her platformda LF ile çekilsin: terminale basılırlar
+# ve CR karakteri tam ekran arayüzü bozar (bkz. internal/lisans).
+internal/lisans/*.txt text eol=lf

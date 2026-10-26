@@ -287,8 +287,8 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 	}
 	m := newAppModel(context.Background(), id, nil, plugins, "", nil, nil, nil, "", nil, nil, nil)
 
-	wantItems := []string{"Forum", "Sohbet", "Yönetici Paneli", "DeltaX", "Ayarlar", "Çıkış"}
-	wantGroups := []string{"Topluluk", "Topluluk", "Eklentiler", "Eklentiler", "Sistem", "Sistem"}
+	wantItems := []string{"Forum", "Sohbet", "Yönetici Paneli", "DeltaX", "Ayarlar", "AND hakkında", "Çıkış"}
+	wantGroups := []string{"Topluluk", "Topluluk", "Eklentiler", "Eklentiler", "Sistem", "Sistem", "Sistem"}
 	if len(m.menuItems) != len(wantItems) {
 		t.Fatalf("menuItems = %v, want %v", m.menuItems, wantItems)
 	}
