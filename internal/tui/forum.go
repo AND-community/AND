@@ -43,7 +43,7 @@ const (
 
 type forumKonuGeldiMsg struct{ konu *forum.Post }
 type forumYanitGeldiMsg struct{ yanit *forum.Reply }
-type forumYanitGonderildiMsg struct{}
+type forumYanitGonderildiMsg struct{ konuID string }
 type forumHataMsg string
 type forumBildirimTemizleMsg struct{}
 type forumSilMsg struct{ err error }
@@ -97,6 +97,10 @@ type forumModel struct {
 	silOnay bool
 
 	yanitAlan textarea.Model
+	// taslaklar, konu başına gönderilmemiş yanıtlardır (bkz. taslak.go);
+	// taslakKonu, yanıt kutusundaki metnin ait olduğu konudur.
+	taslaklar  *yanitTaslaklari
+	taslakKonu string
 
 	errMsg  string
 	okMsg   string
@@ -131,6 +135,7 @@ func newForumModel(ctx context.Context, f *forum.Forum, identity *stdcrypto.Iden
 		modTopic:       modTopic,
 		ekran:          fEkKategoriler,
 		yanitAlan:      ya,
+		taslaklar:      yanitTaslaklariniYukle(dataDir),
 		banReasonInput: banIn,
 		konuVP:         viewport.New(0, 0),
 	}
@@ -257,6 +262,12 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case forumYanitGonderildiMsg:
 		m.gonderi = false
+		// Taslak yalnızca yanıt gerçekten gönderildiğinde silinir.
+		m.taslaklar.koy(msg.konuID, "")
+		m.taslaklar.kaydet()
+		if m.taslakKonu == msg.konuID {
+			m.yanitAlan.SetValue("")
+		}
 		if m.aktifKonu != nil {
 			m.yanitlar = m.forum.Replies(m.aktifKonu.ID)
 			m.forumKonuVPGuncelle()
@@ -269,6 +280,10 @@ func (m forumModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case forumHataMsg:
 		m.gonderi = false
 		m.errMsg = string(msg)
+		if m.ekran == fEkYanit {
+			// Gönderilemeyen yanıt kutuda kalır ve düzenlenebilir.
+			return m, tea.Batch(m.yanitAlan.Focus(), forumBildirimTemizle())
+		}
 		return m, forumBildirimTemizle()
 
 	case forumSilMsg:
@@ -448,7 +463,12 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case "r":
-		m.yanitAlan.SetValue("")
+		if m.aktifKonu == nil {
+			return m, nil
+		}
+		// Kutu boşaltılmaz: bu konuya yarım kalmış bir yanıt varsa geri gelir.
+		m.taslakKonu = m.aktifKonu.ID
+		m.yanitAlan.SetValue(m.taslaklar.al(m.taslakKonu))
 		cmd := m.yanitAlan.Focus()
 		m.ekran = fEkYanit
 		return m, cmd
@@ -475,12 +495,19 @@ func (m forumModel) forumTusKonu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
+		m.taslaklar.kaydet()
 		return m, tea.Quit
 	case "esc":
+		m.taslaklar.kaydet()
 		m.yanitAlan.Blur()
 		m.ekran = fEkKonu
 		return m, nil
 	case "ctrl+s":
+		if m.gonderi {
+			return m, nil
+		}
+		// Denetimlerden biri geçmezse kutu odakta kalır: kullanıcı metni
+		// hemen düzeltebilir.
 		icerik := strings.TrimSpace(m.yanitAlan.Value())
 		if icerik == "" {
 			m.errMsg = dil.T("Yanıt boş olamaz")
@@ -490,27 +517,40 @@ func (m forumModel) forumTusYanit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = dil.T("Kapanmamış [code] etiketi var, kontrol edin")
 			return m, forumBildirimTemizle()
 		}
-		m.yanitAlan.Blur()
 		if len(icerik) > forum.MaxBodyBytes {
 			m.errMsg = dil.F("Yanıt çok uzun (%d/%d bayt)", len(icerik), forum.MaxBodyBytes)
 			return m, forumBildirimTemizle()
 		}
+		m.taslaklar.kaydet()
+		m.yanitAlan.Blur()
 		m.gonderi = true
-		f, konuID := m.forum, m.aktifKonu.ID
+		f, konuID := m.forum, m.taslakKonu
 		return m, func() tea.Msg {
 			if _, err := f.CreateReply(m.ctx, konuID, icerik); err != nil {
 				return forumHataMsg(err.Error())
 			}
-			return forumYanitGonderildiMsg{}
+			return forumYanitGonderildiMsg{konuID: konuID}
 		}
 	case "ctrl+k":
 		m.yanitAlan.InsertString("[code]\n\n[/code]")
 		m.yanitAlan.CursorUp()
+		m.taslagiGuncelle()
 		return m, nil
 	}
 	var cmd tea.Cmd
 	m.yanitAlan, cmd = m.yanitAlan.Update(msg)
+	m.taslagiGuncelle()
 	return m, cmd
+}
+
+// taslagiGuncelle, yanıt kutusundaki metni konunun taslağına yazar; diske
+// en çok taslakKayitAraligi'nda bir işlenir.
+func (m forumModel) taslagiGuncelle() {
+	if m.gonderi {
+		return
+	}
+	m.taslaklar.koy(m.taslakKonu, m.yanitAlan.Value())
+	m.taslaklar.belkiKaydet()
 }
 
 func (m forumModel) forumTusProfil(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1113,7 +1153,11 @@ func (m forumModel) forumGorunumKonu() string {
 			ui.KeyHints(w, ui.H("y", dil.T("sil")), ui.H(dil.T("başka bir tuş"), dil.T("vazgeç")))
 		return ui.Page(m.genislik, m.yukseklik, b.String(), f)
 	}
-	hints := []ui.Hint{ui.H("↑↓", dil.T("kaydır")), ui.H("r", dil.T("yanıtla")), ui.H("p", dil.T("yazarın profili"))}
+	yanitla := ui.H("r", dil.T("yanıtla"))
+	if m.taslaklar.al(k.ID) != "" {
+		yanitla = ui.H("r", dil.T("taslağa devam et"))
+	}
+	hints := []ui.Hint{ui.H("↑↓", dil.T("kaydır")), yanitla, ui.H("p", dil.T("yazarın profili"))}
 	if m.identity != nil && k.AuthorKey == hex.EncodeToString(m.identity.PublicKey()) {
 		hints = append(hints, ui.H("x", dil.T("sil")))
 	}
@@ -1159,7 +1203,7 @@ func (m forumModel) forumGorunumYanit() string {
 	b.WriteString(ui.S.Muted.Render(dil.T("Kod bloğu için ")) + ui.S.Key.Render("ctrl+k") + ui.S.Muted.Render(dil.T("  ·  ör. [code=python] … [/code]")) + "\n")
 
 	return ui.Page(m.genislik, m.yukseklik, b.String(),
-		m.forumAltBilgi(w, ui.H("ctrl+s", dil.T("gönder")), ui.H("ctrl+k", dil.T("kod bloğu")), ui.H("esc", dil.T("vazgeç"))))
+		m.forumAltBilgi(w, ui.H("ctrl+s", dil.T("gönder")), ui.H("ctrl+k", dil.T("kod bloğu")), ui.H("esc", dil.T("taslağı sakla"))))
 }
 
 func (m forumModel) forumGorunumProfil() string {

@@ -1,6 +1,6 @@
 # Kullanım Koşulları ve Topluluk Kuralları
 
-**Sürüm 1** · 25 Ekim 2026
+**Sürüm 2** · 29 Ekim 2026
 
 AND, merkezi sunucu gerektirmeyen, eşten eşe (P2P) bir forum ve iletişim yazılımıdır. Bu
 koşullar AND ağında (forum, genel sohbet, kişisel site, özel mesaj, dosya aktarımı ve eklentiler)
@@ -70,6 +70,9 @@ Eklentiler**'den geri alınabilir.
 Bu koşullarda kullanıcıyı etkileyen bir değişiklik olursa sürüm numarası artırılır ve AND yeni
 sürümü bir sonraki açılışta yeniden onaya sunar. Onaylamazsan AND'ı kullanmaya devam edemezsin;
 yazılımın lisansı ise bundan etkilenmez.
+
+- **Sürüm 2** (29 Ekim 2026): koşullar değişmedi; sürüm, gizlilik bildirimiyle aynı tutulduğu için
+  arttı ve ikisi birlikte yeniden onaya sunulur.
 
 ## 7. Lisanslar
 

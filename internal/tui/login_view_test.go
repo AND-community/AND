@@ -127,8 +127,11 @@ func TestLogin_ViewsFillScreen(t *testing.T) {
 				}
 			}
 			plain := ansi.Strip(out)
-			if !strings.Contains(ansi.Strip(lines[len(lines)-3]), "esc") {
-				t.Errorf("%s %dx%d: kısayollar en altta olmalı: %q", ad, sz[0], sz[1], ansi.Strip(lines[len(lines)-3]))
+			// Dar terminalde kısayollar iki satıra sarılabilir: "esc" en
+			// alttaki iki kısayol satırından birinde olmalı.
+			alt := ansi.Strip(lines[len(lines)-4]) + ansi.Strip(lines[len(lines)-3])
+			if !strings.Contains(alt, "esc") {
+				t.Errorf("%s %dx%d: kısayollar en altta olmalı: %q", ad, sz[0], sz[1], alt)
 			}
 			want := map[string]string{"kilit": "Şifre", "kayıt": "Şifre (tekrar)", "kod": "Tek satırda", "doğrulama": "Kurtarma kodu"}[ad]
 			if !strings.Contains(plain, want) {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1338,6 +1339,16 @@ func (m *Moderator) historyPath() string {
 	return filepath.Join(m.dataDir, "mod_history.json")
 }
 
+// okunamadi, çözülemeyen bir durum dosyasını kenara alır: yükleyici onu
+// yok sayıp boş başlar, ama bir sonraki kayıt artık onun üzerine yazmaz
+// (bkz. dosya.KenaraAl).
+func okunamadi(yol string, err error) {
+	if yeni, kerr := dosya.KenaraAl(yol, "bozuk"); kerr == nil {
+		log.Printf("moderasyon: %s okunamadı (%v); %s olarak kenara alındı",
+			filepath.Base(yol), err, filepath.Base(yeni))
+	}
+}
+
 func (m *Moderator) saveHistory() {
 	if m.dataDir == "" {
 		return
@@ -1361,6 +1372,7 @@ func (m *Moderator) loadHistory() {
 	}
 	var h []HistoryEntry
 	if err := json.Unmarshal(data, &h); err != nil {
+		okunamadi(m.historyPath(), err)
 		return
 	}
 	m.historyMu.Lock()
@@ -1483,6 +1495,7 @@ func (m *Moderator) loadGrants() {
 	}
 	var g []GrantedMod
 	if err := json.Unmarshal(data, &g); err != nil {
+		okunamadi(m.grantsPath(), err)
 		return
 	}
 	m.grantsMu.Lock()
@@ -1521,12 +1534,14 @@ func (m *Moderator) loadBans() {
 	if m.dataDir == "" {
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(m.dataDir, "active_bans.json"))
+	yol := filepath.Join(m.dataDir, "active_bans.json")
+	data, err := os.ReadFile(yol)
 	if err != nil {
 		return
 	}
 	var stored []PersistedBan
 	if err := json.Unmarshal(data, &stored); err != nil {
+		okunamadi(yol, err)
 		return
 	}
 	now := time.Now()
@@ -1575,12 +1590,14 @@ func (m *Moderator) loadRevocations() {
 	if m.dataDir == "" {
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(m.dataDir, "active_revocations.json"))
+	yol := filepath.Join(m.dataDir, "active_revocations.json")
+	data, err := os.ReadFile(yol)
 	if err != nil {
 		return
 	}
 	var list []persistedRevocation
 	if err := json.Unmarshal(data, &list); err != nil {
+		okunamadi(yol, err)
 		return
 	}
 	m.mu.Lock()
@@ -1622,12 +1639,14 @@ func (m *Moderator) loadUnbanWatermarks() {
 	if m.dataDir == "" {
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(m.dataDir, "unban_watermarks.json"))
+	yol := filepath.Join(m.dataDir, "unban_watermarks.json")
+	data, err := os.ReadFile(yol)
 	if err != nil {
 		return
 	}
 	var list []persistedUnbanWatermark
 	if err := json.Unmarshal(data, &list); err != nil {
+		okunamadi(yol, err)
 		return
 	}
 	m.mu.Lock()

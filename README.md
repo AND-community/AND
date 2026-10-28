@@ -167,6 +167,10 @@ AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün d�
 | SQLite ayarları | `busy_timeout` (5 sn), WAL ve `synchronous=NORMAL` her bağlantıda uygulanır; dosyayı aynı anda kullanan başka bir süreç (ör. `andmod`) hemen "database is locked" almaz. Kapanışta önce arka plan işleri durur, sonra veritabanı kapatılır |
 | Yeniden bağlanma | Uykudan uyanma ya da ağ değişikliğiyle bütün eşler düşerse bootstrap'a 15 sn içinde, sonuçsuz kaldıkça katlanan aralıklarla (en çok 5 dk) yeniden bağlanılır; bağlantı gelince keşif beklemeden yenilenir |
 | Günlük sınırı | `and.log` çalışırken de 5 MB'ta `and.log.1`'e döner; gürültülü bir kütüphane diski dolduramaz |
+| Tek AND, tek veri dizini | Veri dizinini aynı anda yalnızca bir AND kullanabilir (`and.kilit`, işletim sistemi kilidi; çökmede kendiliğinden bırakılır). İki AND aynı dosyalara yazıp birbirinin DM geçmişini, giden kutusunu ya da yasak listelerini ezemez; güncellemeden sonra yeniden başlayan sürüm eskisinin kapanmasını bekler |
+| Veritabanı yedeği ve kurtarma | `forum.db`'nin günde bir yedeği `yedek/` dizinine alınır (en yeni üçü, en çok 3 gün); var olan bir veritabanı yükseltilmeden önce de yedeklenir (en çok 7 gün). Migrasyonların her adımı kendi işleminde uygulanır. Açılışta `PRAGMA quick_check` çalışır: dosya bozuksa AND yine açılır: bozuk dosya silinmeden kenara alınır, en yeni sağlam yedek geri yüklenir, bozuk dosyadan okunabilen kayıtlar aktarılır ve ana ekranda bildirilir |
+| Okunamayan dosyalar ezilmez | Çözülemeyen bir durum dosyası (moderasyon geçmişi, verilen moderatörlükler, yasaklar, eklenti ayarları, DM geçmişi, yanıt taslakları) boş başlanıp bir sonraki kayıtta ezilmek yerine `<dosya>.bozuk-<tarih>` olarak kenara alınır |
+| Yazı taslakları | Forumda yazılan yanıt esc, ctrl+c, gönderim hatası ya da AND'ın kapanmasıyla kaybolmaz: konu başına taslak olarak saklanır (`yanit_taslaklari.json`) ve `r` ile geri gelir; yalnızca başarılı gönderim siler. Sohbette gönderilemeyen mesaj kutuda kalır |
 
 ---
 
@@ -280,6 +284,11 @@ AND başlangıçta `and-plugin-*` adındaki binary'leri otomatik bulur.
 3. **Kurtarma kodunu güvenli bir yere yaz** (`XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`, 32 karakter) — parolanı unutursan ya da başka bir bilgisayara geçersen kimliğini geri getirmenin tek yolu budur. Kod, yazdığını doğrulamak için bir kez daha sorulur
 
 Sonraki açılışlarda yalnızca parolanı girmen yeterlidir.  
+Parolanı unuttuysan ya da başka bir bilgisayara geçtiysen giriş ekranında `ctrl+r` ile kurtarma kodunu
+yaz (tire ve boşluk önemsiz; eski sürümlerin 12 kelimelik kodu da olur): kimliğin geri üretilir ve yeni
+bir parolayla kaydedilir. Şifresi unutulan eski kimlik dosyası silinmez, `identity.dat.eski-<tarih>` olarak
+kenara alınır. Kodun sağlama toplamı olmadığından yanlış yazılmış bir hane başka bir kimlik üretir; AND bu
+cihazda son açılan kimliği (`kimlik_ozeti.json`) hatırlar ve kod ondan farklı bir kimlik üretirse uyarır.  
 Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux: `~/.config/and/identity.dat`, macOS:
 `~/Library/Application Support/and/identity.dat`)
 
@@ -304,7 +313,8 @@ seçili arayüz diline uyar:
 Hata bildirirken `and --version` çıktısını ekle.
 
 Giriş ekranında `ctrl+l` (ya da `F2`) arayüz dilini değiştirir; seçim kaydedilir ve sonraki
-açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)).
+açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)). `ctrl+r` kurtarma koduyla kimliği geri yükler
+(bkz. [İlk çalıştırma](#ilk-çalıştırma)).
 
 ### Ana menü
 
@@ -710,6 +720,11 @@ olduğu [GIZLILIK.md](GIZLILIK.md)'de anlatılır.
 | `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
 | `kurallar_onayi.json` | Gizlilik özeti ve topluluk kurallarının hangi sürümünün ne zaman onaylandığı |
 | `dm_gecmis.bin` | Özel mesaj geçmişi, giden kutusu ve okundu bilgisi; kimlikten türetilen anahtarla AES-256-GCM şifreli (`AND_DM_GECMISI=0` ile yalnızca bellekte tutulur) |
+| `yedek/` | `forum.db`'nin günlük (en çok 3 gün) ve sürüm yükseltmesi öncesi (en çok 7 gün) yedekleri |
+| `yanit_taslaklari.json` | Gönderilmemiş forum yanıtları (konu başına; gönderilince ya da 30 günde silinir) |
+| `kimlik_ozeti.json` | Bu cihazda son açılan kimliğin açık anahtarı ve görünen adı — kurtarma kodu yanlış yazılırsa uyarmak için |
+| `and.kilit` | Veri dizinini kullanan AND'ın işletim sistemi kilidi (ikinci bir AND'ın açılmasını engeller) |
+| `*.bozuk-<tarih>`, `*.okunamadi-<tarih>`, `identity.dat.eski-<tarih>` | Okunamadığı ya da yerine yenisi yazıldığı için kenara alınan dosyalar; AND bunları silmez |
 | `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider; beklenmedik hataların yığın izleri de buradadır. 5 MB'ı aşınca (çalışırken de) `and.log.1`'e döner |
 
 > `identity.dat`, `founder.key` ve `bans/` içeriği asla başkalarıyla paylaşılmamalı, git'e eklenmemeli.

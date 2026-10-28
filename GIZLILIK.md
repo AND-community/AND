@@ -1,6 +1,6 @@
 # Gizlilik Bildirimi
 
-**Sürüm 1** · 25 Ekim 2026
+**Sürüm 2** · 29 Ekim 2026
 
 Bu bildirim, AND'ın hangi verileri işlediğini, nerede sakladığını ve kimlerin görebileceğini
 anlatır. AND bir yazılımdır: ağı işleten, kullanıcı verilerini toplayan ya da saklayan merkezi
@@ -45,6 +45,10 @@ her eşin cihazına kopyalanır.
 | Gönderilen ve alınan dosyalar | Alıcının `dosyalar/` dizini | Gönderen ve alıcı | Alıcı silene kadar |
 | Moderasyon kararları (ban, sertifika) | `bans/`, `active_bans.json` ve eşler | Kararlar ağda herkese açıktır | Kararın süresince; denetim geçmişi yerel olarak tutulur |
 | Ayarlar (tema, dil, eklenti izinleri, kurallar onayı) | `theme.json`, `dil.json`, `plugins_state.json`, `kurallar_onayi.json` | Yalnızca sen | Sen silene kadar |
+| Veritabanı yedekleri | `yedek/` (yalnızca bu cihaz); `forum.db`'nin kopyaları, şifresiz | Yalnızca sen | Günlük yedekler en çok 3 gün, sürüm yükseltmesinden önce alınanlar en çok 7 gün; silinen ya da süresi dolan içerik bu sürede yedekte kalabilir |
+| Gönderilmemiş forum yanıtları | `yanit_taslaklari.json`; şifresiz | Yalnızca sen | Yanıt gönderilene ya da 30 gün geçene kadar |
+| Kimlik özeti | `kimlik_ozeti.json`: açık anahtarın ve görünen adın (ikisi de zaten herkese açık); kurtarma kodunu yanlış yazarsan uyarmak için | Yalnızca sen | Sen silene kadar |
+| Okunamayan ya da yerine yenisi yazılan dosyaların kopyaları | `*.bozuk-<tarih>`, `dm_gecmis.bin.okunamadi-<tarih>`, `identity.dat.eski-<tarih>`; özgün dosya kadar korumalı | Yalnızca sen | AND silmez; sen silene kadar |
 | Uygulama günlüğü | `and.log` | Yalnızca sen | 5 MB'ı aşınca `and.log.1`'e döner |
 
 Veri dizini: Windows'ta `%APPDATA%\and`, Linux'ta `~/.config/and`, macOS'ta
@@ -101,6 +105,9 @@ açıklarını herkese açık bir issue yerine oradaki adrese bildir.
 
 Bu bildirimde kullanıcıyı etkileyen bir değişiklik olursa sürüm numarası artırılır; AND yeni
 sürümü bir sonraki açılışta yeniden onaya sunar.
+
+- **Sürüm 2** (29 Ekim 2026): bu cihazda tutulan veritabanı yedekleri, gönderilmemiş forum yanıtları,
+  kimlik özeti ve okunamadığı için kenara alınan dosyaların kopyaları eklendi (bkz. 2. bölüm).
 
 ## 10. İletişim
 

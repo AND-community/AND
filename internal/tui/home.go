@@ -220,6 +220,9 @@ func (m appModel) homeTree(w, h int) string {
 func (m appModel) homeFooter(w int) string {
 	var b strings.Builder
 	b.WriteString(ui.Divider(w) + "\n")
+	if BaslangicUyarisi != "" {
+		b.WriteString(ui.Notice(ui.KindWarning, ui.Wrap(BaslangicUyarisi, max(w-2, 10))) + "\n")
+	}
 	if m.updateNotice != "" {
 		b.WriteString(ui.Notice(ui.KindSuccess, m.updateNotice) + "\n")
 	}

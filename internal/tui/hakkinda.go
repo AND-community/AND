@@ -46,7 +46,7 @@ var hakkindaSekmeleri = [hakkindaSekmeSayisi]string{
 // Kullanıcıyı etkileyen bir değişiklikte artırılır; herkes yeni sürümü bir
 // sonraki açılışta yeniden onaylar. GIZLILIK.md ve KULLANIM_KOSULLARI.md'deki
 // sürüm numarasıyla aynı tutulur.
-const kurallarSurumu = 1
+const kurallarSurumu = 2
 
 const kurallarOnayiDosyasi = "kurallar_onayi.json"
 
@@ -84,6 +84,7 @@ var gizlilikMaddeleri = []string{
 	dil.K("Bağlandığın eşler IP adresini görebilir; bu, eşten eşe iletişimin doğal bir sonucudur."),
 	dil.K("Özel mesajlar iki uç arasında şifrelenir; kimin kiminle ne zaman konuştuğu ise ağdan tamamen gizlenemez."),
 	dil.K("Kimlik dosyan ve özel mesaj geçmişin bu cihazda şifreli saklanır; forum ve sohbet veritabanı şifresizdir."),
+	dil.K("Bu cihazda veritabanının yedekleri (en çok 3 gün; sürüm yükseltmesinden öncekiler en çok 7 gün) ve gönderilmemiş forum yanıtların tutulur; silinen ya da süresi dolan içerik bu sürede yedekte kalabilir."),
 	dil.K("AND kullanım istatistiği (telemetri) toplamaz. Eş bulmak için herkese açık IPFS başlangıç düğümlerine, güncelleme denetimi için GitHub'a bağlanır."),
 	dil.K("GitHub hesabını doğrularsan GitHub kullanıcı adın profilinde herkese görünür."),
 }

@@ -107,3 +107,24 @@ func TestHomeTree_OkunmamisDMRozeti(t *testing.T) {
 		t.Fatalf("rozet Özel Chat satırında görünmeli:\n%s", ansi.Strip(m.homeTree(60, 0)))
 	}
 }
+
+// TestAnaEkran_BaslangicUyarisi: açılışta onarılan bir veritabanı gibi
+// kullanıcının bilmesi gereken bir durum ana ekranın altında görünür ve
+// ekran yine tam kaplanır.
+func TestAnaEkran_BaslangicUyarisi(t *testing.T) {
+	eski := BaslangicUyarisi
+	t.Cleanup(func() { BaslangicUyarisi = eski })
+	BaslangicUyarisi = "Bozuk veritabanı onarıldı: yedekten geri yüklendi, 3 kayıt kurtarıldı; ayrıntılar and.log'da"
+	for _, sz := range [][2]int{{140, 40}, {80, 24}} {
+		mm, _ := newHomeTestModel(t).Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
+		ekran := mm.(appModel).viewMenu()
+		satirlar := strings.Split(ekran, "\n")
+		if len(satirlar) != sz[1] {
+			t.Fatalf("%dx%d: %d satır", sz[0], sz[1], len(satirlar))
+		}
+		duz := strings.Join(strings.Fields(ansi.Strip(ekran)), " ")
+		if !strings.Contains(duz, "Bozuk veritabanı onarıldı") || !strings.Contains(duz, "and.log") {
+			t.Errorf("%dx%d: uyarı tamamıyla görünmeli:\n%s", sz[0], sz[1], ansi.Strip(ekran))
+		}
+	}
+}

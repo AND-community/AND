@@ -29,6 +29,11 @@ var SyncStatus func() peersync.Status
 // ayarlanmamışsa (testler) nil'dir.
 var OkunmamisDM func() int
 
+// BaslangicUyarisi, açılışta kullanıcının bilmesi gereken bir durumdur
+// (ör. bozuk bulunup onarılan veritabanı); ana ekranın altında gösterilir.
+// cmd/and, Run'dan önce ayarlar.
+var BaslangicUyarisi string
+
 func okunmamisDM() int {
 	if OkunmamisDM == nil {
 		return 0

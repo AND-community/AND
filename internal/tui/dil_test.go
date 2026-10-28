@@ -102,6 +102,16 @@ func dilEkranlari(t *testing.T, w, h int) map[string]string {
 	ekranlar["giris_kod"] = giris(kod)
 	dogrula, _ := kod.goToVerify()
 	ekranlar["giris_dogrula"] = giris(dogrula.(loginModel))
+	for ad, kayit := range map[string]bool{"kayit": true, "kilit": false} {
+		gk, _ := newLoginModel(filepath.Join(t.TempDir(), "identity.dat"), kayit).geriYuklemeyiAc()
+		ekranlar["giris_geri_kod_"+ad] = giris(gk.(loginModel))
+	}
+	gid, _ := stdcrypto.GenerateIdentity()
+	for ad, e := range map[string]kimlikEslesmesi{"bilinmiyor": eslesmeBilinmiyor, "farkli": eslesmeFarkli} {
+		gf := newLoginModel(filepath.Join(t.TempDir(), "identity.dat"), true).geriYuklemeFormu(gid)
+		gf.eslesme = e
+		ekranlar["giris_geri_form_"+ad] = giris(gf)
+	}
 	return ekranlar
 }
 

@@ -1,15 +1,19 @@
 // Package storage, forum gönderilerinin/yanıtlarının/moderasyon
 // tombstone'larının kalıcılığını SQLite (WAL modu, tek yazarlı bağlantı
 // havuzu) üzerinden sağlar. Şema, `schema_versions` tablosunda izlenen
-// numaralı, idempotent migrasyonlarla evrilir (bkz. migrate()); zaman
-// damgaları UnixNano olarak saklanır. Her konu oluşturulduktan postTTL (5
-// gün) sonra süresi dolar; `expires_at=0` yalnızca henüz atanmamış (geçici)
-// bir durumu ifade eder.
+// numaralı, idempotent migrasyonlarla evrilir (bkz. migrate()); her adım
+// kendi işleminde uygulanır ve var olan bir veritabanı yükseltilmeden önce
+// yedeklenir. Açılışta bütünlük denetlenir; bozuk bir dosya kenara alınıp
+// en yeni yedekten (bkz. yedek.go) kurtarılır. Zaman damgaları UnixNano
+// olarak saklanır. Her konu oluşturulduktan postTTL (5 gün) sonra süresi
+// dolar; `expires_at=0` yalnızca henüz atanmamış (geçici) bir durumu ifade
+// eder.
 package storage
 
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -18,7 +22,10 @@ import (
 const postTTL = 5 * 24 * time.Hour
 
 type DB struct {
-	db *sql.DB
+	db  *sql.DB
+	yol string
+	// kurtarma, Open bozuk bir dosyadan kurtardıysa ne yapıldığını anlatır.
+	kurtarma *KurtarmaRaporu
 }
 
 // dsn, veritabanının bağlantı adresidir. Ayarlar sürücünün _pragma
@@ -35,7 +42,23 @@ func dsn(path string) string {
 		"&_pragma=synchronous(NORMAL)" // WAL'da güvenli ve hızlı
 }
 
+// Open, veritabanını açar, bütünlüğünü denetler ve şemayı yükseltir. Dosya
+// bozuksa AND açılmaz hâle gelmez: bozuk dosya kenara alınır, en yeni
+// yedek geri yüklenir (yoksa boş başlanır) ve bozuk dosyadan okunabilen
+// kayıtlar aktarılır; ne yapıldığı Kurtarma ile öğrenilir.
 func Open(path string) (*DB, error) {
+	s, err := ac(path)
+	if err == nil {
+		return s, nil
+	}
+	if !bozukMu(err) {
+		return nil, err
+	}
+	return kurtar(path, err)
+}
+
+// ac, Open'ın kurtarma denemeyen asıl işidir.
+func ac(path string) (*DB, error) {
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("storage: open: %w", err)
@@ -45,7 +68,11 @@ func Open(path string) (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("storage: open: %w", err)
 	}
-	s := &DB{db: db}
+	s := &DB{db: db, yol: path}
+	if err := s.saglamlikDenetle(); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("storage: migrate: %w", err)
@@ -64,26 +91,106 @@ func (s *DB) migrate() error {
 		return fmt.Errorf("storage: create schema_versions: %w", err)
 	}
 
+	uygulanan, enBuyuk, err := s.uygulananSurumler()
+	if err != nil {
+		return err
+	}
+	var bekleyen []migration
 	for _, step := range migrations {
-		var count int
-		_ = s.db.QueryRow("SELECT COUNT(*) FROM schema_versions WHERE version=?", step.version).Scan(&count)
-		if count > 0 {
-			continue
+		if !uygulanan[step.version] {
+			bekleyen = append(bekleyen, step)
 		}
-		_, execErr := s.db.Exec(step.sql)
-		if execErr != nil && !step.ignoreErr {
-			return fmt.Errorf("storage: migration v%d: %w", step.version, execErr)
+	}
+	if len(bekleyen) == 0 {
+		return nil
+	}
+
+	// Var olan bir veritabanı yükseltilecekse önce o hâlinin yedeği alınır:
+	// bir migrasyonun mantığı yanlışsa (v6'nın süresiz konulara süre ataması
+	// gibi geri dönüşü olmayan bir değişiklik) veri bu yedekten geri
+	// alınabilir. Yedek alınamazsa yükseltme yapılmaz.
+	dolu, err := s.veriVarMi()
+	if err != nil {
+		return err
+	}
+	if dolu {
+		if err := s.surumOncesiYedek(enBuyuk); err != nil {
+			return fmt.Errorf("storage: yükseltme öncesi yedek alınamadı: %w", err)
 		}
-		s.db.Exec("INSERT INTO schema_versions(version,applied_at) VALUES(?,?)",
-			step.version, time.Now().UnixNano())
+	}
+
+	for _, step := range bekleyen {
+		if err := s.uygula(step); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (s *DB) uygulananSurumler() (map[int]bool, int, error) {
+	rows, err := s.db.Query(`SELECT version FROM schema_versions`)
+	if err != nil {
+		return nil, 0, fmt.Errorf("storage: read schema_versions: %w", err)
+	}
+	defer rows.Close()
+	uygulanan, enBuyuk := map[int]bool{}, 0
+	for rows.Next() {
+		var v int
+		if err := rows.Scan(&v); err != nil {
+			return nil, 0, fmt.Errorf("storage: read schema_versions: %w", err)
+		}
+		uygulanan[v] = true
+		enBuyuk = max(enBuyuk, v)
+	}
+	return uygulanan, enBuyuk, rows.Err()
+}
+
+// veriVarMi, schema_versions dışında bir tablo olup olmadığını söyler —
+// schema_versions'tan önceki çok eski veritabanları da "var olan" sayılır.
+func (s *DB) veriVarMi() (bool, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master
+		WHERE type='table' AND name <> 'schema_versions' AND name NOT LIKE 'sqlite_%'`).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("storage: read sqlite_master: %w", err)
+	}
+	return n > 0, nil
+}
+
+// uygula, bir migrasyon adımını ve sürüm kaydını tek bir işlemde yapar:
+// adım yarıda kalırsa (hata, çökme) ne verideki değişikliği ne de "uygulandı"
+// kaydı kalır.
+func (s *DB) uygula(step migration) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("storage: migration v%d: %w", step.version, err)
+	}
+	defer tx.Rollback() //nolint:errcheck // Commit'ten sonra etkisizdir
+	if _, err := tx.Exec(step.sql); err != nil && !(step.ignoreErr && sutunZatenVar(err)) {
+		return fmt.Errorf("storage: migration v%d: %w", step.version, err)
+	}
+	if _, err := tx.Exec("INSERT INTO schema_versions(version,applied_at) VALUES(?,?)",
+		step.version, time.Now().UnixNano()); err != nil {
+		return fmt.Errorf("storage: migration v%d kaydedilemedi: %w", step.version, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("storage: migration v%d: %w", step.version, err)
+	}
+	return nil
+}
+
+// sutunZatenVar: ignoreErr'li adımlar yalnızca "sütun zaten var" hatasını
+// yok sayar (v1'in CREATE TABLE'ı sonradan eklenen sütunları zaten
+// içeriyordu). Disk dolu gibi başka bir hata yutulsaydı sütun eksik kalırken
+// adım uygulanmış sayılırdı.
+func sutunZatenVar(err error) bool {
+	return strings.Contains(err.Error(), "duplicate column name")
 }
 
 type migration struct {
 	version   int
 	sql       string
-	ignoreErr bool
+	ignoreErr bool // yalnızca "duplicate column name" hatası yok sayılır
 }
 
 var migrations = []migration{

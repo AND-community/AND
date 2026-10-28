@@ -34,6 +34,7 @@ import (
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
+	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/internal/updater"
 
@@ -165,6 +166,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Aynı veri dizininde ikinci bir AND açılmaz: iki süreç aynı dosyalara
+	// yazınca biri diğerinin kaydettiklerini (DM geçmişi, giden kutusu,
+	// yasak listeleri…) sessizce ezerdi.
+	kilit, err := veriDiziniKilidi(dir, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	defer kilit.Birak()
 	identityFile := filepath.Join(dir, "identity.dat")
 	// Önceki bir çalıştırmada yazma yarıda kaldıysa (çökme, elektrik
 	// kesilmesi) geriye kalan geçici dosyalar silinir; asıl dosyalar
@@ -265,6 +274,7 @@ func run() error {
 	forumStore.SetModerator(mod)
 
 	arka.Git("forum", func() { forumStore.Run(ctx) })
+	arka.Git("veritabanı yedeği", func() { gunlukYedekDongusu(ctx, forumStore.DB()) })
 
 	forumStore.RegisterSync(node.Host)
 
@@ -435,6 +445,14 @@ func run() error {
 	gunlukYolu := filepath.Join(dir, "and.log")
 	network.RedirectLibraryLogs(kutuphaneGunlugu(gunlukYolu))
 
+	// Veritabanı açılışta bozuk bulunup onarıldıysa (bkz. storage.Open)
+	// ayrıntılar and.log'a yazılır, kullanıcıya ana ekranda söylenir.
+	if k := forumStore.DB().Kurtarma(); k != nil {
+		log.Printf("veritabanı bozuk çıktı (%s); bozuk dosya silinmedi: %s; geri yüklenen yedek: %q; bozuk dosyadan kurtarılan kayıt: %d",
+			k.Sebep, k.BozukDosya, k.Yedek, k.Kurtarilan)
+		tui.BaslangicUyarisi = kurtarmaUyarisi(k)
+	}
+
 	// Kapanış sırası: önce arka plan işleri durur, sonra paylaşılan
 	// veritabanı kapanır (WAL dosyası ana dosyaya işlenir), güncelleme
 	// indirildiyse yeni sürüm ancak bundan sonra başlatılır; konular ve düğüm
@@ -442,6 +460,11 @@ func run() error {
 	yenidenBaslat := false
 	defer func() {
 		if yenidenBaslat {
+			// Yeni sürüm veri dizinini devralmadan önce ağ kapanır ve kilit
+			// bırakılır: eski sürecin geç gelen bir DM'yi diske yazması yeni
+			// sürecin kayıtlarını ezebilirdi.
+			_ = node.Close()
+			_ = kilit.Birak()
 			fmt.Fprintln(os.Stderr, dil.T("Yeni sürüm yeniden başlatılıyor..."))
 			_ = updater.SelfRestart()
 		}
@@ -471,6 +494,57 @@ func run() error {
 	default:
 	}
 	return nil
+}
+
+// veriDiziniKilidi, veri dizinini bu sürece ayırır (bkz. dosya.Kilit).
+// Kilit başka bir AND'daysa en çok bekle kadar bekler: güncellemeden sonra
+// yeniden başlatılan sürüm, eskisi kapanırken açılır. Kilit dosya sistemi
+// yüzünden hiç alınamıyorsa (ör. kilit desteklemeyen bir ağ sürücüsü) nil
+// döner ve AND kilitsiz açılır — eski davranış, hiç açılamamaktan iyidir.
+func veriDiziniKilidi(dir string, bekle time.Duration) (*dosya.Kilit, error) {
+	son := time.Now().Add(bekle)
+	for {
+		k, err := dosya.KilitAl(dir)
+		if err == nil {
+			return k, nil
+		}
+		if !errors.Is(err, dosya.ErrKilitli) {
+			log.Printf("veri dizini kilitlenemedi, kilitsiz devam ediliyor: %v", err)
+			return nil, nil
+		}
+		if time.Now().After(son) {
+			return nil, errors.New(dil.F("AND zaten çalışıyor: %s başka bir AND tarafından kullanılıyor. İki AND aynı anda çalışırsa biri diğerinin kaydettiklerinin üzerine yazar; önce açık olanı kapat.", dir))
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// gunlukYedekDongusu, veritabanının günlük yedeğini alır (bkz.
+// storage.DB.GunlukYedek): açılıştan bir dakika sonra, sonra altı saatte bir
+// bakar; yedek yalnızca en yenisi bir günden eskiyse alınır.
+func gunlukYedekDongusu(ctx context.Context, db *storage.DB) {
+	bekle := time.Minute
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(bekle):
+		}
+		if yol, err := db.GunlukYedek(); err != nil {
+			log.Printf("veritabanı yedeği alınamadı: %v", err)
+		} else if yol != "" {
+			log.Printf("veritabanı yedeği alındı: %s", yol)
+		}
+		bekle = 6 * time.Hour
+	}
+}
+
+// kurtarmaUyarisi, açılışta onarılan veritabanını kullanıcıya anlatır.
+func kurtarmaUyarisi(k *storage.KurtarmaRaporu) string {
+	if k.Yedek != "" {
+		return dil.F("Bozuk veritabanı onarıldı: en yeni yedek geri yüklendi, bozuk dosyadan %d kayıt kurtarıldı. Ayrıntılar and.log'da.", k.Kurtarilan)
+	}
+	return dil.F("Bozuk veritabanı onarıldı: yedek yoktu, bozuk dosyadan %d kayıt kurtarıldı; eksikler eşlerden senkronlanacak. Ayrıntılar and.log'da.", k.Kurtarilan)
 }
 
 // eklentiHedefleri, otomatik güncellemenin AND ile birlikte güncelleyeceği

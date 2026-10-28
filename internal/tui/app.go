@@ -309,7 +309,8 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 		}()
 	}
 
-	_, err := p.Run()
+	son, err := p.Run()
+	cikistaTaslaklariKaydet(son)
 	if err != nil {
 		return fmt.Errorf("tui: run app program: %w", err)
 	}
@@ -1088,8 +1089,8 @@ func (m *appModel) restyleInputs() {
 // remote peers) is fast enough not to visibly block input.
 func (m appModel) sendChat() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.chatInput.Value())
-	m.chatInput.SetValue("")
 	if text == "" || m.chatStore == nil {
+		m.chatInput.SetValue("")
 		return m, nil
 	}
 
@@ -1103,8 +1104,11 @@ func (m appModel) sendChat() (tea.Model, tea.Cmd) {
 	// chatlog.Store.Send), so sent is non-nil even when err reports a
 	// publish failure — show the local echo regardless, matching what's
 	// actually now in the store, instead of silently discarding a message
-	// the user believes they sent.
+	// the user believes they sent. Kutu yalnızca mesaj kaydedildiyse
+	// boşalır; kaydedilemeyen metin düzeltilip yeniden gönderilebilsin diye
+	// kutuda kalır.
 	if sent != nil {
+		m.chatInput.SetValue("")
 		m.chatLines = append(m.chatLines, formatChatLine(sent))
 		m.chatOwn = append(m.chatOwn, true)
 		m.chatAuthorKeys = append(m.chatAuthorKeys, sent.AuthorKey)

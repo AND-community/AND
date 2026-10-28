@@ -248,12 +248,17 @@ func loadState(dataDir string) pluginsState {
 	if dataDir == "" {
 		return pluginsState{}
 	}
-	data, err := os.ReadFile(filepath.Join(dataDir, stateFile))
+	yol := filepath.Join(dataDir, stateFile)
+	data, err := os.ReadFile(yol)
 	if err != nil {
 		return pluginsState{}
 	}
 	var st pluginsState
-	json.Unmarshal(data, &st) //nolint:errcheck
+	if err := json.Unmarshal(data, &st); err != nil {
+		// Bir sonraki SaveState bunun üzerine yazmasın.
+		_, _ = dosya.KenaraAl(yol, "bozuk")
+		return pluginsState{}
+	}
 	return st
 }
 

@@ -354,3 +354,23 @@ func TestDiscoverWithState_AppliesDisabledList(t *testing.T) {
 		t.Error("mywired should be disabled after applyState")
 	}
 }
+
+// TestLoadState_OkunamayanDosyaKenaraAlinir: çözülemeyen plugins_state.json
+// bir sonraki kayıtta ezilmeden önce kenara alınır.
+func TestLoadState_OkunamayanDosyaKenaraAlinir(t *testing.T) {
+	dir := t.TempDir()
+	yol := filepath.Join(dir, stateFile)
+	if err := os.WriteFile(yol, []byte(`{"disabled": [`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if st := loadState(dir); len(st.Disabled) != 0 {
+		t.Fatalf("bozuk dosyadan durum okunmamalı: %+v", st)
+	}
+	kenar, _ := filepath.Glob(yol + ".bozuk-*")
+	if len(kenar) != 1 {
+		t.Fatalf("bozuk dosya kenara alınmalıydı, bulunan: %v", kenar)
+	}
+	if veri, _ := os.ReadFile(kenar[0]); string(veri) != `{"disabled": [` {
+		t.Errorf("kenardaki içerik %q", veri)
+	}
+}

@@ -81,9 +81,23 @@ func TestKalici_YanlisAnahtarlaUzerineYazilmaz(t *testing.T) {
 	if len(b2.History()) != 0 {
 		t.Fatal("çözülemeyen geçmiş yüklenmemeli")
 	}
-	kenar, err := os.ReadFile(yol + ".okunamadi")
-	if err != nil || !bytes.Equal(kenar, eski) {
-		t.Fatalf("çözülemeyen dosya silinmemeli, kenara alınmalı: %v", err)
+	kenarlar, _ := filepath.Glob(yol + ".okunamadi-*")
+	if len(kenarlar) != 1 {
+		t.Fatalf("çözülemeyen dosya silinmemeli, kenara alınmalı; bulunan: %v", kenarlar)
+	}
+	if kenar, err := os.ReadFile(kenarlar[0]); err != nil || !bytes.Equal(kenar, eski) {
+		t.Fatalf("kenara alınan dosya özgün içeriği taşımalı: %v", err)
+	}
+
+	// Aynı şey ikinci kez olursa ilk kenara alınan kopya ezilmez (eskiden
+	// sabit ".okunamadi" adı ikinci seferde öncekinin üzerine yazılıyordu).
+	b2.record(pluginapi.DMRecord{PeerID: "12D3KooWBob", Text: "b2", At: time.Now()})
+	b3 := New(newTestNode(t))
+	if err := b3.KaliciAc(yol, testAnahtari(t)); err == nil {
+		t.Fatal("üçüncü anahtarla açılan dosya da hata bildirmeli")
+	}
+	if kenarlar, _ = filepath.Glob(yol + ".okunamadi-*"); len(kenarlar) != 2 {
+		t.Fatalf("iki ayrı kenara alınmış kopya olmalı, bulunan: %v", kenarlar)
 	}
 }
 

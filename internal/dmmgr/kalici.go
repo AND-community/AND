@@ -77,8 +77,9 @@ func GecmisAnahtari(priv ed25519.PrivateKey) ([]byte, error) {
 // KaliciAc, geçmişi, giden kutusunu ve okundu bilgisini yol'daki şifreli
 // dosyaya bağlar: varsa yükler, bundan sonraki her değişiklikte yazar. Dosya
 // bu anahtarla çözülemezse (başka bir kimliğin ya da bozuk dosya) üzerine
-// yazılmaz, yanına ".okunamadi" uzantısıyla taşınır; geçmiş boş başlar ve
-// dönen hata bunu bildirir (kalıcılık yine de açıktır).
+// yazılmaz, yanına ".okunamadi-<tarih>" uzantısıyla taşınır (önceden kenara
+// alınmış bir kopya ezilmez); geçmiş boş başlar ve dönen hata bunu bildirir
+// (kalıcılık yine de açıktır).
 func (b *Broker) KaliciAc(yol string, anahtar []byte) error {
 	if len(anahtar) != 32 {
 		return errors.New("dmmgr: geçmiş anahtarı 32 bayt olmalı")
@@ -96,8 +97,12 @@ func (b *Broker) KaliciAc(yol string, anahtar []byte) error {
 			err = json.Unmarshal(acik, &kayit)
 		}
 		if err != nil {
-			yukleHatasi = fmt.Errorf("dmmgr: önceki DM geçmişi çözülemedi, %s.okunamadi olarak kenara alındı: %w", yol, err)
-			_ = os.Rename(yol, yol+".okunamadi")
+			kenar, kerr := dosya.KenaraAl(yol, "okunamadi")
+			if kerr != nil {
+				// Kenara alınamayan dosyanın üzerine yazılmasın: kalıcılık kapalı kalır.
+				return fmt.Errorf("dmmgr: önceki DM geçmişi çözülemedi (%v) ve kenara alınamadı: %w", err, kerr)
+			}
+			yukleHatasi = fmt.Errorf("dmmgr: önceki DM geçmişi çözülemedi, %s olarak kenara alındı: %w", kenar, err)
 			kayit = kayitDosyasi{}
 		}
 	}

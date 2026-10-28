@@ -124,6 +124,12 @@ func TestAppModel_SendChat_OversizedTextShowsNoticeWithoutLocalEcho(t *testing.T
 	if len(result.chatLines) != 0 {
 		t.Fatalf("başarısız (hiç persist edilmemiş) bir gönderim yerel olarak eklenmemeliydi, got %v", result.chatLines)
 	}
+	// Gönderilemeyen mesaj kutuda kalır: kullanıcı kısaltıp yeniden
+	// gönderebilir. (Eskiden kutu göndermeden önce boşaltılıyordu; hata
+	// bildirimi çıkarken yazılan metin de kayboluyordu.)
+	if got := result.chatInput.Value(); got != strings.Repeat("a", 20) {
+		t.Fatalf("gönderilemeyen mesaj kutuda kalmalı, kutu: %q", got)
+	}
 }
 
 func TestAppModel_SendChat_SuccessAppendsLocalEchoAndClearsNotice(t *testing.T) {
