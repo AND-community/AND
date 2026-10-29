@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -129,8 +130,51 @@ func (m *mockModeration) Revoke(_ context.Context, targetKeyHex string) error {
 	return nil
 }
 
+// aboneler, sahte arka uçların abone kanallarını kilitle tutar. Sunucu
+// Subscribe/Unsubscribe'ı kendi goroutine'inde çağırırken test de teslim için
+// aynı listeyi okur; kilitsiz erişim -race altında veri yarışıydı.
+type aboneler[T any] struct {
+	mu   sync.Mutex
+	subs []chan T
+}
+
+func (a *aboneler[T]) ekle(ch chan T) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.subs = append(a.subs, ch)
+}
+
+func (a *aboneler[T]) cikar(ch chan T) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for i, c := range a.subs {
+		if c == ch {
+			a.subs = append(a.subs[:i], a.subs[i+1:]...)
+			return
+		}
+	}
+}
+
+// bekle, sunucu en az bir abonelik açana kadar (en çok 5 sn) bekleyip
+// abonelerin kopyasını döndürür. Sabit bir süre beklemek abonelik geç
+// açıldığında mesajı hiç teslim etmiyordu. Test goroutine'i dışından
+// çağrıldığı için t.Fatal kullanmaz; süre dolarsa boş döner ve testin kendi
+// denetimi başarısız olur.
+func (a *aboneler[T]) bekle() []chan T {
+	son := time.Now().Add(5 * time.Second)
+	for {
+		a.mu.Lock()
+		kopya := append([]chan T(nil), a.subs...)
+		a.mu.Unlock()
+		if len(kopya) > 0 || time.Now().After(son) {
+			return kopya
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 type mockDM struct {
-	subs    []chan DMMsg
+	subs    aboneler[DMMsg]
 	sendErr error
 	// onceden, Subscribe'ın yeni kanala hemen koyduğu mesajlardır (aynı anda
 	// gelen mesajları taklit eder).
@@ -142,17 +186,10 @@ func (m *mockDM) Subscribe() chan DMMsg {
 	for _, msg := range m.onceden {
 		ch <- msg
 	}
-	m.subs = append(m.subs, ch)
+	m.subs.ekle(ch)
 	return ch
 }
-func (m *mockDM) Unsubscribe(ch chan DMMsg) {
-	for i, c := range m.subs {
-		if c == ch {
-			m.subs = append(m.subs[:i], m.subs[i+1:]...)
-			return
-		}
-	}
-}
+func (m *mockDM) Unsubscribe(ch chan DMMsg)                      { m.subs.cikar(ch) }
 func (m *mockDM) SendDM(_ context.Context, _, _, _ string) error { return m.sendErr }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -761,10 +798,9 @@ func TestDMPoll_ReceivesMessage(t *testing.T) {
 	dm := &mockDM{}
 	c := startTestServer(t, &mockID{name: "bob"}, &mockForum{}, dm)
 
-	// Deliver a message shortly after the poll starts.
+	// Deliver a message as soon as the poll has subscribed.
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		for _, ch := range dm.subs {
+		for _, ch := range dm.subs.bekle() {
 			ch <- DMMsg{From: "alice", Text: "merhaba", ReceivedAt: time.Now()}
 		}
 	}()
@@ -801,24 +837,17 @@ func TestSendDM_Error(t *testing.T) {
 // ─── File endpoints ───────────────────────────────────────────────────────────
 
 type mockFile struct {
-	subs    []chan FileMsg
+	subs    aboneler[FileMsg]
 	sendErr error
 	sent    []struct{ peerID, localPath string }
 }
 
 func (m *mockFile) Subscribe() chan FileMsg {
 	ch := make(chan FileMsg, 8)
-	m.subs = append(m.subs, ch)
+	m.subs.ekle(ch)
 	return ch
 }
-func (m *mockFile) Unsubscribe(ch chan FileMsg) {
-	for i, c := range m.subs {
-		if c == ch {
-			m.subs = append(m.subs[:i], m.subs[i+1:]...)
-			return
-		}
-	}
-}
+func (m *mockFile) Unsubscribe(ch chan FileMsg) { m.subs.cikar(ch) }
 func (m *mockFile) SendFile(_ context.Context, peerID, _, localPath string) error {
 	if m.sendErr != nil {
 		return m.sendErr
@@ -967,8 +996,7 @@ func TestFilePoll_ReceivesMessage(t *testing.T) {
 	c := startTestServerWithFile(t, &mockID{name: "bob"}, &mockForum{}, nil, mf)
 
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		for _, ch := range mf.subs {
+		for _, ch := range mf.subs.bekle() {
 			ch <- FileMsg{From: "alice", Filename: "foto.jpg", Size: 3, SavePath: "/tmp/foto.jpg", ReceivedAt: time.Now()}
 		}
 	}()
@@ -1214,7 +1242,7 @@ func TestCreateReply_InvalidPostID(t *testing.T) {
 // ─── Chat endpoints ───────────────────────────────────────────────────────────
 
 type mockChat struct {
-	subs    []chan ChatMsg
+	subs    aboneler[ChatMsg]
 	sendErr error
 	sent    []ChatMsg
 	all     []ChatMsg
@@ -1222,17 +1250,10 @@ type mockChat struct {
 
 func (m *mockChat) Subscribe() chan ChatMsg {
 	ch := make(chan ChatMsg, 8)
-	m.subs = append(m.subs, ch)
+	m.subs.ekle(ch)
 	return ch
 }
-func (m *mockChat) Unsubscribe(ch chan ChatMsg) {
-	for i, c := range m.subs {
-		if c == ch {
-			m.subs = append(m.subs[:i], m.subs[i+1:]...)
-			return
-		}
-	}
-}
+func (m *mockChat) Unsubscribe(ch chan ChatMsg) { m.subs.cikar(ch) }
 func (m *mockChat) SendChat(_ context.Context, from, msg string) error {
 	if m.sendErr != nil {
 		return m.sendErr
@@ -1276,8 +1297,7 @@ func TestChatPoll_ReceivesMessage(t *testing.T) {
 	c := startTestServerWithChat(t, chat)
 
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		for _, ch := range chat.subs {
+		for _, ch := range chat.subs.bekle() {
 			ch <- ChatMsg{From: "veli", Text: "selam"}
 		}
 	}()

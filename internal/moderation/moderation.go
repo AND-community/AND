@@ -47,6 +47,14 @@ const (
 	// yasağı için geçerli, "10s" değil).
 	minBanDuration = time.Minute
 
+	// imzaSaatPayi, minBanDuration denetiminde imzalayanın iki ayrı saat
+	// okumasından doğan farkı tolere eder: bitiş (now+süre) imzadan önce
+	// hesaplanır, IssuedAt ise imza anında okunur (bkz. SignModeratorBan).
+	// Pay olmasaydı tam minBanDuration'lık bir ban, saati ince çözünürlüklü
+	// sistemlerde (Linux, macOS) neredeyse her zaman reddedilirdi. Daha önce
+	// imzalanmış banlar da aynı biçimde olduğundan pay doğrulayan taraftadır.
+	imzaSaatPayi = 2 * time.Second
+
 	// maxHistoryEntries, dataDir/mod_history.json'da tutulan denetim
 	// kaydının üst sınırı — sınırsız büyümesini önler (bkz. recordHistory).
 	maxHistoryEntries = 500
@@ -554,8 +562,9 @@ func (m *Moderator) applyBan(ban *BanMsg) bool {
 		// sınır KAPSAYICIDIR (Before, After değil): andmod'un CLI doğrulaması
 		// "d < time.Minute" ile d==minBanDuration'ı GEÇERLİ kabul ediyor
 		// (bkz. cmd/andmod/main.go), bu yüzden burası da tam olarak
-		// minBanDuration'a eşit bir süreyi reddetmemeli.
-		if ban.ExpiresAt.Before(ban.IssuedAt.Add(minBanDuration)) {
+		// minBanDuration'a eşit bir süreyi reddetmemeli; imzaSaatPayi
+		// imzalayanın iki saat okuması arasındaki farkı karşılar.
+		if ban.ExpiresAt.Before(ban.IssuedAt.Add(minBanDuration - imzaSaatPayi)) {
 			return false
 		}
 		if ban.ExpiresAt.After(ban.IssuedAt.Add(maxBanDays * 24 * time.Hour)) {

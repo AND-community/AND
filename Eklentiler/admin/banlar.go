@@ -101,7 +101,9 @@ func whoLabel(modKey string, isFounderMod bool) string {
 
 // kalanSure, gelecekteki bir zamanı kısa Türkçe "kalan süre" metnine çevirir.
 func kalanSure(t time.Time) string {
-	d := time.Until(t)
+	// Saniyeye yuvarlanır: ban verildikten sonra ekrana gelene kadar geçen
+	// birkaç milisaniye, yeni bir 2 saatlik banı "1 saat"e düşürmesin.
+	d := time.Until(t).Round(time.Second)
 	switch {
 	case d <= 0:
 		return dil.T("süresi doldu")

@@ -1219,21 +1219,36 @@ func pathWithinDir(target, dir string) bool {
 	// Sembolik bağları çöz: target metinsel olarak dataDir dışında görünse
 	// bile, gerçekte dataDir içindeki bir dosyaya işaret eden bir sembolik
 	// bağ olabilir (ör. dataDir dışına yerleştirilmiş, identity.dat'a
-	// işaret eden bir link). EvalSymlinks başarısız olursa (ör. dosya henüz
-	// yoksa ya da bir sembolik bağ değilse) mutlak yolu olduğu gibi
-	// kullanmaya devam ederiz.
-	if resolved, rerr := filepath.EvalSymlinks(absTarget); rerr == nil {
-		absTarget = resolved
-	}
-	if resolved, rerr := filepath.EvalSymlinks(absDir); rerr == nil {
-		absDir = resolved
-	}
+	// işaret eden bir link). İki taraf da aynı biçimde çözülmeli: biri
+	// çözülüp öbürü çözülmezse Windows'ta aynı klasörün kısa (8.3) ve uzun
+	// adları farklı sayılır.
+	absTarget = cozulmusYol(absTarget)
+	absDir = cozulmusYol(absDir)
 
 	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
 		absTarget = strings.ToLower(absTarget)
 		absDir = strings.ToLower(absDir)
 	}
 	return absTarget == absDir || strings.HasPrefix(absTarget, absDir+string(os.PathSeparator))
+}
+
+// cozulmusYol, yolun var olan en uzun önekini EvalSymlinks ile çözüp kalan
+// (henüz var olmayan) parçaları ekler. Hedef dosya yoksa da sembolik bağlar
+// çözülür ve Windows'un kısa (8.3) adları uzun adlara çevrilir; hiçbir önek
+// çözülemezse yol olduğu gibi döner.
+func cozulmusYol(yol string) string {
+	kalan := ""
+	for p := yol; ; {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(r, kalan)
+		}
+		ust := filepath.Dir(p)
+		if ust == p {
+			return yol
+		}
+		kalan = filepath.Join(filepath.Base(p), kalan)
+		p = ust
+	}
 }
 
 // sensitiveHomeSubdirs, kullanıcı ana dizini içinde olsa bile

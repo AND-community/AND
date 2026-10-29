@@ -12,7 +12,37 @@ import (
 	"time"
 
 	winio "github.com/Microsoft/go-winio"
+	"golang.org/x/sys/windows"
 )
+
+// TestTakmaAdSID: SDDL kısaltmaları ("LA", "WD") ve tam SID metni aynı SID'e
+// çözülmeli; çözülemeyen bir değer boş döner.
+func TestTakmaAdSID(t *testing.T) {
+	if got := takmaAdSID("WD"); got != "S-1-1-0" {
+		t.Errorf(`takmaAdSID("WD") = %q, "S-1-1-0" (Everyone) beklenirdi`, got)
+	}
+	if got := takmaAdSID("LA"); !strings.HasPrefix(got, "S-1-5-21-") || !strings.HasSuffix(got, "-500") {
+		t.Errorf(`takmaAdSID("LA") = %q, yerel Administrator SID'i (S-1-5-21-…-500) beklenirdi`, got)
+	}
+	if sid, err := currentUserSID(); err == nil {
+		if got := takmaAdSID(sid); got != sid {
+			t.Errorf("takmaAdSID(%q) = %q, aynısı beklenirdi", sid, got)
+		}
+	}
+	if got := takmaAdSID("XX-yok"); got != "" {
+		t.Errorf("çözülemeyen değer için boş beklenirdi, %q geldi", got)
+	}
+}
+
+// takmaAdSID, SDDL'deki bir hak sahibini (iyi bilinen SID kısaltması ya da
+// S-1-… metni) SID metnine çevirir; çevrilemezse boş döner.
+func takmaAdSID(trustee string) string {
+	sid, err := windows.StringToSid(trustee)
+	if err != nil {
+		return ""
+	}
+	return sid.String()
+}
 
 // TestListenExternal, named pipe dinleyicisinin gerçekten açılıp
 // (SecurityDescriptor OS tarafından reddedilmeden) aynı kullanıcı olarak
@@ -131,8 +161,11 @@ func TestExternalPipeSDDL(t *testing.T) {
 			if sidErr == nil {
 				t.Fatalf("geçerli kullanıcı SID'i çözümlenebilirken trustee OW'a düştü — ACE: %q", ace)
 			}
-		case wantSID != "" && trustee == wantSID:
-			// beklenen: geçerli kullanıcının gerçek SID'i.
+		case wantSID != "" && (trustee == wantSID || takmaAdSID(trustee) == wantSID):
+			// beklenen: geçerli kullanıcının gerçek SID'i. Windows iyi
+			// bilinen SID'leri SDDL'de kısaltmayla yazar (ör. yerleşik
+			// Administrator hesabı "LA"; GitHub'ın Windows makinesi bu
+			// hesapla çalışır).
 		default:
 			t.Fatalf(
 				"beklenmeyen trustee %q (geçerli kullanıcı SID'i %q ya da OW olmalı) — ACE: %q, tam SDDL: %q",

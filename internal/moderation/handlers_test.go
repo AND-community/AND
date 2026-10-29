@@ -52,7 +52,11 @@ func signedBan(t *testing.T, modPriv ed25519.PrivateKey, cert ModeratorCert, tar
 
 func signedBanWithExpiry(t *testing.T, modPriv ed25519.PrivateKey, cert ModeratorCert, target peer.ID, reason string, expires time.Time) *BanMsg {
 	t.Helper()
-	issuedAt := time.Now()
+	return signedBanIssuedAt(t, modPriv, cert, target, reason, time.Now(), expires)
+}
+
+func signedBanIssuedAt(t *testing.T, modPriv ed25519.PrivateKey, cert ModeratorCert, target peer.ID, reason string, issuedAt, expires time.Time) *BanMsg {
+	t.Helper()
 	payload := fmt.Sprintf("%s|%s|%d|%d", target.String(), reason, expires.Unix(), issuedAt.Unix())
 	sig := ed25519.Sign(modPriv, []byte(payload))
 	return &BanMsg{BannedPeer: target.String(), Reason: reason, ExpiresAt: expires, Cert: cert, IssuedAt: issuedAt, Sig: hex.EncodeToString(sig)}
@@ -393,6 +397,27 @@ func TestHandleBanMsg_ExactlyMinDurationAccepted(t *testing.T) {
 
 	if !mod.IsBanned(target) {
 		t.Fatal("andmod'un kabul ettiği tam minBanDuration süresi de kabul edilmeliydi")
+	}
+}
+
+// TestHandleBanMsg_MinDurationSurvivesClockGap: imzalayan bitişi (now+süre)
+// imzadan önce hesaplar, IssuedAt ise imza anında ayrıca okunur (bkz.
+// SignModeratorBan). Aradaki birkaç milisaniye yüzünden tam minBanDuration'lık
+// bir ban, saati ince çözünürlüklü sistemlerde (Linux, macOS) hep
+// reddediliyordu; Windows'un kaba saati bunu gizliyordu.
+func TestHandleBanMsg_MinDurationSurvivesClockGap(t *testing.T) {
+	founderPub, founderPriv := genKey(t)
+	mod := newTestMod(t, founderPub)
+	modPub, modPriv := genKey(t)
+	cert := signedModCert(t, founderPriv, modPub)
+	target := randomPeerID(t)
+
+	expires := time.Now().Add(minBanDuration)
+	issuedAt := expires.Add(-minBanDuration).Add(50 * time.Millisecond)
+	mod.handleBanMsg(signedBanIssuedAt(t, modPriv, cert, target, "spam", issuedAt, expires))
+
+	if !mod.IsBanned(target) {
+		t.Fatal("imza anı bitişten birkaç ms sonra okunan tam minBanDuration'lık ban kabul edilmeliydi")
 	}
 }
 

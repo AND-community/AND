@@ -259,6 +259,12 @@ func TestKalanSure(t *testing.T) {
 	if got := kalanSure(time.Now().Add(2 * time.Hour)); got != "2 saat" {
 		t.Fatalf("2 saat için '2 saat' beklenirdi, %q geldi", got)
 	}
+	// Ban verildikten sonra ekrana gelene kadar birkaç milisaniye geçer;
+	// saati ince çözünürlüklü sistemlerde (Linux) yeni bir 2 saatlik ban
+	// aşağı yuvarlanıp "1 saat" görünüyordu.
+	if got := kalanSure(time.Now().Add(2*time.Hour - 10*time.Millisecond)); got != "2 saat" {
+		t.Fatalf("birkaç ms eksik 2 saat için '2 saat' beklenirdi, %q geldi", got)
+	}
 }
 
 func TestShortKey(t *testing.T) {
