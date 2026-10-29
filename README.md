@@ -1,203 +1,206 @@
 # AND
 
-**AND** — sunucusuz, eşten eşe (P2P) terminal forum topluluğu.  
-Hesap yok, kayıt yok, merkezi sunucu yok. Kimliğin tek bir kurtarma kodundan ibarettir.
+**English** · [Türkçe](README.tr.md)
+
+**AND** — a serverless, peer-to-peer (P2P) terminal forum community.  
+No accounts, no sign-up, no central server. Your identity is a single recovery code.
 
 ---
 
-## İçindekiler
+## Contents
 
-- [Genel Bakış](#genel-bakış)
-- [Özellikler](#özellikler)
-- [Mimari](#mimari)
-- [Kurulum](#kurulum)
-- [Kullanım](#kullanım)
-- [Moderasyon](#moderasyon)
-- [Eklenti Sistemi](#eklenti-sistemi)
-- [Ekosistem](#ekosistem)
-- [Yapılandırma](#yapılandırma)
-- [Katkı](#katkı)
-- [Güvenlik](#güvenlik)
-- [Gizlilik ve kullanım koşulları](#gizlilik-ve-kullanım-koşulları)
-- [Lisans](#lisans)
-
----
-
-## Genel Bakış
-
-AND, merkezi bir sunucuya ihtiyaç duymadan çalışan terminal tabanlı bir forum uygulamasıdır.  
-Her düğüm hem istemci hem sunucu işlevi görür; mesajlar [libp2p](https://libp2p.io/) GossipSub protokolü üzerinden yayılır, veriler yalnızca yerel SQLite veritabanında saklanır.
-
-Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed25519 anahtar çiftiyle temsil edilir. Bu anahtar çifti hem uygulama kimliği hem libp2p düğüm kimliği olarak kullanılır; tek bir kurtarma ifadesi her şeyi geri getirir.
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Moderation](#moderation)
+- [Plugin system](#plugin-system)
+- [Ecosystem](#ecosystem)
+- [Configuration](#configuration)
+- [Contributing](#contributing)
+- [Security](#security)
+- [Privacy and terms of use](#privacy-and-terms-of-use)
+- [License](#license)
 
 ---
 
-## Özellikler
+## Overview
 
-| Özellik | Açıklama |
-|---------|----------|
-| Sunucusuz | Merkezi altyapı yoktur; ağ eşler arası çalışır |
-| BIP-39 kimlik | 128 bit entropi (12 kelimelik BIP-39 anımsatıcısına eşdeğer; ekranda 32 karakterlik kurtarma kodu olarak gösterilir) → Ed25519 anahtar → libp2p kimliği |
-| Ed25519 imzalı içerik | Her konu, yanıt ve moderasyon kararı imzalanır |
-| SQLite yerel depo | WAL modunda yüksek eşzamanlılık, şema versiyonlama |
-| Forum kategorileri | Python, Rust, Go, Siber Güvenlik, Yapay Zeka ve daha fazlası |
-| Kişisel site | Her kullanıcı, birbirinden bağımsız çok sayılı sayfa (slug ile adreslenen) yayınlayabileceği kendi "kişisel site"sini oluşturabilir — imzalı, GossipSub'la yayılan, geriye dönük senkronize edilen (bir sayfanın düzenlenmiş hali dahil) |
-| Özel mesajlaşma | libp2p stream (`/and/dm/1.0.0`) üzerinden P2P doğrudan mesaj |
-| Dosya aktarımı | Yeniden başlatılabilir parçalı aktarım (`/and/file/2.0.0`); onay isteği dialog'u |
-| Moderasyon sistemi | Esnek süreli (1 saat–ömür boyu) ban/unban, devredilebilir/iptal edilebilir moderatör sertifikaları, Yönetici Paneli eklentisi + denetim geçmişi |
-| Dinamik eklenti sistemi | Bağımsız binary'ler; AND'ı yeniden derlemeden eklenti ekle |
-| Otomatik güncelleme | GitHub Releases üzerinden arka planda güncelleme |
-| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`internal/ui`) |
-| Temalar | 6 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Mono) + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
-| Arayüz dilleri | Türkçe (varsayılan), English, Deutsch, Español, Français, Русский; Ayarlar → Dil ya da giriş ekranında `ctrl+l` ile anında değişir — bkz. [Arayüz dili](#arayüz-dili) |
+AND is a terminal-based forum application that runs without any central server.  
+Every node is both a client and a server: messages spread over the [libp2p](https://libp2p.io/) GossipSub protocol, and data is stored only in a local SQLite database.
+
+A user's identity is an Ed25519 key pair derived from 128 bits of entropy (the equivalent of a 12-word BIP-39 mnemonic). The same key pair serves as both the application identity and the libp2p node identity, so a single recovery code brings everything back.
 
 ---
 
-## Mimari
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| Serverless | No central infrastructure; the network runs peer to peer |
+| BIP-39 identity | 128-bit entropy (equivalent to a 12-word BIP-39 mnemonic, shown on screen as a 32-character recovery code) → Ed25519 key → libp2p identity |
+| Ed25519-signed content | Every topic, reply and moderation decision is signed |
+| Local SQLite store | WAL mode for high concurrency, schema versioning |
+| Forum categories | Python, Rust, Go, Cybersecurity, Artificial Intelligence and more (34 in total) |
+| Personal site | Every user can build a personal "site" of independent pages addressed by slug — signed, spread over GossipSub and synced retroactively (edited pages included) |
+| Private messages | Direct P2P messages over a libp2p stream (`/and/dm/1.0.0`) |
+| File transfer | Resumable chunked transfer (`/and/file/2.0.0`) with a consent dialog |
+| Moderation | Flexible bans (1 hour to permanent) and unbans, delegable and revocable moderator certificates, an Admin Panel plugin and an audit history |
+| Dynamic plugins | Standalone binaries; add plugins without rebuilding AND |
+| Automatic updates | Background updates from GitHub Releases |
+| Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea); AND, its plugins and the AND Search Engine share one design system (`internal/ui`) |
+| Themes | 6 built-in themes (Classic, Turquoise, Night Purple, Amber, Forest, Mono) plus theme plugins; the chosen theme also applies to plugins and the VS Code panel |
+| Interface languages | Turkish (default), English, German, Spanish, French, Russian; switch instantly in Settings → Language or with `ctrl+l` on the login screen — see [Interface language](#interface-language) |
+
+---
+
+## Architecture
 
 ```
 cmd/
-  and/              — ana uygulama giriş noktası
-  andmod/           — moderasyon CLI aracı (andmod grant, ban)
+  and/              — main application entry point
+  andmod/           — moderation CLI tool (andmod grant, ban)
 
-Eklentiler/
-  admin/            — yönetici paneli eklentisi (bağımsız binary)
-  konu_ac/          — konu açma (menüde gizli; AND içinde inline açılır)
-  ozel_chat/        — özel mesajlaşma + dosya aktarımı eklentisi
-  site/             — kişisel site oluşturma/düzenleme eklentisi
-  ornek/            — yeni eklenti geliştirme rehberi
+Eklentiler/         — plugins ("eklentiler" is Turkish for "plugins")
+  admin/            — Admin Panel plugin (standalone binary)
+  ozel_chat/        — private messaging + file transfer plugin
+  site/             — personal site creation/editing plugin
+  ornek/            — guide to writing a new plugin ("örnek" means "example")
+  DeltaX/, Pembis/, konu_ac/
+                    — separate repositories; clone them here to build them (see Building from source)
 
 internal/
-  crypto/           — BIP-39 → Ed25519 kimlik, AES-GCM şifreli depolama
-  network/          — libp2p düğümü, GossipSub, DHT keşfi, sync protokolü
-  forum/            — konu/yanıt yönetimi, imza doğrulama, TTL, tombstone senkronu
-  chatlog/          — genel P2P sohbet kanalı (imzalı mesaj, hız sınırı, senkron)
-  moderation/       — kurucu/moderatör sertifikası, esnek süreli ban/unban, denetim
-                       geçmişi, ConnectionGater
-  profile/          — kullanıcı profili (bio/durum/link/etiket), rol rozetleri
-  site/             — çok sayfalı kişisel site (imzalı sayfa yayını/silme, kendi senkron protokolü)
-  peersync/         — geçmiş senkronizasyonunun zamanlaması: hangi eşle, ne zaman (bkz. aşağıda)
-  ui/               — ortak tasarım sistemi: tema/palet, stiller, tam ekran sayfa iskeleti, bileşenler
-  storage/          — SQLite WAL, şema versiyonlama
-  pluginapi/        — eklenti HTTP IPC API sunucusu + istemci kütüphanesi
-  pluginmgr/        — and-plugin-* binary keşfi ve başlatma
-  pluginui/         — eklenti/uzak içerik render'ı için ANSI/kontrol karakteri temizliği
-  dmmgr/            — libp2p DM stream handler + ozel_chat'e long-poll proxy
-  filemgr/          — parçalı dosya gönderme/alma; onay (consent) mekanizması
-  githubverify/     — GitHub OAuth Device Flow ile hesap doğrulama
-  bbcode/           — forum gövdesi için basit BBCode → terminal render
-  tui/              — Bubbletea TUI (menü, forum, sohbet, profil, moderasyon paneli, ayarlar)
-  updater/          — GitHub Releases kontrolü ve uygulama güncelleme
+  crypto/           — BIP-39 → Ed25519 identity, AES-GCM encrypted storage
+  network/          — libp2p node, GossipSub, DHT discovery, sync protocol
+  forum/            — topic/reply management, signature checks, TTL, tombstone sync
+  chatlog/          — public P2P chat channel (signed messages, rate limits, sync)
+  moderation/       — founder/moderator certificates, flexible bans/unbans, audit
+                       history, ConnectionGater
+  profile/          — user profiles (bio/status/link/tags), role badges
+  site/             — multi-page personal sites (signed page publish/delete, its own sync protocol)
+  peersync/         — scheduling of history sync: with which peer, and when (see below)
+  ui/               — shared design system: theme/palette, styles, full-screen page frame, components
+  storage/          — SQLite WAL, schema versioning
+  pluginapi/        — plugin HTTP IPC API server + client library
+  pluginmgr/        — and-plugin-* binary discovery and launch
+  pluginui/         — ANSI/control-character sanitising for plugin and remote content
+  dmmgr/            — libp2p DM stream handler + long-poll proxy for ozel_chat
+  filemgr/          — chunked file send/receive; consent mechanism
+  githubverify/     — account verification through the GitHub OAuth Device Flow
+  bbcode/           — simple BBCode → terminal rendering for forum bodies
+  tui/              — Bubble Tea TUI (menu, forum, chat, profiles, moderation actions, settings)
+  updater/          — GitHub Releases check and self-update
 ```
 
-### Veri akışı — forum konusu
+### Data flow — forum topic
 
 ```
-Kullanıcı → n tuşu (forum ekranında)
-                ↓  inline Bubbletea ekranı (konu_ac)
-            AND ana süreç → Forum.CreatePost()
-                ↓  Ed25519 imzala
-            GossipSub yayını (libp2p)
+User → n key (on the forum screen)
+                ↓  AND starts and-plugin-konu_ac in the same terminal (AND_CATEGORY)
+            konu_ac → POST /api/v1/forum/post → AND → Forum.CreatePost()
+                ↓  Ed25519 signature
+            GossipSub broadcast (libp2p)
                 ↓
-        Tüm peer'lar → imza doğrula → SQLite
+        All peers → verify signature → SQLite
 ```
 
-### Veri akışı — özel mesaj (DM)
+### Data flow — private message (DM)
 
 ```
 and-plugin-ozel_chat  →  POST /api/v1/dm/send  →  AND (dmmgr.Broker)
                                                          ↓  libp2p stream
-                                                     Hedef peer
+                                                     Target peer
 
-Hedef peer  →  /and/dm/1.0.0 stream handler  →  dmmgr.Broker.Deliver()
-                                                         ↓  şifreli geçmiş + long-poll
-                                              and-plugin-ozel_chat (görünür)
+Target peer  →  /and/dm/1.0.0 stream handler  →  dmmgr.Broker.Deliver()
+                                                         ↓  encrypted history + long-poll
+                                              and-plugin-ozel_chat (displayed)
 ```
 
-AND, gelen ve giden özel mesajları bu bilgisayarda şifreli saklar (`dm_gecmis.bin`) ve
-`GET /api/v1/dm/history` ile verir. Böylece Özel Chat kapalıyken gelen bir mesaj kaybolmaz;
-ekran açıldığında konuşma listesinde okunmamış olarak görünür. İnsanlar arası mesajlardan en
-fazla 500, eklentilerin makine mesajlarından (ör. DeltaX'in `AND-PROJEAG/…` grup protokolü;
-bkz. `protokol.MakineIletisiMi`) ayrıca en fazla 300 tutulur; makine mesajları okunmamış
-sayısına katılmaz ve Özel Chat'te görünmez.
+AND stores incoming and outgoing private messages encrypted on this computer (`dm_gecmis.bin`) and
+serves them through `GET /api/v1/dm/history`. A message that arrives while Özel Chat (the private
+chat plugin) is closed is therefore not lost; it shows up as unread in the conversation list when
+the screen opens. Up to 500 messages between people are kept, plus up to 300 machine messages
+from plugins (for example DeltaX's `AND-PROJEAG/…` group protocol; see
+`protokol.MakineIletisiMi`); machine messages don't count as unread and are hidden in Özel Chat.
 
-### Veri akışı — dosya aktarımı
+### Data flow — file transfer
 
 ```
-Gönderen: and-plugin-ozel_chat  →  POST /api/v1/file/send  →  AND (filemgr.Broker)
+Sender: and-plugin-ozel_chat  →  POST /api/v1/file/send  →  AND (filemgr.Broker)
                                                                       ↓  /and/file/2.0.0 stream
-                                                                  Hedef peer
+                                                                  Target peer
 
-Hedef peer  →  /and/file/2.0.0 stream handler  →  consent isteği bekle (30 sn)
+Target peer  →  /and/file/2.0.0 stream handler  →  wait for consent (30 s)
                        ↓  GET /api/v1/file/consent-poll (long-poll)
-               and-plugin-ozel_chat → dialog göster → POST /api/v1/file/consent
-                       ↓  kabul edilirse
-               Parçalı aktarım → disk → GET /api/v1/file/poll ile bildirim
+               and-plugin-ozel_chat → show dialog → POST /api/v1/file/consent
+                       ↓  if accepted
+               Chunked transfer → disk → notification via GET /api/v1/file/poll
 ```
 
-### Geçmiş senkronizasyonu
+### History sync
 
-GossipSub yalnızca o an bağlı olanlara ulaşır. Çevrimdışıyken yayınlanan konuları, sohbet
-mesajlarını ve site sayfalarını AND, eşlerle ayrıca konuştuğu senkron protokolleriyle
-(`/and/sync/1.0.0`, `/and/chatsync/1.0.0`, `/and/sitesync/1.0.0`) geriye dönük toplar.
-Ne zaman ve kimle senkron yapılacağına `internal/peersync` karar verir:
+GossipSub reaches only the peers that are connected at that moment. AND collects the topics, chat
+messages and site pages published while it was offline through separate sync protocols that it
+speaks with its peers (`/and/sync/1.0.0`, `/and/chatsync/1.0.0`, `/and/sitesync/1.0.0`).
+`internal/peersync` decides when to sync and with whom:
 
-| Durum | Davranış |
+| Situation | Behaviour |
 |---|---|
-| Yeni bir eş bağlandı | Kısa bir beklemeden sonra (identify protokolleri öğrensin diye) senkron yapılır |
-| Eş AND protokolünü konuşmuyor | Atlanır. Bağlı eşlerin çoğu genel IPFS/DHT düğümüdür; onlarla akış açmak boşa gider |
-| Eş kopup yeniden bağlandı | Son başarılı senkrondan 2 dakika geçtiyse tekrar senkron yapılır (aradaki içerik gelir) |
-| Senkron başarısız oldu | 1 dakika sonra yeniden denenir |
-| Her 10 dakikada bir | Bağlı AND eşlerinden en uzun süredir senkronlanmamış 3'üyle senkron yapılır; bağlantı hiç kopmasa da kaybolan gossip mesajları zamanla gelir |
+| A new peer connected | Sync after a short wait (so that identify can learn its protocols) |
+| The peer doesn't speak the AND protocols | Skipped. Most connected peers are generic IPFS/DHT nodes; opening streams to them would be wasted |
+| The peer disconnected and came back | Sync again if 2 minutes have passed since the last successful sync (the content in between arrives) |
+| A sync failed | Retried after 1 minute |
+| Every 10 minutes | Sync with the 3 connected AND peers that have gone the longest without one; lost gossip messages arrive over time even if the connection never drops |
 
-Aynı anda en fazla 4 senkron çalışır ve aynı eşle iki senkron asla eşzamanlı açılmaz. Açılışta
-yüzlerce eş birden bağlansa da yüzlerce akış birden açılmaz. Ana menünün üst bölümü kaç
-bağlı eşin AND düğümü olduğunu ve son senkronun ne zaman yapıldığını gösterir.
+At most 4 syncs run at once, and two syncs with the same peer never overlap. Even if hundreds of
+peers connect at startup, hundreds of streams don't open at once. The top of the main menu shows
+how many connected peers are AND nodes and when the last sync happened.
 
-### Dayanıklılık
+### Resilience
 
-AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün düğümü düşürmemesine
-çalışır:
+AND treats everything that comes from the network as untrusted and tries to keep a single error
+from bringing down the whole node:
 
-| Önlem | Ne sağlar |
+| Measure | What it provides |
 |---|---|
-| Atomik dosya yazımı (`internal/dosya`) | `identity.dat`, yasaklar, moderasyon geçmişi, eklenti izinleri, tema ve DM geçmişi önce geçici dosyaya yazılır, diske işlenir, sonra yerine taşınır. Yazma sırasında çökme ya da elektrik kesilmesi eski dosyayı bozmaz; yarım kalan geçici dosyalar açılışta silinir |
-| Panik koruması (`internal/guvenli`) | Bir gossip iletisini ya da eşin açtığı akışı işleyen kodda beklenmedik bir hata yalnızca o girdiyi düşürür (yığın izi `and.log`'a yazılır); düğüm çalışmaya devam eder. Arka plan döngülerinden biri durursa arayüz düzgün kapanır ve hata gösterilir — terminal bozuk kalmaz |
-| Fuzz testleri | Forum, sohbet, profil, site ve moderasyon iletileri ile dosya aktarımı çerçeveleri bozuk, rastgele ve saldırganın kendi anahtarıyla geçerli imzalanmış uç değerlerle denenir (`go test -fuzz`) |
-| SQLite ayarları | `busy_timeout` (5 sn), WAL ve `synchronous=NORMAL` her bağlantıda uygulanır; dosyayı aynı anda kullanan başka bir süreç (ör. `andmod`) hemen "database is locked" almaz. Kapanışta önce arka plan işleri durur, sonra veritabanı kapatılır |
-| Yeniden bağlanma | Uykudan uyanma ya da ağ değişikliğiyle bütün eşler düşerse bootstrap'a 15 sn içinde, sonuçsuz kaldıkça katlanan aralıklarla (en çok 5 dk) yeniden bağlanılır; bağlantı gelince keşif beklemeden yenilenir |
-| Günlük sınırı | `and.log` çalışırken de 5 MB'ta `and.log.1`'e döner; gürültülü bir kütüphane diski dolduramaz |
-| Tek AND, tek veri dizini | Veri dizinini aynı anda yalnızca bir AND kullanabilir (`and.kilit`, işletim sistemi kilidi; çökmede kendiliğinden bırakılır). İki AND aynı dosyalara yazıp birbirinin DM geçmişini, giden kutusunu ya da yasak listelerini ezemez; güncellemeden sonra yeniden başlayan sürüm eskisinin kapanmasını bekler |
-| Veritabanı yedeği ve kurtarma | `forum.db`'nin günde bir yedeği `yedek/` dizinine alınır (en yeni üçü, en çok 3 gün); var olan bir veritabanı yükseltilmeden önce de yedeklenir (en çok 7 gün). Migrasyonların her adımı kendi işleminde uygulanır. Açılışta `PRAGMA quick_check` çalışır: dosya bozuksa AND yine açılır: bozuk dosya silinmeden kenara alınır, en yeni sağlam yedek geri yüklenir, bozuk dosyadan okunabilen kayıtlar aktarılır ve ana ekranda bildirilir |
-| Okunamayan dosyalar ezilmez | Çözülemeyen bir durum dosyası (moderasyon geçmişi, verilen moderatörlükler, yasaklar, eklenti ayarları, DM geçmişi, yanıt taslakları) boş başlanıp bir sonraki kayıtta ezilmek yerine `<dosya>.bozuk-<tarih>` olarak kenara alınır |
-| Yazı taslakları | Forumda yazılan yanıt esc, ctrl+c, gönderim hatası ya da AND'ın kapanmasıyla kaybolmaz: konu başına taslak olarak saklanır (`yanit_taslaklari.json`) ve `r` ile geri gelir; yalnızca başarılı gönderim siler. Sohbette gönderilemeyen mesaj kutuda kalır |
+| Atomic file writes (`internal/dosya`) | `identity.dat`, bans, moderation history, plugin permissions, the theme and DM history are written to a temporary file, flushed to disk and then moved into place. A crash or power cut while writing doesn't corrupt the old file; leftover temporary files are removed at startup |
+| Panic guards (`internal/guvenli`) | An unexpected error in code that handles a gossip message or a stream opened by a peer drops only that input (the stack trace goes to `and.log`); the node keeps running. If one of the background loops stops, the interface closes cleanly and shows the error — the terminal is not left broken |
+| Fuzz tests | Forum, chat, profile, site and moderation messages and file-transfer frames are exercised with malformed, random and edge-case input, including input validly signed with an attacker's own key (`go test -fuzz`) |
+| SQLite settings | `busy_timeout` (5 s), WAL and `synchronous=NORMAL` are applied on every connection; another process using the file at the same time (e.g. `andmod`) doesn't immediately get "database is locked". At shutdown the background jobs stop first, then the database is closed |
+| Reconnection | If all peers drop after waking from sleep or a network change, AND reconnects to the bootstrap nodes within 15 s, backing off (up to 5 min) while that fails; once a connection is back it refreshes without waiting for discovery |
+| Log limit | `and.log` rotates to `and.log.1` at 5 MB, even while running; a noisy library can't fill the disk |
+| One AND per data directory | Only one AND can use a data directory at a time (`and.kilit`, an operating-system lock that is released automatically on a crash). Two ANDs can't write to the same files and overwrite each other's DM history, outbox or ban lists; after an update the restarted version waits for the old one to exit |
+| Database backup and recovery | A daily backup of `forum.db` goes into the `yedek/` directory (the newest three, at most 3 days old); an existing database is also backed up before it is upgraded (at most 7 days). Each migration step runs in its own transaction. `PRAGMA quick_check` runs at startup: if the file is corrupt, AND still opens — the corrupt file is moved aside instead of being deleted, the newest good backup is restored, the readable rows are salvaged from the corrupt file and a notice appears on the home screen |
+| Unreadable files are not overwritten | A state file that can't be parsed (moderation history, granted moderator certificates, bans, plugin settings, DM history, reply drafts) is moved aside as `<file>.bozuk-<date>` instead of starting empty and being overwritten by the next save |
+| Drafts | A forum reply isn't lost on esc, ctrl+c, a send error or AND exiting: it is kept as a per-topic draft (`yanit_taslaklari.json`) and comes back with `r`; only a successful send deletes it. A chat message that couldn't be sent stays in the input box |
 
 ---
 
-## Kurulum
+## Installation
 
-### Gereksinimler
+### Requirements
 
-- Go 1.26.4 veya üzeri (Go 1.21 ve sonrası, `go.mod`'daki araç zinciri sürümünü gerekirse kendisi indirir)
-- Windows, Linux veya macOS (amd64 / arm64)
+- Go 1.26.4 or later (Go 1.21 and later download the toolchain version named in `go.mod` on their own if needed)
+- Windows, Linux or macOS (amd64 / arm64)
 
-### Kaynaktan derleme
+### Building from source
 
 ```bash
 git clone https://github.com/AND-community/AND.git
 cd AND
 
-# Ana binary ve yönetim aracı
+# Main binary and moderation tool
 go build -o and     ./cmd/and
 go build -o andmod  ./cmd/andmod
 
-# Eklentiler: her biri kendi klasörüne, plugin.json'ın yanına and-plugin-<ad>
-# olarak derlenir (<ad>, plugin.json'daki "name" alanıdır)
+# Plugins: each is built into its own folder, next to its plugin.json, as
+# and-plugin-<name> (<name> is the "name" field of plugin.json)
 go build -o Eklentiler/admin/and-plugin-admin          ./Eklentiler/admin
 go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
 go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 
-# DeltaX, Pembiş ve Konu Aç ayrı depolardır; önce Eklentiler/ altına klonla
+# DeltaX, Pembiş and Konu Aç live in separate repositories; clone them under Eklentiler/ first
 git clone https://github.com/AND-community/DeltaX.git   Eklentiler/DeltaX
 git clone https://github.com/AND-community/Pembis.git   Eklentiler/Pembis
 git clone https://github.com/AND-community/konu_ac.git  Eklentiler/konu_ac
@@ -206,13 +209,13 @@ go build -o Eklentiler/Pembis/and-plugin-pembis    ./Eklentiler/Pembis
 go build -o Eklentiler/konu_ac/and-plugin-konu_ac  ./Eklentiler/konu_ac
 ```
 
-Windows'ta her binary adına `.exe` uzantısı ekle. Konu Aç kurulu değilse forumda yeni konu
-açılamaz (`n` tuşu bu eklentiyi açar).
+On Windows add `.exe` to every binary name. Without Konu Aç ("open a topic") you can't create new
+forum topics (the `n` key opens this plugin).
 
-### ldflags — versiyon ve repo bilgisi
+### ldflags — version and repository
 
-Otomatik güncelleme ve `--version` için (`GitHubRepo` verilmezse `AND-community/AND` kullanılır;
-`github.com/lucian95511/and` Go modülünün yoludur, depo adı değildir):
+For automatic updates and `--version` (if `GitHubRepo` is not given, `AND-community/AND` is used;
+`github.com/lucian95511/and` is the Go module path, not the repository name):
 
 ```bash
 go build \
@@ -221,31 +224,32 @@ go build \
   -o and ./cmd/and
 ```
 
-### Kurucu anahtarını binary'ye gömmek
+### Embedding the founder key in the binary
 
 ```bash
-# Kurucu public key'ini öğren
+# Print the founder public key
 ./andmod pubkey
 
-# Binary'yi kurucu public key'i ile derle
+# Build the binary with the founder public key
 go build \
-  -ldflags "-X github.com/lucian95511/and/internal/moderation.FounderPubKeyHex=<64-karakter-hex>" \
+  -ldflags "-X github.com/lucian95511/and/internal/moderation.FounderPubKeyHex=<64-hex-characters>" \
   -o and ./cmd/and
 ```
 
-Kurucu public key'i binary'ye gömülüdür; `founder.key` dosyası ilk çalıştırmada otomatik oluşur.
+The founder public key is embedded in the binary; the `founder.key` file is created automatically
+on the first run.
 
-### GitHub hesap doğrulamasını etkinleştirmek
+### Enabling GitHub account verification
 
-Ayarlar'daki "GitHub hesabını doğrula" (v) özelliği, GitHub'ın OAuth Device
-Flow'unu kullanır ve bir Client ID gerektirir:
+The "Verify GitHub account" (v) feature in Settings uses GitHub's OAuth Device Flow and needs a
+Client ID:
 
 1. https://github.com/settings/developers → **New OAuth App**.
-2. Authorization callback URL alanına herhangi bir değer yazılabilir (Device
-   Flow bunu kullanmaz), ör. `https://example.com`.
-3. Uygulama ayarlarında **Enable Device Flow**'u işaretle.
-4. Oluşan **Client ID**'yi al (Client Secret'a ihtiyaç YOK — Device Flow
-   secret gerektirmeyen "public client" akışıdır).
+2. Any value works as the Authorization callback URL (the Device Flow doesn't use it), e.g.
+   `https://example.com`.
+3. Tick **Enable Device Flow** in the app settings.
+4. Take the generated **Client ID** (no Client Secret is needed — the Device Flow is a "public
+   client" flow that doesn't need a secret).
 
 ```bash
 go build \
@@ -253,19 +257,19 @@ go build \
   -o and ./cmd/and
 ```
 
-Client ID ayarlanmazsa özellik sessizce devre dışı kalmaz — kullanıcı "v"ye
-bastığında açık bir hata gösterilir ("ClientID yapılandırılmamış").
+If no Client ID is set, the feature doesn't fail silently — pressing "v" shows a clear error that
+no Client ID is configured.
 
 ---
 
-## Kullanım
+## Usage
 
-### Dizin yapısı (çalıştırma)
+### Directory layout (runtime)
 
-Eklentiler `and`'ın yanındaki `Eklentiler/` klasöründe, her biri kendi klasöründe durur:
+Plugins live in the `Eklentiler/` folder next to `and`, each in its own folder:
 
 ```
-/herhangi/bir/dizin/
+/any/directory/
   and[.exe]
   andmod[.exe]
   Eklentiler/
@@ -275,525 +279,534 @@ Eklentiler `and`'ın yanındaki `Eklentiler/` klasöründe, her biri kendi klas�
     …
 ```
 
-AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile
-`and-plugin-<ad>` çiftini bulur (`<ad>`, plugin.json'daki `name` alanı). `and`'ın yanına
-doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında aynı adlı bir manifest varsa
-(`and-plugin-x.json`, bkz. [Yeni eklenti yazmak](#yeni-eklenti-yazmak)) yüklenir; manifesti
-olmayan bir dosya güvenlik gereği hiç çalıştırılmaz.
+At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json`
+and an `and-plugin-<name>` binary (`<name>` is the `name` field of plugin.json). An
+`and-plugin-*` binary placed directly next to `and` is loaded only if a manifest with the same
+name sits beside it (`and-plugin-x.json`, see [Writing a new plugin](#writing-a-new-plugin)); a
+file without a manifest is never executed, for security reasons.
 
-### İlk çalıştırma
+### First run
 
 ```bash
 ./and
 ```
 
-İlk açılışta yeni kimlik oluşturulur:
+A new identity is created on the first start:
 
-1. Bir takma ad seç (görünüm amaçlıdır; imzaları etkilemez)
-2. Kimliğini korumak için güçlü bir parola gir
-3. **Kurtarma kodunu güvenli bir yere yaz** (`XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`, 32 karakter) — parolanı unutursan ya da başka bir bilgisayara geçersen kimliğini geri getirmenin tek yolu budur. Kod, yazdığını doğrulamak için bir kez daha sorulur
+1. Pick a display name (cosmetic only; it doesn't affect signatures)
+2. Enter a strong password to protect your identity
+3. **Write the recovery code down somewhere safe** (`XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`, 32 characters) — it is the only way to get your identity back if you forget your password or move to another computer. You are asked for the code once more to confirm that you wrote it down
 
-Sonraki açılışlarda yalnızca parolanı girmen yeterlidir.  
-Parolanı unuttuysan ya da başka bir bilgisayara geçtiysen giriş ekranında `ctrl+r` ile kurtarma kodunu
-yaz (tire ve boşluk önemsiz; eski sürümlerin 12 kelimelik kodu da olur): kimliğin geri üretilir ve yeni
-bir parolayla kaydedilir. Şifresi unutulan eski kimlik dosyası silinmez, `identity.dat.eski-<tarih>` olarak
-kenara alınır. Kodun sağlama toplamı olmadığından yanlış yazılmış bir hane başka bir kimlik üretir; AND bu
-cihazda son açılan kimliği (`kimlik_ozeti.json`) hatırlar ve kod ondan farklı bir kimlik üretirse uyarır.  
-Kimlik dosyası: `%APPDATA%\and\identity.dat` (Linux: `~/.config/and/identity.dat`, macOS:
+On later starts you only need your password.  
+If you forgot your password or moved to another computer, press `ctrl+r` on the login screen and
+type your recovery code (dashes and spaces don't matter; the 12-word codes of older versions work
+too): your identity is regenerated and saved with a new password. The old identity file whose
+password was forgotten is not deleted but moved aside as `identity.dat.eski-<date>`. The code has
+no checksum, so a mistyped character produces a different identity; AND remembers the last
+identity opened on this device (`kimlik_ozeti.json`) and warns you if the code produces a
+different one.  
+Identity file: `%APPDATA%\and\identity.dat` (Linux: `~/.config/and/identity.dat`, macOS:
 `~/Library/Application Support/and/identity.dat`)
 
-Kimlik hazır olunca AND, [Gizlilik Bildirimi](GIZLILIK.md) ile
-[Kullanım Koşulları](KULLANIM_KOSULLARI.md)'nın özetini bir kez onaya sunar. Onay veri dizinindeki
-`kurallar_onayi.json`'a yazılır; metinlerde kullanıcıyı etkileyen bir değişiklik olunca (sürüm
-numarası artınca) bir sonraki açılışta yeniden sorulur. Kurallar küçük bir terminalde ekrana
-sığmıyorsa kabul, metnin sonuna kadar kaydırıldıktan sonra geçerli olur.
+Once the identity is ready, AND asks you once to accept a summary of the
+[Privacy Notice](GIZLILIK.md) and the [Terms of Use](KULLANIM_KOSULLARI.md) (both documents are in
+Turkish; the in-app summaries follow the interface language). The acceptance is written to
+`kurallar_onayi.json` in the data directory; when the texts change in a way that affects users
+(their version number goes up), you are asked again on the next start. If the rules don't fit on a
+small terminal, they can be accepted only after scrolling to the end of the text.
 
-### Komut satırı
+### Command line
 
-Bayrak verilmezse AND tam ekran arayüzle açılır. Şu bayraklar arayüzü açmadan yanıt verir ve
-seçili arayüz diline uyar:
+Without flags AND opens the full-screen interface. These flags answer without opening the
+interface and follow the selected interface language:
 
-| Bayrak | Ne yazar |
+| Flag | Prints |
 |---|---|
-| `-v`, `--version` | Sürüm, Go sürümü ve platform, telif bildirimi, lisans ve kaynak kodu adresi |
-| `--lisans`, `--license` | AND'ın lisansının (GNU AGPL-3.0) tam metni |
-| `--ucuncu-taraf`, `--third-party` | AND'a giren üçüncü taraf bileşenlerin lisans bildirimleri |
-| `-h`, `--help` | Bayrakların listesi |
+| `-v`, `--version` | Version, Go version and platform, copyright notice, license and source-code address |
+| `--lisans`, `--license` | The full text of AND's license (GNU AGPL-3.0) |
+| `--ucuncu-taraf`, `--third-party` | The license notices of the third-party components built into AND |
+| `-h`, `--help` | The list of flags |
 
-Hata bildirirken `and --version` çıktısını ekle.
+Include the output of `and --version` when you report a bug.
 
-Giriş ekranında `ctrl+l` (ya da `F2`) arayüz dilini değiştirir; seçim kaydedilir ve sonraki
-açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)). `ctrl+r` kurtarma koduyla kimliği geri yükler
-(bkz. [İlk çalıştırma](#ilk-çalıştırma)).
+On the login screen `ctrl+l` (or `F2`) changes the interface language; the choice is saved and
+used on later starts too (see [Interface language](#interface-language)). `ctrl+r` restores an
+identity from its recovery code (see [First run](#first-run)).
 
-### Ana menü
+### Main menu
 
-AND terminalin tamamını kullanır. Ana menünün üstünde amblem, kimliğin ve kısa sayılar yer alır.
-Altında solda menü ağacı, sağda seçili öğenin ayrıntısı bulunur: Forum için son konular ve
-kategori dağılımı, Sohbet için son mesajlar ve en çok yazanlar, eklentiler için açıklama, sürüm
-ve durum. Çok geniş terminallerde ayrıntının yanına ikinci bir sütun gelir. Dar ya da kısa
-terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
+AND uses the whole terminal. The top of the main menu shows the emblem, your identity and a few
+counts. Below it, the menu tree is on the left and the details of the selected item are on the
+right: recent topics and the category breakdown for Forum, recent messages and the most active
+writers for Chat, and the description, version and status for plugins. Very wide terminals get a
+second column next to the details. On narrow or short terminals the detail panel and the large
+emblem hide themselves.
 
 ```
-╭─  AND  ─────────────────────────────────────────────────────────────────── Klasik teması · v0.1.0 ─╮
+╭─  AND  ─────────────────────────────────────────────────────────────────── Classic theme · v0.1.0 ─╮
 │                                                                                                    │
 │   █████╗ ███╗   ██╗██████╗                                                                         │
-│  ██╔══██╗████╗  ██║██╔══██╗      umut                                             Forum  142 konu  │
-│  ███████║██╔██╗ ██║██║  ██║      12D3KooW9r…dWngf13xEF                        Sohbet  1.204 mesaj  │
-│  ██╔══██║██║╚██╗██║██║  ██║      ● 4 eş bağlı                              Eklentiler  4 / 5 açık  │
+│  ██╔══██╗████╗  ██║██╔══██╗      umut                                           Forum  142 topics  │
+│  ███████║██╔██╗ ██║██║  ██║      12D3KooW9r…dWngf13xEF                       Chat  1,204 messages  │
+│  ██╔══██║██║╚██╗██║██║  ██║      ● 4 peers connected                       Plugins  4 / 5 enabled  │
 │  ██║  ██║██║ ╚████║██████╔╝                                                                        │
 │  ╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝                                                                         │
 │                                                                                                    │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────  │
 │                                                                                                    │
-│  ▾ Topluluk                    │  Forum                                              34 kategori   │
-│  ▌ ├── Forum                   │  Kategorilere ayrılmış konular. Bir konu yayınlandığı anda        │
-│    └── Sohbet                  │  eşlere yayılır ve 5 gün sonra kendiliğinden silinir.             │
+│  ▾ Community                   │  Forum                                            34 categories   │
+│  ▌ ├── Forum                   │  Topics sorted into categories. A topic spreads to peers as       │
+│    └── Chat                    │  soon as it is published and deletes itself after 5 days.         │
 │                                │                                                                   │
-│  ▾ Eklentiler                  │  Son konular                                                      │
-│    ├── Yönetici Paneli         │                                                                   │
-│    ├── DeltaX                  │  ▸ libp2p ile NAT arkasından bağlantı nasıl kurulur?              │
-│    └── Site                    │    Go  ·  zeynep  ·  2 sa önce  ·  3 yanıt                        │
+│  ▾ Plugins                     │  Recent topics                                                    │
+│    ├── Admin Panel             │                                                                   │
+│    ├── DeltaX                  │  ▸ How do I connect from behind a NAT with libp2p?                │
+│    └── Website                 │    Go  ·  zeynep  ·  2h ago  ·  3 replies                         │
 │                                │                                                                   │
-│  ▾ Sistem                      │  ▸ Ed25519 imzalarında sık yapılan hatalar                        │
-│    ├── Ayarlar                 │    Siber Güvenlik  ·  mehmet  ·  5 sa önce                        │
-│    ├── AND hakkında            │                                                                   │
-│    └── Çıkış                   │                                                                   │
+│  ▾ System                      │  ▸ Common mistakes with Ed25519 signatures                        │
+│    ├── Settings                │    Cybersecurity  ·  mehmet  ·  5h ago                            │
+│    ├── About AND               │                                                                   │
+│    └── Quit                    │                                                                   │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────  │
-│  ↑↓ gezin · enter aç · q çıkış                                                                     │
+│  ↑↓ navigate · enter open · q quit                                                                 │
 │                                                                                                    │
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-> Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve "Eklentiler" grubuna eklenir.
-> Seçili eklentide `space` eklentiyi kapatır/açar; kapalı eklentinin yanında "kapalı" yazar.
-> `Label: ""` olan eklentiler (örn. `konu_ac`) menüde görünmez; doğrudan forumdan açılır.
-> "Yönetici Paneli" girişi yalnızca kurucuya ya da geçerli (iptal edilmemiş) bir moderatör
-> sertifikası taşıyanlara görünür — başka hiçbir kullanıcı bu girişi hiç görmez.
+> Installed plugin binaries (`and-plugin-*`) are discovered automatically and added to the
+> "Plugins" group. `space` on a selected plugin turns it off or on; a disabled plugin is marked
+> as such. Plugins with `Label: ""` (e.g. `konu_ac`) don't appear in the menu; they are opened
+> directly from the forum. The "Admin Panel" entry is visible only to the founder or to holders of
+> a valid (unrevoked) moderator certificate — no other user ever sees it.
 
-### Ayarlar ekranı
+### Settings screen
 
-Dört sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye döner.
+It has four tabs; switch with `←`/`→` (or `tab`), and `esc` returns to the main menu.
 
-| Sekme | İçerik |
+| Tab | Contents |
 |---|---|
-| Bilgi | Sürüm, platform, veri dizini; kimlik (ad, genel anahtar, rol, aktivite), kurtarma kodu (`m` ile göster/gizle) ve profil alanları (`b` bio, `s` durum, `w` bağlantı, `t` etiketler, `v` GitHub doğrulama) |
-| Eklentiler | Yüklü eklentilerin adı, sürümü, durumu ve açıklaması; `space` ile aç/kapat |
-| Temalar | Yerleşik temalar (renk örnekleriyle) ve tema eklentileri; `enter` seçili temayı anında uygular |
-| Dil | Arayüz dili; `enter` seçili dili anında uygular ve kaydeder |
+| Info | Version, platform, data directory; identity (name, public key, role, activity), recovery code (`m` shows/hides it) and profile fields (`b` bio, `s` status, `w` link, `t` tags, `v` GitHub verification) |
+| Plugins | Name, version, status and description of the installed plugins; `space` turns them on/off |
+| Themes | Built-in themes (with colour swatches) and theme plugins; `enter` applies the selected theme immediately |
+| Language | Interface language; `enter` applies and saves the selected language immediately |
 
-### Görünüm ve temalar
+### Appearance and themes
 
-AND'ın tüm ekranları ve eklentileri aynı görsel dili kullanır. Her ekran terminalin tamamını kaplayan
-bir çerçevenin içindedir. Çerçevenin üst kenarında solda `AND` rozeti, sağda etkin tema ve sürüm
-yazar; ekranın başında "Forum › Go › Konu" biçiminde bir başlık yolu, en altında da "tuş açıklama"
-biçiminde kısayol satırı bulunur. Seçili satır tam genişlikte boyanır ve solunda `▌` vurgu çubuğu
-olur; bildirimler tek satırlık `✓`/`✗` biçimindedir. Konu gövdesi gibi uzun yazılar, satırlar göz
-yormasın diye en fazla 100 sütunda sarılır. Bu dil `internal/ui` paketinde tanımlıdır (palet,
-stiller, tam ekran sayfa iskeleti ve bileşenler); eklentiler de aynı paketi kullanır.
-AND Arama Motoru ayrı bir Go modülü olduğu için aynı paleti
-kendi içinde birebir tekrarlar.
+All of AND's screens and its plugins use the same visual language. Every screen sits inside a frame
+that fills the whole terminal. The top edge of the frame shows the `AND` badge on the left and the
+active theme and version on the right; each screen starts with a breadcrumb such as
+"Forum › Go › Topic" and ends with a hint line in the form "key description". The selected row is
+painted across the full width with a `▌` accent bar on its left; notices are one-line `✓`/`✗`
+messages. Long text such as a topic body wraps at 100 columns at most so that lines stay easy to
+read. This language is defined in the `internal/ui` package (palette, styles, full-screen page frame
+and components); plugins use the same package. The AND Search Engine is a separate Go module, so it
+repeats the same palette on its own.
 
-Yerleşik temalar:
+Built-in themes:
 
-| Tema | Vurgu | Kullanım |
+| Theme | Accent | Use |
 |---|---|---|
-| Klasik (varsayılan) | mavi-mor | AND'ın ilk günden beri kullandığı görünüm |
-| Turkuaz | turkuaz | Daha serin, yeşilimsi mavi |
-| Gece Moru | mor | Daha sıcak, mor ağırlıklı |
-| Kehribar | kehribar | Sarı/turuncu vurgu; eski fosfor ekranları andırır |
-| Orman | yeşil | Yeşil vurgu, toprak tonlu adlar |
-| Mono | beyaz/gri | Renksiz; ekran görüntüsü ve sunum için |
+| Classic (default) | blue-purple | The look AND has had since day one |
+| Turquoise | turquoise | A cooler, greenish blue |
+| Night Purple | purple | Warmer, mostly purple |
+| Amber | amber | Yellow/orange accent, reminiscent of old phosphor screens |
+| Forest | green | Green accent, earth-toned names |
+| Mono | white/grey | No colour; for screenshots and presentations |
 
-Her temada seçili satır metni ve ikincil metin koyu bir terminal zemininde en az 4.5:1 kontrast
-verir (WCAG AA). Yalnızca kalın başlıklarda, tuşlarda, amblemde ve çerçevede kullanılan vurgu
-rengi için alt sınır 3:1'dir. Bunlar `internal/ui` testlerinde doğrulanır.
+In every theme the selected-row text and the secondary text reach a contrast of at least 4.5:1 on a
+dark terminal background (WCAG AA). The floor is 3:1 only for the accent colour, which is used for
+bold headings, keys, the emblem and the frame. This is checked by the `internal/ui` tests.
 
-Seçilen tema veri dizinindeki `theme.json` dosyasına yazılır ve eklentilere
-`GET /api/v1/theme` ile ulaşır: her eklenti açılışta temayı okuyup kendini aynı renklerle boyar,
-[and-vscode](and-vscode/README.md)'nin Canlı Paneli de vurgusunu buradan alır. Tema eklentileri
-(ör. `and-plugin-pembis`) `POST /api/v1/theme` ile kendi renklerini uygulayabilir. Eski
-sürümler mavi-mor varsayılanı yanlışlıkla "Turkuaz" adıyla kaydediyordu; böyle bir `theme.json`
-otomatik olarak Klasik temaya taşınır.
+The chosen theme is written to `theme.json` in the data directory and reaches plugins through
+`GET /api/v1/theme`: every plugin reads it at startup and paints itself in the same colours, and the
+Live Panel of [and-vscode](and-vscode/README.md) takes its accent from it too. Theme plugins (e.g.
+`and-plugin-pembis`) can apply their own colours with `POST /api/v1/theme`. Older versions
+mistakenly saved the blue-purple default under the name "Turkuaz" (Turquoise); such a `theme.json`
+is migrated to the Classic theme automatically.
 
-### Arayüz dili
+### Interface language
 
-AND'ın arayüzü altı dildedir: Türkçe (varsayılan), English, Deutsch, Español, Français ve
-Русский. Dil, Ayarlar → Dil sekmesinden ya da giriş ekranında `ctrl+l` (`F2`) ile seçilir; ekran
-hemen yeni dilde çizilir ve seçim veri dizinindeki `dil.json` dosyasına yazılır. `AND_DIL`
-ortam değişkeni (ör. `AND_DIL=en ./and`) kayıtlı seçimi geçersiz kılar. Tarihler (ay adları),
-binlik ayırıcılar ve sayıya bağlı tekil/çoğul biçimler de (Rusçadaki üç biçim dahil) seçilen
-dile göre yazılır.
+AND's interface is available in six languages: Turkish (default), English, German, Spanish, French
+and Russian. You pick the language in Settings → Language or with `ctrl+l` (`F2`) on the login
+screen; the screen is redrawn in the new language immediately and the choice is written to
+`dil.json` in the data directory. The `AND_DIL` environment variable (e.g. `AND_DIL=en ./and`)
+overrides the saved choice. Dates (month names), thousands separators and number-dependent
+singular/plural forms (including the three Russian forms) follow the selected language as well.
 
-Yalnızca arayüz çevrilir: forum konuları, kategori değerleri ve sohbet mesajları ağda her zaman
-aynıdır. Örneğin kategori ağda "Yapay Zeka" olarak taşınır, İngilizce arayüzde "Artificial
-Intelligence" diye gösterilir — farklı dillerdeki eşler aynı konuları görür.
+Only the interface is translated: forum topics, category values and chat messages are always the
+same on the network. For example, a category travels over the network as "Yapay Zeka" and is shown
+as "Artificial Intelligence" in the English interface — peers using different languages see the
+same topics.
 
-Çeviriler `dil` paketinde (yalnızca standart kütüphaneyi kullanır) ve `dil/ceviriler/*.json`
-dosyalarındadır. Türkçe kaynak metin anahtardır; çevirisi olmayan bir metin Türkçe gösterilir.
-Kodda metinler `dil.T("…")`, biçimli olanlar `dil.F("%d konu", n)`, paket düzeyindeki tablolar
-`dil.K("…")` ile işaretlenir. `dil` testleri, kaynaklardaki her işaretli metnin, her forum
-kategorisinin ve paketle gelen eklentilerin ad/açıklamalarının bütün dillerde çevrildiğini ve
-çevirilerin aynı biçim fiillerini (`%s`, `%d`) taşıdığını denetler; `internal/tui` testleri de
-ekranları her dilde çizip tam ekran düzeninin bozulmadığını ve Türkçe metin kalmadığını
-doğrular. Yeni bir metnin eksik çevirilerinin iskeleti şöyle alınır:
+The translations live in the `dil` package ("dil" is Turkish for "language"; it uses only the
+standard library) and in the `dil/ceviriler/*.json` files. The Turkish source text is the key; a
+text without a translation is shown in Turkish. In code, texts are marked with `dil.T("…")`,
+formatted ones with `dil.F("%d konu", n)` and package-level tables with `dil.K("…")`. The `dil`
+tests check that every marked text in the sources, every forum category and the names and
+descriptions of the bundled plugins are translated into all languages, and that the translations
+carry the same format verbs (`%s`, `%d`); the `internal/tui` tests also draw the screens in every
+language and verify that the full-screen layout holds and that no Turkish text is left over. A
+skeleton of the missing translations of a new text is produced like this:
 
 ```bash
 DIL_ISKELET=eksik.json go test ./dil -run Kapsam
 ```
 
-Paketle gelen bütün eklentiler (DeltaX, Özel Chat, Site, Yönetici Paneli, konu_ac, Pembiş,
-Örnek Eklenti) AND'ın diliyle açılır: AND etkin dili başlattığı eklentiye `AND_DIL` ile iletir,
-eklenti açılışta `dil.OrtamdanAyarla()` çağırır. Her eklentinin kendi kataloğu kendi klasöründedir:
+All bundled plugins (DeltaX, Özel Chat, Site, Admin Panel, konu_ac, Pembiş, Example Plugin) open in
+AND's language: AND passes the active language to the plugin it starts through `AND_DIL`, and the
+plugin calls `dil.OrtamdanAyarla()` at startup. Each plugin keeps its own catalog in its own
+folder:
 
-| Dosya | Görevi |
+| File | Purpose |
 |---|---|
-| `ceviri.json` | Eklentiye özgü metinlerin çevirileri (`dil/ceviriler` ile aynı biçim). AND'ın kataloğunda olan metinler ("vazgeç", "Peer ID" …) yazılmaz, oradan gelir |
-| `ceviri.go` | Kataloğu `//go:embed` ile gömer ve `init`'te `dil.Ekle` ile katar |
-| `ceviri_test.go` | `diltest.Kapsam(t, "ceviri.json", ceviriVerisi, diltest.Tara(t, "."))` — eksik ya da kullanılmayan çeviriyi, biçim fiili ve baş/son boşluk farkını yakalar |
+| `ceviri.json` | Translations of the plugin's own texts (same format as `dil/ceviriler`). Texts that are already in AND's catalog ("vazgeç", "Peer ID" …) are not repeated; they come from there |
+| `ceviri.go` | Embeds the catalog with `//go:embed` and merges it with `dil.Ekle` in `init` |
+| `ceviri_test.go` | `diltest.Kapsam(t, "ceviri.json", ceviriVerisi, diltest.Tara(t, "."))` — catches missing or unused translations and differences in format verbs and in leading/trailing spaces |
 
-Eklentilerin ekran testleri de `diltest.HerDilde` ve `diltest.YeniDenetci` ile her dilde çizilip
-çevrilmemiş metin aranarak yapılır. Ağa giden değerler (kategori, dal adı, protokol alanları) ve
-`switch` içinde karşılaştırılan menü kimlikleri Türkçe kalır; bunlar `dil.K` ile işaretlenir ve
-yalnızca gösterilirken `dil.T` ile çevrilir. Yeni bir eklentinin eksik çevirilerinin iskeleti:
+The plugins' screen tests also draw every screen in every language with `diltest.HerDilde` and
+`diltest.YeniDenetci` and look for untranslated text. Values that are sent over the network
+(categories, branch names, protocol fields) and menu identifiers compared in `switch` statements
+stay Turkish; they are marked with `dil.K` and translated with `dil.T` only for display. Skeleton of
+a new plugin's missing translations:
 
 ```bash
-DIL_ISKELET=eksik.json go test ./Eklentiler/<isim> -run CeviriKapsami
+DIL_ISKELET=eksik.json go test ./Eklentiler/<name> -run CeviriKapsami
 ```
 
-### Klavye kısayolları — forum
+### Keyboard shortcuts — forum
 
-| Tuş | İşlev |
-|-----|-------|
-| `↑` / `↓` ya da `j` / `k` | konu seç |
-| `enter` | konuyu aç |
-| `n` | yeni konu aç (inline konu_ac ekranı) |
-| `tab` | kategori değiştir |
-| `esc` | ana menüye dön |
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` or `j` / `k` | select a topic |
+| `enter` | open the topic |
+| `n` | new topic (opens the konu_ac plugin) |
+| `tab` | change category |
+| `esc` | back to the main menu |
 
-### Kişisel site
+### Personal site
 
-Kendi çok sayfalı kişisel siteni oluşturmak/düzenlemek artık **Site**
-eklentisiyle yapılır (bkz. [Eklentiler/site/README.md](Eklentiler/site/README.md)
-— klavye kısayolları, doğrulama kuralları) — orada görülen ve düzenlenen
-yalnızca KENDİ sayfalarındır; başka bir kullanıcının sitesi, onun profil
-ekranında (bkz. aşağıdaki profil kısayolları) "Site" bölümü altında
-salt-okunur olarak görünür.
+Creating and editing your own multi-page personal site is done with the **Site** plugin (see
+[Eklentiler/site/README.md](Eklentiler/site/README.md), in Turkish — keyboard shortcuts,
+validation rules). There you see and edit only YOUR OWN pages; another user's site is shown
+read-only under the "Site" section of their profile screen (see the profile shortcuts below).
 
-Bir sayfa en fazla 8000 bayt, bir yazarın en fazla 20 sayfası olabilir.
+A page can be at most 8000 bytes, and an author can have at most 20 pages.
 
-### Klavye kısayolları — profil ekranı (forum + sohbet)
+### Keyboard shortcuts — profile screen (forum + chat)
 
-Forumda bir konudaki yazarın adına git, ya da sohbette `ctrl+p` ile
-seçili mesajın yazarının profilini aç:
+Go to the author's name in a forum topic, or press `ctrl+p` in chat to open the profile of the
+selected message's author:
 
-| Tuş | İşlev |
-|-----|-------|
-| `b` | banla (yalnızca kurucu/geçerli sertifikalı moderatör görür) |
-| `u` | banı kaldır (yalnızca hedef zaten banlıysa ve yetkiniz varsa görünür) |
-| `esc` | önceki ekrana dön |
+| Key | Action |
+|-----|--------|
+| `b` | ban (visible only to the founder/moderators with a valid certificate) |
+| `u` | lift the ban (visible only if the target is already banned and you have the right) |
+| `esc` | back to the previous screen |
 
-### Peer ID'ni öğrenmek
+### Finding your Peer ID
 
-Ana menüde kimlik bilgisi ekranında kendi Peer ID'in görünür.  
-Başka bir kullanıcıyla özel mesajlaşmak için bu ID'yi paylaşabilirsin.
+Your own Peer ID is shown in the identity section of the main menu.  
+You can share this ID with another user to exchange private messages.
 
-### Özel bootstrap node'ları
+### Custom bootstrap nodes
 
-Bilinen AND düğümlerine hızlı bağlanmak için `%APPDATA%\and\bootstrap.txt` dosyasına multiaddr satırları ekle:
+To connect quickly to known AND nodes, add multiaddr lines to `%APPDATA%\and\bootstrap.txt`:
 
 ```
 /ip4/1.2.3.4/tcp/4001/p2p/12D3KooW...
-# bu satır yorum — yoksayılır
+# this line is a comment — ignored
 /dns4/and-node.example.com/tcp/4001/p2p/12D3KooW...
 ```
 
 ---
 
-## Moderasyon
+## Moderation
 
-AND'ın moderasyon sistemi kurucu merkezli ve sertifika tabanlıdır; hem
-uygulama içinden (TUI) hem `andmod` CLI'dan yönetilebilir.
+AND's moderation system is founder-centred and certificate-based; it can be managed both inside
+the app (TUI) and with the `andmod` CLI.
 
-Forumda konu onay sistemi yoktur: bir konu yazıldığı anda ağda yayılır ve
-her türlü konu, kim tarafından yazılırsa yazılsın, oluşturulduktan **5 gün**
-sonra otomatik olarak silinir. Moderatörlerin/kurucunun rolü, süresini
-beklemeden istenmeyen bir konuyu erken silebilmek (bkz.
-[Yönetici Paneli](#yerleşik-eklentiler)) ve peer banlayabilmektir.
+There is no topic approval in the forum: a topic spreads over the network the moment it is written,
+and every topic, whoever wrote it, is deleted automatically **5 days** after it was created. The
+role of the moderators and the founder is to delete an unwanted topic early without waiting for it
+to expire (see [Admin Panel](#built-in-plugins)) and to ban peers.
 
-### Roller
+### Roles
 
-| Rol | Yetki | Nasıl elde edilir |
+| Role | Rights | How to get it |
 |-----|-------|-------------------|
-| **Normal kullanıcı** | Konu yaz, yanıt ver, sohbet et | Kimlik oluştur |
-| **Moderatör** | Herhangi bir konuyu sil, peer banla/banını kaldır | Kurucudan sertifika al (en fazla 7 gün geçerli; kalıcı da olabilir) |
-| **Kurucu** | Yukarıdakilerin hepsi + moderatör ata/iptal et, kendi banını da kaldırabilir | Binary'ye gömülü public key'e sahip olmak |
+| **Regular user** | Write topics, reply, chat | Create an identity |
+| **Moderator** | Delete any topic, ban/unban peers | Receive a certificate from the founder (valid for at most 7 days; can also be permanent) |
+| **Founder** | All of the above + appoint/revoke moderators, can also lift their own ban | Own the public key embedded in the binary |
 
-Bir moderatör sertifikası iptal edilirse (`revoke`), o andan itibaren
-hâlâ süresi dolmamış olsa bile geçersiz sayılır — hem ban atma hem ban
-kaldırma yetkisini anında kaybeder.
+If a moderator certificate is revoked (`revoke`), it is invalid from that moment on even if it has
+not expired yet — the moderator immediately loses the right both to ban and to lift bans.
 
-### Ban süresi
+### Ban duration
 
-Bir peer banlanırken süre esnektir: **1 saat**, **1 gün**, **7 gün**,
-**30 gün** ya da **ömür boyu (kalıcı)**. Bir ban tek bir "kapsam"a
-(chat/forum ayrı ayrı) bölünmez — ağ genelinde birleşik bir yasaktır ve
-hem forum/chat mesajlarını hem de banlı peer'ın diğer düğümlere doğrudan
-bağlanmasını (transport katmanında, `ConnectionGater` ile) engeller.
+The duration of a ban is flexible: **1 hour**, **1 day**, **7 days**, **30 days** or **lifetime
+(permanent)**. A ban is not split into separate "scopes" (chat/forum) — it is a single
+network-wide ban that blocks both the banned peer's forum/chat messages and its direct connections
+to other nodes (at the transport layer, with a `ConnectionGater`).
 
-Bir ban hatalıysa ya da süresi dolmadan kaldırılması gerekiyorsa, banı
-veren moderatörden bağımsız olarak **herhangi bir** geçerli moderatör ya
-da kurucu banı kaldırabilir (unban).
+If a ban was a mistake or has to be lifted before it expires, **any** valid moderator or the
+founder can lift it (unban), independently of the moderator who issued it.
 
-### Uygulama içinden (TUI)
+### Inside the app (TUI)
 
-Ban/unban aksiyonları CLI'a inmeden, doğrudan uygulama içinden yapılabilir:
+Ban/unban actions can be done right inside the app, without going to the CLI:
 
-- **Profil ekranından** (forumda bir konudaki yazarın profiline gir, ya
-  da sohbette `ctrl+p` ile bir mesajın yazarının profilini aç): kurucu
-  veya geçerli sertifikalı bir moderatör iseniz `b` ile banlayabilir,
-  hedef zaten banlıysa `u` ile banını kaldırabilirsiniz. Profilde ayrıca
-  hedefin güncel ban durumu (⛔ Banlı, kalan süre/ömür boyu, sebep)
-  görünür.
-- **Yönetici Paneli eklentisi** (ana menüde yalnızca kurucuya/moderatöre
-  görünen "Yönetici Paneli" girişi, bkz. [Eklentiler/admin/README.md](Eklentiler/admin/README.md)):
-  Konular sekmesine ek olarak üç sekme —
-  - *Banlar* — tüm aktif banları tek listede gösterir, `u` ile oradan
-    da kaldırılabilir.
-  - *Geçmiş* — kalıcı bir denetim kaydı: kim kimi ne zaman neden
-    banladı/banını kaldırdı (süresi dolmuş/kaldırılmış kayıtlar dahil,
-    hiç silinmez).
-  - *Moderatörler* (yalnızca kurucu) — `g` ile yeni moderatör ata (süre
-    seçenekleriyle), `r` ile mevcut birinin sertifikasını iptal et.
+- **From the profile screen** (go to the profile of a topic's author in the forum, or press
+  `ctrl+p` in chat to open the profile of a message's author): if you are the founder or a
+  moderator with a valid certificate, you can ban with `b`, and lift the ban with `u` if the target
+  is already banned. The profile also shows the target's current ban status (⛔ Banned, remaining
+  time/lifetime, reason).
+- **The Admin Panel plugin** (the "Admin Panel" entry on the main menu, visible only to the
+  founder/moderators; see [Eklentiler/admin/README.md](Eklentiler/admin/README.md), in Turkish):
+  besides the Topics tab, three tabs —
+  - *Bans* — shows all active bans in a single list; `u` lifts them from there too.
+  - *History* — a permanent audit log: who banned/unbanned whom, when and why (expired/lifted
+    entries included; nothing is ever deleted).
+  - *Moderators* (founder only) — `g` appoints a new moderator (with duration options), `r`
+    revokes an existing moderator's certificate.
 
 ### andmod CLI
 
-Uygulama açık değilken ya da otomasyon/betik içinden moderasyon yapmak
-için:
+For moderation while the app isn't running, or from automation/scripts:
 
 ```bash
-# Kendi public key'ini yazdır
+# Print your own public key
 ./andmod pubkey
 
-# Moderatör yetkisi ver (7 gün — üst sınır)
-./andmod grant <hedef_pubkey_hex> --days 7
+# Grant moderator rights (7 days — the upper limit)
+./andmod grant <target_pubkey_hex> --days 7
 
-# Süresiz moderatör yetkisi ver
-./andmod grant <hedef_pubkey_hex> --permanent
+# Grant moderator rights without expiry
+./andmod grant <target_pubkey_hex> --permanent
 
-# Moderatör olarak peer banla (esnek süre)
-./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --duration 1h
-./andmod ban <peer_id> "sebep" --cert bans/mod_<kisa>.json --permanent
+# Ban a peer as a moderator (flexible duration)
+./andmod ban <peer_id> "reason" --cert bans/mod_<short>.json --duration 1h
+./andmod ban <peer_id> "reason" --cert bans/mod_<short>.json --permanent
 
-# Kurucu kimliğiyle doğrudan banla (sertifika gerekmez)
-./andmod ban <peer_id> "sebep" --as-founder --duration 24h
+# Ban directly with the founder identity (no certificate needed)
+./andmod ban <peer_id> "reason" --as-founder --duration 24h
 
-# Bir banı geri al (moderatör sertifikasıyla ya da kurucu olarak)
-./andmod unban <peer_id> --cert bans/mod_<kisa>.json
+# Lift a ban (with a moderator certificate or as the founder)
+./andmod unban <peer_id> --cert bans/mod_<short>.json
 ./andmod unban <peer_id> --as-founder
 
-# Bir moderatörün yetkisini iptal et (yalnızca kurucu)
-./andmod revoke <moderatör_pubkey_hex>
+# Revoke a moderator's rights (founder only)
+./andmod revoke <moderator_pubkey_hex>
 ```
 
-Oluşturulan `.json` dosyaları `%APPDATA%\and\bans\` dizinine yazılır.
-AND yalnızca **açılışta bir kez** (5 saniye sonra) bu dizini tarayıp
-ağda yayınlar — uygulama zaten çalışırken CLI ile bir işlem yaparsan,
-AND yeniden başlatılana kadar etkisiz kalır. Anında etkili olması
-gereken işlemler için TUI'nin Yönetici Paneli eklentisini tercih et.
+The generated `.json` files are written to `%APPDATA%\and\bans\`. AND scans this directory and
+publishes it to the network only **once at startup** (after 5 seconds) — if you run a CLI command
+while the app is already running, it has no effect until AND is restarted. For actions that must
+take effect immediately, use the Admin Panel plugin in the TUI.
 
 ---
 
-## Eklenti Sistemi
+## Plugin system
 
-AND eklentileri **bağımsız yürütülebilir binary**'lerdir. Her eklenti ayrı bir Go programı olarak derlenir ve AND'dan bağımsız dağıtılabilir.
+AND plugins are **standalone executable binaries**. Each plugin is compiled as a separate Go
+program and can be distributed independently of AND.
 
-### Nasıl çalışır
+### How it works
 
-1. AND başlangıçta kendi dizinindeki tüm `and-plugin-*` dosyalarını tarar.
-2. Her binary için yan yana bir `and-plugin-<isim>.json` manifest dosyası okunur.
-3. Kullanıcı menüden eklenti açtığında AND, eklenti binary'sini şu ortam değişkenleriyle başlatır:
+1. At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json` and an `and-plugin-<name>` binary. An `and-plugin-*` binary placed directly next to `and` is loaded only if an `and-plugin-<name>.json` manifest sits beside it.
+2. The first time the user opens a plugin, AND asks for the permissions listed in its `plugin.json`.
+3. AND starts the plugin binary in the same terminal with these environment variables:
 
-   | Değişken | Açıklama |
-   |----------|----------|
-   | `AND_API_ADDR` | AND'ın localhost HTTP API adresi (ör. `127.0.0.1:48291`) |
-   | `AND_DATA_DIR` | AND veri dizini (taslak dosyaları için) |
-   | `AND_CATEGORY` | (yalnızca konu_ac) Forumdan seçilen kategori |
-   | `AND_DIL` | Etkin arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`; bkz. [Arayüz dili](#arayüz-dili)) |
+   | Variable | Description |
+   |----------|-------------|
+   | `AND_API_ADDR` | AND's localhost HTTP API address (e.g. `127.0.0.1:48291`) |
+   | `AND_API_TOKEN` | The plugin's API key; generated per plugin at startup and never written to a file |
+   | `AND_DATA_DIR` | AND's data directory (for draft files) |
+   | `AND_CATEGORY` | (konu_ac only) The category selected in the forum |
+   | `AND_DIL` | The active interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`; see [Interface language](#interface-language)) |
 
-4. Eklenti, `AND_API_ADDR` üzerinden AND'a HTTP istekleri göndererek kimlik, forum, DM ve dosya işlemlerini gerçekleştirir.
-5. Eklenti TUI'sı kapandığında AND kontrolü geri alır.
+4. The plugin performs identity, forum, DM and file operations by sending HTTP requests to AND at `AND_API_ADDR`.
+5. When the plugin's TUI exits, AND takes control back.
 
-> **İstisna:** `konu_ac` eklentisi binary başlatılmaz; AND kodu içinde doğrudan inline Bubbletea ekranı olarak açılır. Bu sayede geçiş anında gerçekleşir ve siyah ekran oluşmaz.
+> `konu_ac` has no menu entry (its `Label` is empty); the `n` key in the forum starts it with the
+> selected category.
 
-### Bağımsız harici araçlar (ör. VS Code eklentisi)
+### Standalone external tools (e.g. the VS Code extension)
 
-Yukarıdaki `AND_API_ADDR`/`AND_API_TOKEN` mekanizması yalnızca AND'ın **kendisinin başlattığı**
-eklenti alt süreçlerine ulaşır — bağımsız başlatılmış bir süreç (ör. bir editör eklentisi) bu
-ortam değişkenlerini hiçbir zaman göremez, çünkü rastgele port + rastgele token her açılışta
-yalnızca bellekte tutulur ve hiçbir dosyaya yazılmaz.
+The `AND_API_ADDR`/`AND_API_TOKEN` mechanism above only reaches plugin subprocesses that AND
+**starts itself** — an independently started process (e.g. an editor extension) never sees these
+environment variables, because the random port and the random token exist only in memory for each
+run and are never written to any file.
 
-Bunu güvenli bir şekilde çözmek için `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
-etkinleştirilebilen, **opt-in ve varsayılan kapalı** ikinci bir dinleyici vardır
+To solve this safely there is a second listener that is **opt-in and off by default**, enabled with
+the `AND_ENABLE_EXTERNAL_API=1` environment variable
 (`internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
 
-- **Windows:** yalnızca dinleyiciyi açan kullanıcıya (owner) erişim izni veren bir security
-  descriptor'lı (`D:P(A;;GA;;;OW)`) **named pipe**.
-- **Linux/macOS:** `AND_DATA_DIR/api.sock` yolunda `0600` izinli bir **Unix domain socket**.
+- **Windows:** a **named pipe** whose security descriptor grants access only to the user who opened
+  the listener (`D:P(A;;GA;;;<user SID>)`; `OW` if the SID can't be read).
+- **Linux/macOS:** a **Unix domain socket** at `AND_DATA_DIR/api.sock` with `0600` permissions.
 
-Bu ikinci dinleyicide bearer token **yoktur** — erişim bir sırla değil doğrudan işletim sistemi
-tarafından (yalnızca aynı kullanıcı) kısıtlanır; pipe/socket adı `AND_DATA_DIR`'den türetilir ve
-gizli değildir (bkz. `and-vscode/src/live/liveAddr.ts` — aynı formülle bağımsızca hesaplar).
-`AND_ENABLE_EXTERNAL_API` ayarlanmadıysa bu dinleyici hiç açılmaz ve mevcut davranış hiçbir
-şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
+This second listener has **no** bearer token — access is restricted not by a secret but directly by
+the operating system (same user only); the pipe/socket name is derived from `AND_DATA_DIR` and is
+not secret (see `and-vscode/src/live/liveAddr.ts`, which computes it independently with the same
+formula). If `AND_ENABLE_EXTERNAL_API` is not set, this listener is never opened and nothing changes.
+Example use: the live Forum/DM/Chat/Network/Site panel in [and-vscode](and-vscode/README.md), and
+editing and publishing personal site pages in the VS Code editor.
 
-İçerik yayınlayan/gönderen uç noktalar (forum, site, sohbet, DM, dosya) ayrıca yerel bir hız
-sınırına tabidir (`internal/pluginapi/ratelimit.go`) — token'lı dinleyicideki HERHANGİ bir
-eklenti ya da harici API'deki herhangi bir yerel süreç, düğümün kendi geçerli imzasıyla ağı
-hızlıca doldurabilir; bu katman olmadan böyle bir hata/kötüye kullanım fark edilmeden ağa
-yayılırdı. AND'ın kendi TUI'sini hiç etkilemez, yalnızca dakikada onlarca çağrıyı aşan
-otomatik/hatalı bir kullanımda devreye girip `429 Too Many Requests` döner.
+Endpoints that publish or send content (forum, site, chat, DM, file) are also subject to a local
+rate limit (`internal/pluginapi/ratelimit.go`) — ANY plugin on the token listener, or any local
+process on the external API, could otherwise flood the network quickly with the node's own valid
+signature; without this layer such a bug or abuse would spread over the network unnoticed. It never
+affects AND's own TUI; it only kicks in for automated or faulty use that exceeds dozens of calls per
+minute, and returns `429 Too Many Requests`.
 
-### Yerleşik eklentiler
+### Built-in plugins
 
-| Binary | Menü Etiketi | Açıklama |
+| Binary | Menu label | Description |
 |--------|-------------|----------|
-| `and-plugin-admin` | Yönetici Paneli | Konular/Banlar/Geçmiş sekmeleri (kurucu/moderatör) + Moderatörler sekmesi (yalnızca kurucu) — bkz. [Eklentiler/admin/README.md](Eklentiler/admin/README.md) |
-| `and-plugin-konu_ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla inline açılır (ayrı depo: [AND-community/konu_ac](https://github.com/AND-community/konu_ac)) |
-| `and-plugin-ozel_chat` | Özel Chat | Doğrudan P2P mesajlaşma: konuşma listesi ve okunmamış sayıları, oturum geçmişi, dosya gönderme ve gelen dosya onayı (bkz. [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
-| `and-plugin-pembis` | Pembiş Tema | Arayüzü pembe tonlarda kız temasına boyar (ayrı depo: [AND-community/Pembis](https://github.com/AND-community/Pembis)) |
-| `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (ayrı depo: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
-| `and-plugin-site` | Site | Kendi çok sayfalı kişisel siteni oluştur/düzenle/sil — rol kısıtlaması yok (bkz. [Eklentiler/site/README.md](Eklentiler/site/README.md)) |
+| `and-plugin-admin` | Admin Panel | Topics/Bans/History tabs (founder/moderator) + Moderators tab (founder only) — see [Eklentiler/admin/README.md](Eklentiler/admin/README.md) |
+| `and-plugin-konu_ac` | *(hidden)* | New-topic form; opened from the forum with the `n` key (separate repository: [AND-community/konu_ac](https://github.com/AND-community/konu_ac)) |
+| `and-plugin-ozel_chat` | Özel Chat (private chat) | Direct P2P messaging: conversation list with unread counts, session history, sending files and consenting to incoming ones (see [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
+| `and-plugin-pembis` | Pembiş Theme | Paints the interface in shades of pink (separate repository: [AND-community/Pembis](https://github.com/AND-community/Pembis)) |
+| `and-plugin-DeltaX` | DeltaX | Private groups + their own version control system; end-to-end encrypted P2P sync (separate repository: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
+| `and-plugin-site` | Website | Create/edit/delete your own multi-page personal site — no role restriction (see [Eklentiler/site/README.md](Eklentiler/site/README.md)) |
 
-### Yeni eklenti yazmak
+The READMEs of the plugins inside this repository are in Turkish.
 
-Ayrıntılı şablon ve API referansı için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md) dosyasına bak.
+### Writing a new plugin
 
-Kısa adımlar:
+See [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md) (in Turkish) for a detailed template
+and the API reference.
+
+Short version:
 
 ```bash
-# 1. Eklentiler/<isim>/ dizini oluştur ve main.go yaz
-mkdir Eklentiler/meklentim
+# 1. Create the Eklentiler/<name>/ directory and write main.go
+mkdir Eklentiler/myplugin
 
-# 2. Derle ve AND dizinine koy
-go build -o and-plugin-meklentim ./Eklentiler/meklentim
+# 2. Build it and put it into the AND directory
+go build -o and-plugin-myplugin ./Eklentiler/myplugin
 
-# 3. Manifest JSON oluştur
-./and-plugin-meklentim --manifest > and-plugin-meklentim.json
+# 3. Generate the manifest JSON
+./and-plugin-myplugin --manifest > and-plugin-myplugin.json
 
-# AND bir sonraki başlatmada eklentiyi otomatik keşfeder
+# AND discovers the plugin automatically on its next start
 ```
 
-Eklentiler yalnızca istedikleri izinlerle çalışır: `plugin.json`'daki `permissions` alanı (ör.
-`["dm", "file"]`) ilk açılışta kullanıcıya sorulur; herkese açık içeriği okumak izin istemez. İzin
-listesi ve uç noktaları için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
+Plugins run only with the permissions they request: the `permissions` field in `plugin.json` (e.g.
+`["dm", "file"]`) is shown to the user on first launch; reading public content needs no permission.
+For the list of permissions and endpoints see
+[Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
 
-Eklentinin AND'la aynı dilde açılması için `main`'de `dil.OrtamdanAyarla()` çağır, metinleri
-`dil.T`/`dil.F` ile yaz ve çevirilerini `ceviri.json`'a koy (bkz. [Arayüz dili](#arayüz-dili)).
-
----
-
-## Ekosistem
-
-**AND Arama Motoru** (AND'ın yanındaki `AND arama motoru/` klasöründe, kendi deposunda duran ayrı bir sistem), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın iç paketlerini kullanmaz, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan iki ayrı program. Konu adları ve protokol kimlikleri iki programın da kullandığı `protokol/` paketinden gelir (arama motoru onu yan klasördeki AND'dan alır); AND'ın gerçek koduyla üretilen örnek iletiler (`protokol/testdata/`) arama motorunun testlerinde doğrulanır, böylece ileti biçimi bir tarafta değişirse testler kırılır.
-
-Aynı aileden olduklarını gösteren ortak noktalar:
-- Aynı ANSI 256 renk paleti (accent/hata/başarı/soluk tonları — bkz. `internal/tui/styles.go`'daki `colorAccent` vb.) ve aynı "AND" blok-harf logosu.
-- Kimlik türetme şeması bire bir aynı (BIP-39 mnemonic → Ed25519), ama iki program birbirinden TAMAMEN bağımsız kimliklere sahiptir.
-- Forum/sohbet/kişisel-site protokollerinin imza payload biçimleri ve GossipSub konu adları bire bir aynı — bu yüzden Arama Motoru, AND'ın ürettiği içeriği doğrulayıp indeksleyebilir. Bu, `protokol/testdata/`'daki örneklerle her test çalışmasında sınanır.
-
-Ayrıntılar için arama motorunun kendi README'sine bak (`../AND arama motoru/README.md`).
+To have your plugin open in the same language as AND, call `dil.OrtamdanAyarla()` in `main`, write
+texts with `dil.T`/`dil.F` and put their translations into `ceviri.json` (see
+[Interface language](#interface-language)).
 
 ---
 
-## Yapılandırma
+## Ecosystem
 
-Tüm veriler `%APPDATA%\and\` (Windows), `~/.config/and/` (Linux) ya da
-`~/Library/Application Support/and/` (macOS) altında saklanır. Hangi verinin kimlere görünür
-olduğu [GIZLILIK.md](GIZLILIK.md)'de anlatılır.
+**[AND Search Engine](https://github.com/AND-community/and-arama-motoru)** ("arama motoru" is Turkish for "search engine") is a separate system in its own repository; to build it, clone it next to AND. It is an independent peer that joins AND's P2P network with its own identity and makes forum/chat content searchable in a local SQLite FTS5 index. It doesn't use AND's internal packages, doesn't run AND as a subprocess and keeps working while AND is closed — two separate programs that speak **the same network** (the same GossipSub topics, the same Ed25519 signature format, the same sync protocols). Topic names and protocol IDs come from the `protokol/` package that both programs use (the search engine takes it from the AND checkout next to it); sample messages produced with AND's real code (`protokol/testdata/`) are verified in the search engine's tests, so if the message format changes on one side, the tests break.
 
-| Dosya / Dizin | Açıklama |
+What shows that they belong to the same family:
+- The same ANSI 256-colour palette (accent/error/success/muted tones — see `internal/ui`) and the same "AND" block-letter logo.
+- Exactly the same identity derivation scheme (BIP-39 mnemonic → Ed25519), but the two programs have COMPLETELY independent identities.
+- The signature payload formats and GossipSub topic names of the forum/chat/personal-site protocols are identical — which is why the Search Engine can verify and index the content produced by AND. This is tested on every test run with the samples in `protokol/testdata/`.
+
+For details, see the search engine's own README: [AND-community/and-arama-motoru](https://github.com/AND-community/and-arama-motoru).
+
+---
+
+## Configuration
+
+All data is stored under `%APPDATA%\and\` (Windows), `~/.config/and/` (Linux) or
+`~/Library/Application Support/and/` (macOS). Which data is visible to whom is described in
+[GIZLILIK.md](GIZLILIK.md) (the privacy notice, in Turkish).
+
+| File / directory | Description |
 |---|---|
-| `identity.dat` | AES-256-GCM şifreli Ed25519 kimlik (parola korumalı) |
-| `founder.key` | Kurucunun Ed25519 public key'i (binary'e gömülüden türetilir) |
-| `forum.db` | SQLite forum + sohbet veritabanı (WAL modu) |
-| `bans/` | Moderasyon kararları (ban/unban/revoke/sertifika JSON'ları — `andmod` ve TUI'nin Moderatörler sekmesi tarafından yazılır) |
-| `active_bans.json` | Şu an etkili banların anlık görüntüsü (yeniden başlatmada geri yüklenir) |
-| `active_revocations.json` | İptal edilmiş moderatör sertifikalarının listesi |
-| `mod_history.json` | Moderasyon denetim geçmişi (Yönetici Paneli eklentisinin "Geçmiş" sekmesi) |
-| `granted_mods.json` | Bu düğümün (kurucuysa) verdiği moderatör sertifikalarının yerel defteri |
-| `mod_rates.json` | Moderatör başına saatlik ban/unban/revoke hız sınırı sayaçları |
-| `dosyalar/` | Alınan dosyalar |
-| `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
-| `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
-| `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
-| `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
-| `kurallar_onayi.json` | Gizlilik özeti ve topluluk kurallarının hangi sürümünün ne zaman onaylandığı |
-| `dm_gecmis.bin` | Özel mesaj geçmişi, giden kutusu ve okundu bilgisi; kimlikten türetilen anahtarla AES-256-GCM şifreli (`AND_DM_GECMISI=0` ile yalnızca bellekte tutulur) |
-| `yedek/` | `forum.db`'nin günlük (en çok 3 gün) ve sürüm yükseltmesi öncesi (en çok 7 gün) yedekleri |
-| `yanit_taslaklari.json` | Gönderilmemiş forum yanıtları (konu başına; gönderilince ya da 30 günde silinir) |
-| `kimlik_ozeti.json` | Bu cihazda son açılan kimliğin açık anahtarı ve görünen adı — kurtarma kodu yanlış yazılırsa uyarmak için |
-| `and.kilit` | Veri dizinini kullanan AND'ın işletim sistemi kilidi (ikinci bir AND'ın açılmasını engeller) |
-| `*.bozuk-<tarih>`, `*.okunamadi-<tarih>`, `identity.dat.eski-<tarih>` | Okunamadığı ya da yerine yenisi yazıldığı için kenara alınan dosyalar; AND bunları silmez |
-| `and.log` | Arayüz açıkken kütüphanelerin (libp2p, mDNS) yazdığı uyarı ve hatalar; tam ekran arayüzü bozmasınlar diye terminal yerine buraya gider; beklenmedik hataların yığın izleri de buradadır. 5 MB'ı aşınca (çalışırken de) `and.log.1`'e döner |
+| `identity.dat` | AES-256-GCM encrypted Ed25519 identity (password protected) |
+| `founder.key` | The founder's Ed25519 public key (derived from the one embedded in the binary) |
+| `forum.db` | SQLite forum + chat database (WAL mode) |
+| `bans/` | Moderation decisions (ban/unban/revoke/certificate JSON files — written by `andmod` and the Moderators tab of the TUI) |
+| `active_bans.json` | Snapshot of the bans currently in force (restored on restart) |
+| `active_revocations.json` | List of revoked moderator certificates |
+| `mod_history.json` | Moderation audit history (the "History" tab of the Admin Panel plugin) |
+| `granted_mods.json` | Local ledger of the moderator certificates issued by this node (if it is the founder) |
+| `mod_rates.json` | Hourly ban/unban/revoke rate-limit counters per moderator |
+| `dosyalar/` | Received files |
+| `bootstrap.txt` | Extra bootstrap node multiaddrs (optional) |
+| `taslaklar_<category>.json` | Topic drafts (konu_ac plugin, local — gitignored) |
+| `theme.json` | Selected theme (written by Settings → Themes or by a theme plugin; Classic is used if it is missing) |
+| `dil.json` | Selected interface language (Settings → Language or `ctrl+l` on the login screen; Turkish if it is missing; the `AND_DIL` environment variable overrides it) |
+| `kurallar_onayi.json` | Which version of the privacy summary and the community rules was accepted, and when |
+| `dm_gecmis.bin` | Private message history, outbox and read receipts; AES-256-GCM encrypted with a key derived from the identity (`AND_DM_GECMISI=0` keeps them in memory only) |
+| `yedek/` | Daily (at most 3 days) and pre-upgrade (at most 7 days) backups of `forum.db` |
+| `yanit_taslaklari.json` | Unsent forum replies (per topic; deleted when sent or after 30 days) |
+| `kimlik_ozeti.json` | Public key and display name of the last identity opened on this device — used to warn you when a recovery code is mistyped |
+| `and.kilit` | The operating-system lock held by the AND that uses the data directory (keeps a second AND from opening) |
+| `*.bozuk-<date>`, `*.okunamadi-<date>`, `identity.dat.eski-<date>` | Files moved aside because they couldn't be read or were replaced; AND never deletes them |
+| `and.log` | Warnings and errors written by libraries (libp2p, mDNS) while the interface is open; they go here instead of the terminal so that they don't break the full-screen interface; stack traces of unexpected errors are here too. Rotates to `and.log.1` above 5 MB (also while running) |
 
-> `identity.dat`, `founder.key` ve `bans/` içeriği asla başkalarıyla paylaşılmamalı, git'e eklenmemeli.
-
----
-
-## Katkı
-
-Katkıda bulunmak için [CONTRIBUTING.md](CONTRIBUTING.md) dosyasını oku.
+> Never share the contents of `identity.dat`, `founder.key` and `bans/` with anyone, and never add
+> them to git.
 
 ---
 
-## Güvenlik
+## Contributing
 
-Güvenlik açığı bildirmek için [SECURITY.md](SECURITY.md) dosyasını oku.  
-Açıkları herkese açık issue olarak bildirme; doğrudan e-posta ile iletişime geç.
-
----
-
-## Gizlilik ve kullanım koşulları
-
-- [GIZLILIK.md](GIZLILIK.md): AND'ın hangi verileri nerede tuttuğu, kimlerin görebileceği,
-  ağda kimlere bağlanıldığı ve verilerin nasıl silineceği. AND telemetri toplamaz.
-- [KULLANIM_KOSULLARI.md](KULLANIM_KOSULLARI.md): yasalara uygunluk, topluluk kuralları,
-  sorumluluk ve moderasyon.
-
-İkisinin özeti uygulamada **AND hakkında** ekranının Gizlilik ve Kurallar sekmelerindedir ve ilk
-açılışta onaya sunulur. Kullanıcıyı etkileyen bir değişiklikte belgelerdeki sürüm numarası ile
-`internal/tui/hakkinda.go`'daki `kurallarSurumu` birlikte artırılır; herkes yeni sürümü bir sonraki
-açılışta yeniden onaylar.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) (in Turkish) to contribute.
 
 ---
 
-## Lisans
+## Security
 
-Telif hakkı (C) 2026 AND katkıcıları.
+Read [SECURITY.md](SECURITY.md) (in Turkish) to report a security vulnerability.  
+Don't report vulnerabilities as public issues; get in touch directly by e-mail.
 
-AND, GNU Affero Genel Kamu Lisansı'nın 3. sürümüyle (AGPL-3.0) lisanslıdır; tam metin
-[LICENSE](LICENSE) dosyasındadır. Yazılım yasaların izin verdiği ölçüde hiçbir garanti olmadan
-sunulur. AND'ı değiştirip ağ üzerinden başkalarının kullanımına sunarsan, lisansın 13. maddesi
-gereği değiştirdiğin sürümün kaynak kodunu da onlara sunman gerekir.
+---
 
-Lisans bildirimleri programın içinde de bulunur: ana menüdeki **AND hakkında** ekranı, `and --lisans`
-ve `and --ucuncu-taraf`.
+## Privacy and terms of use
 
-### Üçüncü taraf bileşenler
+- [GIZLILIK.md](GIZLILIK.md) (privacy notice, in Turkish): which data AND keeps where, who can see
+  it, which peers it connects to on the network and how the data is deleted. AND collects no
+  telemetry.
+- [KULLANIM_KOSULLARI.md](KULLANIM_KOSULLARI.md) (terms of use, in Turkish): compliance with the
+  law, community rules, liability and moderation.
 
-AND'ın ve eklentilerin ikili dosyaları 140'ı aşkın açık kaynak bileşen içerir (libp2p, Bubble Tea,
-modernc SQLite, Go standart kütüphanesi …). Bileşenlerin hepsi AGPL-3.0 ile birlikte dağıtılabilen
-lisanslardadır: MIT, BSD-2/3-Clause, Apache-2.0, ISC ve MPL-2.0. Her bileşenin sürümü ve tam
-lisans metni [internal/lisans/ucuncu_taraf.txt](internal/lisans/ucuncu_taraf.txt) dosyasındadır;
-bu dosya sürümlerde `THIRD_PARTY_NOTICES.txt` adıyla ikili dosyaların yanında yayımlanır.
+Summaries of both are in the Privacy and Rules tabs of the **About AND** screen in the app and are
+presented for acceptance on the first start. When a change affects users, the version number in the
+documents and `kurallarSurumu` in `internal/tui/hakkinda.go` are raised together; everyone accepts
+the new version on their next start.
 
-Bildirim `go.mod`'dan üretilir:
+---
+
+## License
+
+Copyright (C) 2026 AND contributors.
+
+AND is licensed under version 3 of the GNU Affero General Public License (AGPL-3.0); the full text
+is in the [LICENSE](LICENSE) file. The software is provided without any warranty, to the extent
+permitted by law. If you modify AND and make it available to others over a network, section 13 of
+the license requires you to offer them the source code of your modified version too.
+
+The license notices are also inside the program: the **About AND** screen on the main menu,
+`and --lisans` and `and --ucuncu-taraf`.
+
+### Third-party components
+
+The binaries of AND and its plugins include more than 140 open-source components (libp2p, Bubble
+Tea, modernc SQLite, the Go standard library …). All components are under licenses that can be
+distributed together with AGPL-3.0: MIT, BSD-2/3-Clause, Apache-2.0, ISC and MPL-2.0. The version
+and full license text of each component are in
+[internal/lisans/ucuncu_taraf.txt](internal/lisans/ucuncu_taraf.txt); in releases this file is
+published next to the binaries as `THIRD_PARTY_NOTICES.txt`.
+
+The notice is generated from `go.mod`:
 
 ```bash
 go generate ./internal/lisans
 ```
 
-`internal/lisans` testleri, bildirimin `go.mod` ile aynı modülleri ve sürümleri taşıdığını ve her
-bağımlılığın lisansının AGPL-3.0 ile uyumlu olduğunu denetler; CI, üretilen dosyaların güncel
-olduğunu ayrıca doğrular.
+The `internal/lisans` tests check that the notice carries the same modules and versions as `go.mod`
+and that every dependency's license is compatible with AGPL-3.0; CI additionally verifies that the
+generated files are up to date.

@@ -96,7 +96,7 @@ go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 ```
 
 DeltaX, Pembiş ve Konu Aç ayrı depolardır; nasıl kurulacakları README'nin
-[Kaynaktan derleme](README.md#kaynaktan-derleme) bölümünde.
+[Kaynaktan derleme](README.tr.md#kaynaktan-derleme) bölümünde.
 
 ### Test
 
