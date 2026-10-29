@@ -27,7 +27,8 @@ var (
 	// imzalandığı (SHA256SUMS.txt.sig) doğrulanırsa uygulanır: özet dosyası
 	// binary ile aynı GitHub sürümünden geldiğinden, imza olmadan sürüme
 	// yazabilen biri (ele geçirilmiş bir hesap ya da iş akışı) ikisini
-	// birlikte değiştirebilirdi. Boşsa yalnızca özet doğrulanır.
+	// birlikte değiştirebilirdi. Boşsa (kaynaktan derlenmiş bir derleme)
+	// Check hiç sormaz: otomatik güncelleme yalnızca resmi sürümlerde çalışır.
 	UpdateSigningKeyHex = ""
 )
 
@@ -42,8 +43,13 @@ type Asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
+// Check, GitHub'daki son sürüm bu derlemeden yeniyse onun bilgisini döndürür.
+// İmza anahtarı gömülü olmayan bir derleme (kaynaktan derlenmiş, ör.
+// calistir.bat) hiç sormaz: yerel bir geliştirme derlemesi kendini resmi
+// sürümle değiştirmemeli, hiçbir güncelleme de imzası doğrulanmadan
+// uygulanmamalı.
 func Check(ctx context.Context) (*ReleaseInfo, error) {
-	if GitHubRepo == "" {
+	if GitHubRepo == "" || UpdateSigningKeyHex == "" {
 		return nil, nil
 	}
 	url := "https://api.github.com/repos/" + GitHubRepo + "/releases/latest"

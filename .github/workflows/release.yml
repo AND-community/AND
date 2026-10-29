@@ -43,6 +43,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # DeltaX, Pembiş ve Konu Aç ayrı depolardır. Sürüme girmezlerse kurulu
+      # kopyaları otomatik güncellenemez (güncelleyici eklentiyi AND'la aynı
+      # sürümdeki and-plugin-<ad>_<os>_<arch> dosyasından günceller); bu
+      # yüzden derlemeden önce Eklentiler/ altına alınırlar. Alınamazlarsa
+      # yayın durur: eklentisi eksik bir sürüm o eklentiyi sessizce eskide
+      # bırakırdı.
+      - name: Ayrı depolardaki eklentileri al
+        run: |
+          for depo in DeltaX Pembis konu_ac; do
+            git clone --depth 1 "https://github.com/${{ github.repository_owner }}/${depo}.git" "Eklentiler/${depo}"
+          done
+
       - name: Binary derle
         env:
           GOOS: ${{ matrix.goos }}
@@ -86,9 +98,9 @@ jobs:
             ./cmd/andmod
 
           # Eklenti binary'leri, "klasör:ad" çiftleri. Ad, eklentinin
-          # plugin.json'daki name alanıdır; AND eklentiyi bu adla bulur.
-          # DeltaX, Pembis ve konu_ac ayrı depolardır (alt modül); klasörü
-          # olmayan eklenti tüm yayını durdurmaz, uyarıyla atlanır.
+          # plugin.json'daki name alanıdır; AND eklentiyi ve güncelleyici
+          # sürüm dosyasını bu adla bulur. DeltaX, Pembis ve konu_ac bir
+          # önceki adımda ayrı depolarından alınır.
           for e in admin:admin konu_ac:konu_ac ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site; do
             klasor="${e%%:*}"
             ad="${e##*:}"

@@ -126,15 +126,18 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 
 - Güncellemeler yalnızca HTTPS üzerinden ve GitHub'ın alan adlarından indirilir; indirilen dosya sürümün
   `SHA256SUMS.txt`'sine karşı doğrulanır, doğrulama yapılamazsa güncelleme uygulanmaz.
-- Derlemeye bir sürüm imzalama anahtarı gömülürse (`-X …/updater.UpdateSigningKeyHex=…`), özet dosyasının
-  Ed25519 imzası (`SHA256SUMS.txt.sig`) da doğrulanır. İmza olmadan, sürüme yazabilen biri binary'yi ve özet
-  dosyasını birlikte değiştirebilirdi. Sürüm iş akışı bunu kendisi yapar: genel anahtar depoda
+- Otomatik güncelleme yalnızca sürüm imzalama anahtarı gömülü derlemelerde (resmi sürümler,
+  `-X …/updater.UpdateSigningKeyHex=…`) çalışır ve özet dosyasının Ed25519 imzasını (`SHA256SUMS.txt.sig`)
+  da doğrular. İmza olmadan, sürüme yazabilen biri binary'yi ve özet dosyasını birlikte değiştirebilirdi.
+  Anahtarı gömülü olmayan bir derleme (kaynaktan derlenmiş, ör. `calistir.bat`) GitHub'a hiç sormaz ve
+  kendini hiç değiştirmez. Sürüm iş akışı anahtarı kendisi gömer: genel anahtar depoda
   `.github/update-signing-pubkey.hex` dosyasında durur (gizli değildir, herkes denetleyebilir), özel anahtar
   `UPDATE_SIGNING_KEY` sırrındadır. Genel anahtar dosyası varken sır eksikse ya da eşleşmiyorsa sürüm
   yayınlanmaz; böylece imzasız, dolayısıyla güncellenemeyen bir sürüm çıkmaz. Kurulum komutları
   `.github/workflows/release.yml`'deki "Özet dosyasını imzala" adımındadır.
 - AND güncellenince aynı sürümle yayınlanan eklentiler de güncellenir; her eklenti dosyası ve manifest'i
-  aynı (imzası doğrulanmış) `SHA256SUMS.txt`'ye karşı denetlenir. Sürümde dosyası olmayan eklentilere
+  aynı (imzası doğrulanmış) `SHA256SUMS.txt`'ye karşı denetlenir. Ayrı depolardaki DeltaX, Pembiş ve
+  Konu Aç da sürüm iş akışında derlenip aynı sürüme konur. Sürümde dosyası olmayan eklentilere
   (ör. üçüncü taraf) dokunulmaz; doğrulanamayan bir eklenti eski haliyle kalır. Yeni sürüm yeni bir izin
   isterse kullanıcıya bir sonraki açılışta yeniden sorulur.
 - Sürüm imzalama genel anahtarı (Ed25519, hex):

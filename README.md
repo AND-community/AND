@@ -48,7 +48,7 @@ A user's identity is an Ed25519 key pair derived from 128 bits of entropy (the e
 | File transfer | Resumable chunked transfer (`/and/file/2.0.0`) with a consent dialog |
 | Moderation | Flexible bans (1 hour to permanent) and unbans, delegable and revocable moderator certificates, an Admin Panel plugin and an audit history |
 | Dynamic plugins | Standalone binaries; add plugins without rebuilding AND |
-| Automatic updates | Background updates from GitHub Releases |
+| Automatic updates | Official release builds update themselves in the background from GitHub Releases, together with the bundled plugins, only if the release's signature is valid; builds made from source never replace themselves |
 | Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea); AND, its plugins and the AND Search Engine share one design system (`internal/ui`) |
 | Themes | 6 built-in themes (Classic, Turquoise, Night Purple, Amber, Forest, Mono) plus theme plugins; the chosen theme also applies to plugins and the VS Code panel |
 | Interface languages | Turkish (default), English, German, Spanish, French, Russian; switch instantly in Settings → Language or with `ctrl+l` on the login screen — see [Interface language](#interface-language) |
@@ -214,13 +214,18 @@ forum topics (the `n` key opens this plugin).
 
 ### ldflags — version and repository
 
-For automatic updates and `--version` (if `GitHubRepo` is not given, `AND-community/AND` is used;
-`github.com/lucian95511/and` is the Go module path, not the repository name):
+Automatic updates run only in builds that embed the release signing key (`UpdateSigningKeyHex`); every
+update is applied only after the signature of the release's checksum file has been verified. A build
+made from source without the key (e.g. with `calistir.bat`) never checks for updates and never replaces
+itself. The release workflow embeds the key from `.github/update-signing-pubkey.hex` together with the
+version. To make the same kind of build by hand (if `GitHubRepo` is not given, `AND-community/AND` is
+used; `github.com/lucian95511/and` is the Go module path, not the repository name):
 
 ```bash
 go build \
   -ldflags "-X github.com/lucian95511/and/internal/updater.Version=v1.0.0 \
-            -X github.com/lucian95511/and/internal/updater.GitHubRepo=AND-community/AND" \
+            -X github.com/lucian95511/and/internal/updater.GitHubRepo=AND-community/AND \
+            -X github.com/lucian95511/and/internal/updater.UpdateSigningKeyHex=$(cat .github/update-signing-pubkey.hex)" \
   -o and ./cmd/and
 ```
 

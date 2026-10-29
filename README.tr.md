@@ -48,7 +48,7 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 | Dosya aktarımı | Yeniden başlatılabilir parçalı aktarım (`/and/file/2.0.0`); onay isteği dialog'u |
 | Moderasyon sistemi | Esnek süreli (1 saat–ömür boyu) ban/unban, devredilebilir/iptal edilebilir moderatör sertifikaları, Yönetici Paneli eklentisi + denetim geçmişi |
 | Dinamik eklenti sistemi | Bağımsız binary'ler; AND'ı yeniden derlemeden eklenti ekle |
-| Otomatik güncelleme | GitHub Releases üzerinden arka planda güncelleme |
+| Otomatik güncelleme | Resmi sürümler GitHub Releases'tan, paketle gelen eklentilerle birlikte, yalnızca sürümün imzası doğrulanırsa arka planda güncellenir; kaynaktan derlenenler kendini hiç değiştirmez |
 | Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`internal/ui`) |
 | Temalar | 6 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Mono) + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
 | Arayüz dilleri | Türkçe (varsayılan), English, Deutsch, Español, Français, Русский; Ayarlar → Dil ya da giriş ekranında `ctrl+l` ile anında değişir — bkz. [Arayüz dili](#arayüz-dili) |
@@ -214,13 +214,18 @@ açılamaz (`n` tuşu bu eklentiyi açar).
 
 ### ldflags — versiyon ve repo bilgisi
 
-Otomatik güncelleme ve `--version` için (`GitHubRepo` verilmezse `AND-community/AND` kullanılır;
+Otomatik güncelleme yalnızca sürüm imzalama anahtarı (`UpdateSigningKeyHex`) gömülü derlemelerde çalışır;
+her güncelleme, sürümün özet dosyasının imzası doğrulandıktan sonra uygulanır. Anahtarı gömülü olmayan,
+kaynaktan derlenmiş bir derleme (ör. `calistir.bat`) güncelleme aramaz ve kendini hiç değiştirmez. Sürüm
+iş akışı anahtarı `.github/update-signing-pubkey.hex`'ten alıp sürüm numarasıyla birlikte gömer. Aynı tür
+bir derlemeyi elle yapmak için (`GitHubRepo` verilmezse `AND-community/AND` kullanılır;
 `github.com/lucian95511/and` Go modülünün yoludur, depo adı değildir):
 
 ```bash
 go build \
   -ldflags "-X github.com/lucian95511/and/internal/updater.Version=v1.0.0 \
-            -X github.com/lucian95511/and/internal/updater.GitHubRepo=AND-community/AND" \
+            -X github.com/lucian95511/and/internal/updater.GitHubRepo=AND-community/AND \
+            -X github.com/lucian95511/and/internal/updater.UpdateSigningKeyHex=$(cat .github/update-signing-pubkey.hex)" \
   -o and ./cmd/and
 ```
 
