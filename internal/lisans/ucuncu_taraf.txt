@@ -13,7 +13,7 @@ module path (for example through https://proxy.golang.org).
 
 SUMMARY: 146 components
 -----------------------
-go (Go standard library)                     go1.26.9                               BSD-3-Clause
+go (Go standard library)                     go1.26.10                              BSD-3-Clause
 filippo.io/bigmod                            v0.1.1-0.20260103110540-f8a47775ebe5   BSD-3-Clause
 filippo.io/keygen                            v0.0.0-20260114151900-8e2790ea4c5b     ISC
 github.com/Jorropo/jsync                     v1.0.1                                 Apache-2.0, MIT
@@ -164,7 +164,7 @@ LICENSE TEXTS
 -------------
 
 ==============================================================================
-go go1.26.9
+go go1.26.10
 golang.org/x/crypto v0.57.0
 golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 golang.org/x/mod v0.41.0

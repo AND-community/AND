@@ -5,7 +5,7 @@ go 1.26.4
 // go1.26.9, standart kütüphanede govulncheck'in bulduğu açıkları (net/http,
 // net/textproto, net/url, crypto/tls, encoding/asn1) kapatır. GOTOOLCHAIN=auto
 // (varsayılan) bu sürümü gerekirse otomatik indirir.
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/Microsoft/go-winio v0.6.2

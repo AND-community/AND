@@ -3,7 +3,7 @@
 package lisans
 
 var moduller = []Modul{
-	{Yol: "go", Surum: "go1.26.9", Lisans: "BSD-3-Clause"},
+	{Yol: "go", Surum: "go1.26.10", Lisans: "BSD-3-Clause"},
 	{Yol: "filippo.io/bigmod", Surum: "v0.1.1-0.20260103110540-f8a47775ebe5", Lisans: "BSD-3-Clause"},
 	{Yol: "filippo.io/keygen", Surum: "v0.0.0-20260114151900-8e2790ea4c5b", Lisans: "ISC"},
 	{Yol: "github.com/Jorropo/jsync", Surum: "v1.0.1", Lisans: "Apache-2.0, MIT"},
