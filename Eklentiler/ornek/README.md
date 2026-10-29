@@ -414,7 +414,7 @@ düzeyinde bir kez kurulan stil, temanın değiştiğini görmez.
 `label: ""` olan eklentiler ana menüde görünmez. Bu tür eklentiler AND tarafından doğrudan başlatılır.
 
 `konu_ac` eklentisi bu modeli kullanır:
-- Kullanıcı forumda `n` tuşuna bastığında AND, `AND_CATEGORY=<seçili_kategori>` ile `and-plugin-konu-ac`'ı başlatır.
+- Kullanıcı forumda `n` tuşuna bastığında AND, `AND_CATEGORY=<seçili_kategori>` ile `and-plugin-konu_ac`'ı başlatır.
 - Eklenti bu değişkeni okur ve kategori seçim ekranını atlar.
 
 ```go

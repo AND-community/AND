@@ -105,13 +105,13 @@ Kullanıcı → n tuşu (forum ekranında)
 ### Veri akışı — özel mesaj (DM)
 
 ```
-and-plugin-ozel-chat  →  POST /api/v1/dm/send  →  AND (dmmgr.Broker)
+and-plugin-ozel_chat  →  POST /api/v1/dm/send  →  AND (dmmgr.Broker)
                                                          ↓  libp2p stream
                                                      Hedef peer
 
 Hedef peer  →  /and/dm/1.0.0 stream handler  →  dmmgr.Broker.Deliver()
                                                          ↓  şifreli geçmiş + long-poll
-                                              and-plugin-ozel-chat (görünür)
+                                              and-plugin-ozel_chat (görünür)
 ```
 
 AND, gelen ve giden özel mesajları bu bilgisayarda şifreli saklar (`dm_gecmis.bin`) ve
@@ -124,13 +124,13 @@ sayısına katılmaz ve Özel Chat'te görünmez.
 ### Veri akışı — dosya aktarımı
 
 ```
-Gönderen: and-plugin-ozel-chat  →  POST /api/v1/file/send  →  AND (filemgr.Broker)
+Gönderen: and-plugin-ozel_chat  →  POST /api/v1/file/send  →  AND (filemgr.Broker)
                                                                       ↓  /and/file/2.0.0 stream
                                                                   Hedef peer
 
 Hedef peer  →  /and/file/2.0.0 stream handler  →  consent isteği bekle (30 sn)
                        ↓  GET /api/v1/file/consent-poll (long-poll)
-               and-plugin-ozel-chat → dialog göster → POST /api/v1/file/consent
+               and-plugin-ozel_chat → dialog göster → POST /api/v1/file/consent
                        ↓  kabul edilirse
                Parçalı aktarım → disk → GET /api/v1/file/poll ile bildirim
 ```
@@ -178,42 +178,46 @@ AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün d�
 
 ### Gereksinimler
 
-- Go 1.21 veya üzeri
+- Go 1.26.4 veya üzeri (Go 1.21 ve sonrası, `go.mod`'daki araç zinciri sürümünü gerekirse kendisi indirir)
 - Windows, Linux veya macOS (amd64 / arm64)
 
 ### Kaynaktan derleme
 
 ```bash
-git clone https://github.com/lucian95511/and.git
-cd and
+git clone https://github.com/AND-community/AND.git
+cd AND
 
 # Ana binary ve yönetim aracı
 go build -o and     ./cmd/and
 go build -o andmod  ./cmd/andmod
 
-# Eklenti binary'leri (and ile aynı dizine koy)
-go build -o and-plugin-admin      ./Eklentiler/admin
-go build -o and-plugin-konu-ac    ./Eklentiler/konu_ac
-go build -o and-plugin-ozel-chat  ./Eklentiler/ozel_chat
-go build -o and-plugin-pembis     ./Eklentiler/Pembis
+# Eklentiler: her biri kendi klasörüne, plugin.json'ın yanına and-plugin-<ad>
+# olarak derlenir (<ad>, plugin.json'daki "name" alanıdır)
+go build -o Eklentiler/admin/and-plugin-admin          ./Eklentiler/admin
+go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
+go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 
-# DeltaX — Eklentiler/DeltaX/ altına derlenmeli (plugin.json yanında)
-go build -o Eklentiler/DeltaX/and-plugin-DeltaX ./Eklentiler/DeltaX
-
-# Site — Eklentiler/site/ altına derlenmeli (plugin.json yanında)
-go build -o Eklentiler/site/and-plugin-site ./Eklentiler/site
+# DeltaX, Pembiş ve Konu Aç ayrı depolardır; önce Eklentiler/ altına klonla
+git clone https://github.com/AND-community/DeltaX.git   Eklentiler/DeltaX
+git clone https://github.com/AND-community/Pembis.git   Eklentiler/Pembis
+git clone https://github.com/AND-community/konu_ac.git  Eklentiler/konu_ac
+go build -o Eklentiler/DeltaX/and-plugin-DeltaX    ./Eklentiler/DeltaX
+go build -o Eklentiler/Pembis/and-plugin-pembis    ./Eklentiler/Pembis
+go build -o Eklentiler/konu_ac/and-plugin-konu_ac  ./Eklentiler/konu_ac
 ```
 
-Windows'ta her binary adına `.exe` uzantısı ekle.
+Windows'ta her binary adına `.exe` uzantısı ekle. Konu Aç kurulu değilse forumda yeni konu
+açılamaz (`n` tuşu bu eklentiyi açar).
 
 ### ldflags — versiyon ve repo bilgisi
 
-Otomatik güncelleme ve `--version` için:
+Otomatik güncelleme ve `--version` için (`GitHubRepo` verilmezse `AND-community/AND` kullanılır;
+`github.com/lucian95511/and` Go modülünün yoludur, depo adı değildir):
 
 ```bash
 go build \
   -ldflags "-X github.com/lucian95511/and/internal/updater.Version=v1.0.0 \
-            -X github.com/lucian95511/and/internal/updater.GitHubRepo=lucian95511/and" \
+            -X github.com/lucian95511/and/internal/updater.GitHubRepo=AND-community/AND" \
   -o and ./cmd/and
 ```
 
@@ -258,18 +262,24 @@ bastığında açık bir hata gösterilir ("ClientID yapılandırılmamış").
 
 ### Dizin yapısı (çalıştırma)
 
-Tüm binary'leri aynı dizine koy:
+Eklentiler `and`'ın yanındaki `Eklentiler/` klasöründe, her biri kendi klasöründe durur:
 
 ```
 /herhangi/bir/dizin/
   and[.exe]
   andmod[.exe]
-  and-plugin-admin[.exe]
-  and-plugin-konu-ac[.exe]
-  and-plugin-ozel-chat[.exe]
+  Eklentiler/
+    admin/      plugin.json  and-plugin-admin[.exe]
+    konu_ac/    plugin.json  and-plugin-konu_ac[.exe]
+    ozel_chat/  plugin.json  and-plugin-ozel_chat[.exe]
+    …
 ```
 
-AND başlangıçta `and-plugin-*` adındaki binary'leri otomatik bulur.
+AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile
+`and-plugin-<ad>` çiftini bulur (`<ad>`, plugin.json'daki `name` alanı). `and`'ın yanına
+doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında aynı adlı bir manifest varsa
+(`and-plugin-x.json`, bkz. [Yeni eklenti yazmak](#yeni-eklenti-yazmak)) yüklenir; manifesti
+olmayan bir dosya güvenlik gereği hiç çalıştırılmaz.
 
 ### İlk çalıştırma
 
@@ -381,7 +391,7 @@ biçiminde kısayol satırı bulunur. Seçili satır tam genişlikte boyanır ve
 olur; bildirimler tek satırlık `✓`/`✗` biçimindedir. Konu gövdesi gibi uzun yazılar, satırlar göz
 yormasın diye en fazla 100 sütunda sarılır. Bu dil `internal/ui` paketinde tanımlıdır (palet,
 stiller, tam ekran sayfa iskeleti ve bileşenler); eklentiler de aynı paketi kullanır.
-[AND Arama Motoru](../AND%20arama%20motoru/README.md) ayrı bir Go modülü olduğu için aynı paleti
+AND Arama Motoru ayrı bir Go modülü olduğu için aynı paleti
 kendi içinde birebir tekrarlar.
 
 Yerleşik temalar:
@@ -401,7 +411,7 @@ rengi için alt sınır 3:1'dir. Bunlar `internal/ui` testlerinde doğrulanır.
 
 Seçilen tema veri dizinindeki `theme.json` dosyasına yazılır ve eklentilere
 `GET /api/v1/theme` ile ulaşır: her eklenti açılışta temayı okuyup kendini aynı renklerle boyar,
-[and-vscode](../and-vscode/README.md)'nin Canlı Paneli de vurgusunu buradan alır. Tema eklentileri
+[and-vscode](and-vscode/README.md)'nin Canlı Paneli de vurgusunu buradan alır. Tema eklentileri
 (ör. `and-plugin-pembis`) `POST /api/v1/theme` ile kendi renklerini uygulayabilir. Eski
 sürümler mavi-mor varsayılanı yanlışlıkla "Turkuaz" adıyla kaydediyordu; böyle bir `theme.json`
 otomatik olarak Klasik temaya taşınır.
@@ -635,7 +645,7 @@ Bu ikinci dinleyicide bearer token **yoktur** — erişim bir sırla değil doğ
 tarafından (yalnızca aynı kullanıcı) kısıtlanır; pipe/socket adı `AND_DATA_DIR`'den türetilir ve
 gizli değildir (bkz. `and-vscode/src/live/liveAddr.ts` — aynı formülle bağımsızca hesaplar).
 `AND_ENABLE_EXTERNAL_API` ayarlanmadıysa bu dinleyici hiç açılmaz ve mevcut davranış hiçbir
-şekilde değişmez. Kullanım örneği: [and-vscode](../and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
+şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
 
 İçerik yayınlayan/gönderen uç noktalar (forum, site, sohbet, DM, dosya) ayrıca yerel bir hız
 sınırına tabidir (`internal/pluginapi/ratelimit.go`) — token'lı dinleyicideki HERHANGİ bir
@@ -649,10 +659,10 @@ otomatik/hatalı bir kullanımda devreye girip `429 Too Many Requests` döner.
 | Binary | Menü Etiketi | Açıklama |
 |--------|-------------|----------|
 | `and-plugin-admin` | Yönetici Paneli | Konular/Banlar/Geçmiş sekmeleri (kurucu/moderatör) + Moderatörler sekmesi (yalnızca kurucu) — bkz. [Eklentiler/admin/README.md](Eklentiler/admin/README.md) |
-| `and-plugin-konu-ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla inline açılır |
-| `and-plugin-ozel-chat` | Özel Chat | Doğrudan P2P mesajlaşma: konuşma listesi ve okunmamış sayıları, oturum geçmişi, dosya gönderme ve gelen dosya onayı (bkz. [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
-| `and-plugin-pembis` | Pembiş Tema | Arayüzü pembe tonlarda kız temasına boyar (bkz. [Eklentiler/Pembis/README.md](Eklentiler/Pembis/README.md)) |
-| `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (bkz. [Eklentiler/DeltaX/README.md](Eklentiler/DeltaX/README.md)) |
+| `and-plugin-konu_ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla inline açılır (ayrı depo: [AND-community/konu_ac](https://github.com/AND-community/konu_ac)) |
+| `and-plugin-ozel_chat` | Özel Chat | Doğrudan P2P mesajlaşma: konuşma listesi ve okunmamış sayıları, oturum geçmişi, dosya gönderme ve gelen dosya onayı (bkz. [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
+| `and-plugin-pembis` | Pembiş Tema | Arayüzü pembe tonlarda kız temasına boyar (ayrı depo: [AND-community/Pembis](https://github.com/AND-community/Pembis)) |
+| `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (ayrı depo: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
 | `and-plugin-site` | Site | Kendi çok sayfalı kişisel siteni oluştur/düzenle/sil — rol kısıtlaması yok (bkz. [Eklentiler/site/README.md](Eklentiler/site/README.md)) |
 
 ### Yeni eklenti yazmak

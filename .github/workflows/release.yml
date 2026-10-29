@@ -50,7 +50,9 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           VERSION="${{ github.ref_name }}"
-          REPO="lucian95511/and"
+          # Güncelleyicinin sürüm aradığı depo: bu iş akışının çalıştığı depo.
+          # github.com/lucian95511/and modül yoludur, depo adı değildir.
+          REPO="${{ github.repository }}"
           LDFLAGS="-s -w \
             -X github.com/lucian95511/and/internal/updater.Version=${VERSION} \
             -X github.com/lucian95511/and/internal/updater.GitHubRepo=${REPO}"

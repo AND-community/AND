@@ -66,14 +66,14 @@ Küçük iyileştirmeler (hata düzeltme, dokümantasyon) için doğrudan PR aç
 
 ### Gereksinimler
 
-- Go 1.21 veya üzeri
+- Go 1.26.4 veya üzeri (Go 1.21 ve sonrası, `go.mod`'daki araç zinciri sürümünü gerekirse kendisi indirir)
 - Git
 
 ### Kurulum
 
 ```bash
-git clone https://github.com/lucian95511/and.git
-cd and
+git clone https://github.com/AND-community/AND.git
+cd AND
 go mod download
 go build ./...
 go test ./...
@@ -88,10 +88,15 @@ go build ./...
 # Çalıştırılabilir binary'leri oluştur
 go build -o and          ./cmd/and
 go build -o andmod       ./cmd/andmod
-go build -o and-plugin-admin      ./Eklentiler/admin
-go build -o and-plugin-konu-ac    ./Eklentiler/konu_ac
-go build -o and-plugin-ozel-chat  ./Eklentiler/ozel_chat
+
+# Eklentiler kendi klasörlerine, plugin.json'ın yanına derlenir
+go build -o Eklentiler/admin/and-plugin-admin          ./Eklentiler/admin
+go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
+go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 ```
+
+DeltaX, Pembiş ve Konu Aç ayrı depolardır; nasıl kurulacakları README'nin
+[Kaynaktan derleme](README.md#kaynaktan-derleme) bölümünde.
 
 ### Test
 
