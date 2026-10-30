@@ -179,7 +179,20 @@ AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün d�
 
 ## Kurulum
 
+### Hazır sürümden
+
+[Releases](https://github.com/AND-community/AND/releases) sayfasındaki her sürümde, her platform için
+açılıp çalıştırılmaya hazır bir arşiv bulunur: `AND-<sürüm>-windows-amd64.zip`,
+`AND-<sürüm>-linux-amd64.tar.gz`, `AND-<sürüm>-linux-arm64.tar.gz`, `AND-<sürüm>-darwin-amd64.tar.gz`
+ve `AND-<sürüm>-darwin-arm64.tar.gz`. Arşivi herhangi bir yere aç ve açılan klasördeki `and`'ı
+(Windows'ta `and.exe`) çalıştır; moderasyon aracı `andmod` ve bütün eklentiler (`Eklentiler/` içinde)
+zaten yerindedir. İndirdiğin dosyayı sürümün `SHA256SUMS.txt`'sine, o dosyanın imzasını
+(`SHA256SUMS.txt.sig`) da [SECURITY.md](SECURITY.md)'deki genel anahtara karşı denetleyebilirsin. Hazır
+bir sürüm kendini ve eklentilerini otomatik olarak güncel tutar.
+
 ### Gereksinimler
+
+Kaynaktan derlemek için gerekenler:
 
 - Go 1.26.4 veya üzeri (Go 1.21 ve sonrası, `go.mod`'daki araç zinciri sürümünü gerekirse kendisi indirir)
 - Windows, Linux veya macOS (amd64 / arm64)

@@ -179,7 +179,20 @@ from bringing down the whole node:
 
 ## Installation
 
+### From a release
+
+Every release on the [Releases](https://github.com/AND-community/AND/releases) page has a ready-to-run
+archive for each platform: `AND-<version>-windows-amd64.zip`, `AND-<version>-linux-amd64.tar.gz`,
+`AND-<version>-linux-arm64.tar.gz`, `AND-<version>-darwin-amd64.tar.gz` and
+`AND-<version>-darwin-arm64.tar.gz`. Extract it anywhere and run `and` (`and.exe` on Windows) in the
+extracted folder; the moderation tool `andmod` and all the plugins (in `Eklentiler/`) are already in
+place. You can check a download against the release's `SHA256SUMS.txt`, and that file's signature
+(`SHA256SUMS.txt.sig`) against the public key in [SECURITY.md](SECURITY.md). A release build keeps
+itself and its plugins up to date automatically.
+
 ### Requirements
+
+To build from source you need:
 
 - Go 1.26.4 or later (Go 1.21 and later download the toolchain version named in `go.mod` on their own if needed)
 - Windows, Linux or macOS (amd64 / arm64)

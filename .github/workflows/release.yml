@@ -12,6 +12,11 @@ jobs:
   build:
     name: Binary derle (${{ matrix.goos }}/${{ matrix.goarch }})
     runs-on: ubuntu-latest
+    env:
+      # Sürüme giren eklentiler, "klasör:ad" çiftleri. Ad, eklentinin
+      # plugin.json'daki name alanıdır; AND eklentiyi ve güncelleyici sürüm
+      # dosyasını bu adla bulur.
+      EKLENTILER: "admin:admin konu_ac:konu_ac ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site"
     strategy:
       matrix:
         include:
@@ -97,11 +102,9 @@ jobs:
             -o "andmod_${OS}_${ARCH}${SUFFIX}" \
             ./cmd/andmod
 
-          # Eklenti binary'leri, "klasör:ad" çiftleri. Ad, eklentinin
-          # plugin.json'daki name alanıdır; AND eklentiyi ve güncelleyici
-          # sürüm dosyasını bu adla bulur. DeltaX, Pembis ve konu_ac bir
-          # önceki adımda ayrı depolarından alınır.
-          for e in admin:admin konu_ac:konu_ac ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site; do
+          # Eklenti binary'leri (liste: işin EKLENTILER değişkeni). DeltaX,
+          # Pembis ve konu_ac bir önceki adımda ayrı depolarından alınır.
+          for e in ${EKLENTILER}; do
             klasor="${e%%:*}"
             ad="${e##*:}"
             if [ ! -f "Eklentiler/${klasor}/plugin.json" ]; then
@@ -115,6 +118,39 @@ jobs:
             cp "Eklentiler/${klasor}/plugin.json" "and-plugin-${ad}.json"
           done
 
+      # Elle kurulum için platform başına, açılıp çalıştırılmaya hazır bir
+      # arşiv: AND, andmod ve eklentiler AND'ın aradığı düzende
+      # (Eklentiler/<klasör>/plugin.json + and-plugin-<ad>), lisans
+      # bildirimleri ve README'lerle. Tek tek dosyalar otomatik güncelleme
+      # için ayrıca yayımlanır; arşivden kurulan AND da onlarla güncellenir.
+      - name: Kuruluma hazır paket
+        run: |
+          OS="${{ matrix.goos }}"
+          ARCH="${{ matrix.goarch }}"
+          SUFFIX="${{ matrix.suffix }}"
+          PAKET="AND-${{ github.ref_name }}-${OS}-${ARCH}"
+          mkdir -p "${PAKET}/Eklentiler"
+          cp "and_${OS}_${ARCH}${SUFFIX}" "${PAKET}/and${SUFFIX}"
+          cp "andmod_${OS}_${ARCH}${SUFFIX}" "${PAKET}/andmod${SUFFIX}"
+          for e in ${EKLENTILER}; do
+            klasor="${e%%:*}"
+            ad="${e##*:}"
+            [ -f "and-plugin-${ad}_${OS}_${ARCH}${SUFFIX}" ] || continue
+            mkdir -p "${PAKET}/Eklentiler/${klasor}"
+            cp "and-plugin-${ad}_${OS}_${ARCH}${SUFFIX}" "${PAKET}/Eklentiler/${klasor}/and-plugin-${ad}${SUFFIX}"
+            cp "Eklentiler/${klasor}/plugin.json" "${PAKET}/Eklentiler/${klasor}/plugin.json"
+          done
+          # Linux/macOS'ta arşivden çıkan programlar doğrudan çalışabilsin.
+          chmod 755 "${PAKET}/and${SUFFIX}" "${PAKET}/andmod${SUFFIX}" "${PAKET}"/Eklentiler/*/and-plugin-*
+          cp LICENSE "${PAKET}/LICENSE.txt"
+          cp internal/lisans/ucuncu_taraf.txt "${PAKET}/THIRD_PARTY_NOTICES.txt"
+          cp README.md README.tr.md "${PAKET}/"
+          if [ "${OS}" = "windows" ]; then
+            zip -qr "${PAKET}.zip" "${PAKET}"
+          else
+            tar -czf "${PAKET}.tar.gz" "${PAKET}"
+          fi
+
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
@@ -123,6 +159,8 @@ jobs:
             and_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
             andmod_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
             and-plugin-*
+            AND-*.zip
+            AND-*.tar.gz
           if-no-files-found: ignore
 
   release:
@@ -197,6 +235,7 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: |
+            dist/AND-*
             dist/and_*
             dist/andmod_*
             dist/and-plugin-*
