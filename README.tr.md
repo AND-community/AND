@@ -5,6 +5,8 @@
 **AND** — sunucusuz, eşten eşe (P2P) terminal forum topluluğu.  
 Hesap yok, kayıt yok, merkezi sunucu yok. Kimliğin tek bir kurtarma kodundan ibarettir.
 
+Web sitesi: **[and-community.github.io](https://and-community.github.io/tr/)**
+
 ---
 
 ## İçindekiler

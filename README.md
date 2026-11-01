@@ -5,6 +5,8 @@
 **AND** — a serverless, peer-to-peer (P2P) terminal forum community.  
 No accounts, no sign-up, no central server. Your identity is a single recovery code.
 
+Website: **[and-community.github.io](https://and-community.github.io/)**
+
 ---
 
 ## Contents
