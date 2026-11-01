@@ -4,3 +4,9 @@
 # Gömülen lisans metinleri her platformda LF ile çekilsin: terminale basılırlar
 # ve CR karakteri tam ekran arayüzü bozar (bkz. internal/lisans).
 internal/lisans/*.txt text eol=lf
+
+# Simge, logo ve Windows kaynak nesneleri ikilidir; bayt bayt korunmalılar
+# (cmd/and/winres/uret'in testi depodaki .syso'ları yeniden üretip karşılaştırır).
+*.syso binary
+*.ico binary
+*.png binary

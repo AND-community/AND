@@ -1,5 +1,7 @@
 # AND
 
+<img src=".github/logo.png" alt="AND logosu" width="120" align="right">
+
 [English](README.md) · **Türkçe**
 
 **AND** — sunucusuz, eşten eşe (P2P) terminal forum topluluğu.  

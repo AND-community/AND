@@ -1,5 +1,7 @@
 # AND
 
+<img src=".github/logo.png" alt="AND logo" width="120" align="right">
+
 **English** · [Türkçe](README.tr.md)
 
 **AND** — a serverless, peer-to-peer (P2P) terminal forum community.  
