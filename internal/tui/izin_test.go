@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // sahteAnahtar, EklentiAnahtari'nın yerine geçer ve kimin hangi izinlerle

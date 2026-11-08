@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // TestChunkedTransfer verifies that files are sent in chunks without holding

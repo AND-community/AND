@@ -9,10 +9,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/ui"
 )
 
-// Renkler ve stiller artık internal/ui'nin ortak paletinden türetilir —
+// Renkler ve stiller artık ui'nin ortak paletinden türetilir —
 // AND'ın TUI'si ile eklentiler (Eklentiler/*) aynı temayı paylaşır. Aşağıdaki
 // paket değişkenleri, ekran kodunun geri kalanı onları adlarıyla kullandığı
 // için korunur ve her tema değişiminde initStyles ile yeniden kurulur.

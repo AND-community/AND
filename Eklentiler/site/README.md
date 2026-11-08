@@ -21,7 +21,7 @@ salt okunur olarak gösterilir (bkz. ana [README.md → Ekosistem](../../README.
 
 Rol kısıtlaması yoktur: herhangi bir kimlik kendi sitesini yönetebilir —
 her uç nokta zaten çağıranın kendi kimliğine örtük olarak sınırlıdır
-(`internal/pluginapi.SiteBackend`). İmzalama her zaman AND ana sürecinde
+(`pluginapi.SiteBackend`). İmzalama her zaman AND ana sürecinde
 (`cmd/and`'in `siteAdapter`'ında, dolayısıyla `internal/site.Store`'da)
 gerçekleşir — bu eklenti hiçbir zaman özel anahtar görmez.
 
@@ -150,4 +150,4 @@ Kaynak kod: [Eklentiler/site/](.) — `main.go` (manifest, bootstrap),
 |-------|------------|
 | 1.2.0 | Yerel taslak desteği eklendi (`ctrl+d` ile kaydet, `t` ile listele/yükle/sil — ağa yayınlamadan çalışmayı sürdürebilme); sayfa listesinde `c` ile var olan bir sayfayı şablon alarak yeni sayfa oluşturma eklendi |
 | 1.1.0 | Düzenleme formuna GERÇEK (rune değil bayt) sınırları gösteren canlı sayaçlar eklendi; kaydedilmemiş değişikliklerle `esc`'e basmak artık çift onay ister; gövde alanının yüksekliği pencereye göre ölçeklenir |
-| 1.0.0 | AND'ın çekirdek TUI'sindeki (`internal/tui/site.go`) "Site" ekranı buraya taşındı — `internal/pluginapi`'ye eklenen `SiteBackend`/`/api/v1/site/*` uç noktaları üzerinden çalışır |
+| 1.0.0 | AND'ın çekirdek TUI'sindeki (`internal/tui/site.go`) "Site" ekranı buraya taşındı — `pluginapi`'ye eklenen `SiteBackend`/`/api/v1/site/*` uç noktaları üzerinden çalışır |

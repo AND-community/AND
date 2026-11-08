@@ -22,7 +22,7 @@ doğrudan çalıştırılırsa hata verip çıkar.
 
 İmzalama her zaman AND ana sürecinde (`cmd/and`'in `modAdapter`'ında)
 gerçekleşir — bu eklenti hiçbir zaman özel anahtar (private key) görmez,
-yalnızca `internal/pluginapi` üzerinden yapılandırılmış istekler gönderir.
+yalnızca `pluginapi` üzerinden yapılandırılmış istekler gönderir.
 
 ---
 

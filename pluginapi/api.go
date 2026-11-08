@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/protokol"
+	"github.com/lucian95511/and/ui"
 )
 
 const DMProtocol = protokol.DMProtokolu
@@ -462,6 +462,9 @@ type Server struct {
 	chat        ChatBackend
 	mb          ModerationBackend
 	themeCh     chan<- ThemeReq
+	// hariciKapali, AND_ENABLE_EXTERNAL_API açık olsa bile harici dinleyicinin
+	// açılmamasıdır (bkz. HariciKapat).
+	hariciKapali bool
 
 	// Yerel hız sınırlayıcılar — yalnızca pluginapi ÜZERİNDEN (eklenti ya
 	// da harici dinleyici) gelen çağrılara uygulanır, AND'ın kendi TUI'sini
@@ -490,6 +493,12 @@ func NewServer(id IdentityBackend, f ForumBackend, site SiteBackend, dm DMBacken
 		fileLimiter:  newLocalActionLimiter(fileActionLimit, localActionsWindow),
 	}
 }
+
+// HariciKapat, Start'tan önce çağrılırsa harici dinleyici (bkz.
+// enableExternalAPI) ortam değişkeninden bağımsız olarak açılmaz. Sahte AND
+// (pluginapitest) bunu kullanır: kullanıcının AND'ı için açtığı pipe adını
+// bir test sunucusu almamalı.
+func (s *Server) HariciKapat() { s.hariciKapali = true }
 
 // enableExternalAPI, AND_ENABLE_EXTERNAL_API=1 ortam değişkeniyle
 // etkinleştirilen, güvenilir harici araçlar (ör. bir editör eklentisi) için
@@ -635,7 +644,7 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	s.srv = newHTTPServer(s.authMiddleware(s.buildMux(false)))
 	go s.srv.Serve(ln) //nolint:errcheck
 
-	if enableExternalAPI() && s.dataDir != "" {
+	if enableExternalAPI() && s.dataDir != "" && !s.hariciKapali {
 		if extLn, perr := listenExternal(s.dataDir); perr != nil {
 			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı dinleyicisi başlatılamadı:", perr)
 		} else {
@@ -1428,7 +1437,7 @@ const ThemeFile = "theme.json"
 
 // getTheme returns the theme AND's main TUI currently has active, so
 // plugins can match their own color scheme to it. The built-in default and
-// the legacy-default migration both come from internal/ui — the single
+// the legacy-default migration both come from ui — the single
 // source of truth the TUI itself uses — so what plugins (and and-vscode)
 // get always matches what the user actually sees.
 func (s *Server) getTheme(w http.ResponseWriter, _ *http.Request) {
@@ -1491,12 +1500,19 @@ func NewClientFromEnv() (*Client, error) {
 	if token == "" {
 		return nil, fmt.Errorf("AND_API_TOKEN tanımlı değil — bu binary AND tarafından başlatılmalıdır")
 	}
+	return NewClient(addr, token), nil
+}
+
+// NewClient, adresi ve anahtarı açıkça verilen bir istemcidir. Eklentiler
+// NewClientFromEnv'i kullanır; bu, testler ve sahte AND (bkz.
+// pluginapitest) içindir.
+func NewClient(addr, token string) *Client {
 	return &Client{
 		base:   "http://" + addr,
 		token:  token,
 		hc:     &http.Client{Timeout: 35 * time.Second},
 		hcFile: &http.Client{},
-	}, nil
+	}
 }
 
 func (c *Client) Peers() ([]PeerInfo, error) {

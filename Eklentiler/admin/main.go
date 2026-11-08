@@ -18,9 +18,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 var manifest = pluginapi.Manifest{
@@ -72,10 +72,10 @@ func main() {
 }
 
 // safe, uzaktan gelen (yazar adı, başlık, gövde, sebep vb.) her stringi
-// terminale yazmadan önce temizler — bkz. internal/pluginui.Safe.
+// terminale yazmadan önce temizler — bkz. pluginui.Safe.
 func safe(s string) string { return pluginui.Safe(s) }
 
-// Stiller AND'ın ortak paletinden (internal/ui) türetilir — eklenti, AND ile
+// Stiller AND'ın ortak paletinden (ui) türetilir — eklenti, AND ile
 // aynı temada görünür. main, etkin AND temasını uyguladıktan sonra
 // stilleriKur'u yeniden çağırır.
 var (

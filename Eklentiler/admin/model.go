@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/ui"
 )
 
 type tab int

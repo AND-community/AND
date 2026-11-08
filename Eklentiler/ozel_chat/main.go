@@ -9,7 +9,7 @@
 //     kullanıcıya sorulur; onay vermeyen bir istek AND tarafından reddedilir.
 //     AND, bir dosyayı ancak onayı gösterecek bir eklenti dinliyorsa kabul
 //     eder — bu ekran açıkken dosya alınabilir.
-//   - Görünüm AND'ın ortak tasarım sistemiyle (internal/ui) tam ekrandır.
+//   - Görünüm AND'ın ortak tasarım sistemiyle (ui) tam ekrandır.
 package main
 
 import (
@@ -20,8 +20,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/ui"
 )
 
 var manifest = pluginapi.Manifest{

@@ -16,9 +16,10 @@ import (
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/lisans"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/updater"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 const (
@@ -380,17 +381,25 @@ func (m appModel) homeDetailMain(w, h int) string {
 			desc = dil.T("Bu eklenti bir açıklama vermiyor.")
 		}
 		aciklama(desc)
-		lw := etiketGenisligi(10, "Sürüm", "Yazar", "Program")
+		lw := etiketGenisligi(10, "Sürüm", "Yazar", "Kaynak", "Program")
 		if pl.Manifest.Version != "" {
 			b.WriteString(ui.KV(lw, dil.T("Sürüm"), "v"+strings.TrimPrefix(pl.Manifest.Version, "v")) + "\n")
 		}
 		if pl.Manifest.Author != "" {
 			b.WriteString(ui.KV(lw, dil.T("Yazar"), pluginui.Safe(pl.Manifest.Author)) + "\n")
 		}
+		kaynak := dil.T("AND'la birlikte gelir")
+		if pl.Harici {
+			kaynak = dil.T("dışarıdan kuruldu")
+		}
+		b.WriteString(ui.KV(lw, dil.T("Kaynak"), kaynak) + "\n")
 		b.WriteString(ui.KV(lw, dil.T("Program"), ui.Truncate(pl.ExePath, w-lw)) + "\n\n")
 		ipucu := dil.T("enter ile aç, space ile kapat. Kapalı eklentiler menüde soluk görünür.")
 		if !pl.Enabled {
 			ipucu = dil.T("space ile aç. Kapalıyken başlatılmaz ve AND'ın API'sine erişemez.")
+		}
+		if pl.Harici {
+			ipucu += " " + dil.F("Kaldırmak için: %s", pluginmgr.Komut("kaldir", pl.Name()))
 		}
 		b.WriteString(ui.S.Muted.Render(ui.Wrap(ipucu, ui.Measure(w))))
 		return b.String()

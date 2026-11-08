@@ -33,7 +33,7 @@ import (
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/moderation"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/ui"
 )
 
 const kimlikOzetiDosyasi = "kimlik_ozeti.json"

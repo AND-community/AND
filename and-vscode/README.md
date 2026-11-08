@@ -6,7 +6,7 @@ AND ekosistemiyle tam uyumlu bir VS Code uzantısı. İki bağımsız katmandan 
    (`AND_DATA_DIR/DeltaX/…`) okuyup yazar. Commit/dal/birleştirme/diff gibi tamamen yerel işlemler
    **AND kapalıyken de** çalışır; grup oluşturma/davet/yönetici/Gönder(push)/Çek(pull) ise (TUI'de
    olduğu gibi) AND'ın canlı P2P bağlantısını gerektirir — bkz. [Grup senkronizasyonu](#deltax-grup-senkronizasyonu-davet--yönetici--gönder--çek).
-2. **Canlı AND paneli** (Forum/DM/Sohbet/Ağ/Site) — AND açıkken, `internal/pluginapi`'nin yerel
+2. **Canlı AND paneli** (Forum/DM/Sohbet/Ağ/Site) — AND açıkken, `pluginapi`'nin yerel
    API'sine bağlanır; bkz. [Canlı Panel](#canlı-panel-forum--dm--sohbet--ağ) bölümü. Kişisel site
    sayfaların gerçek bir VS Code editöründe düzenlenip **Ctrl+S ile ağa yayınlanır** — bkz.
    [Kişisel Site](#kişisel-site-editörde-düzenle-ctrls-ile-yayınla).
@@ -94,7 +94,7 @@ grup mesajları burada hiç görünmez.
 
 ### Nasıl bağlanır — mimari
 
-AND'ın eklenti API'si (`internal/pluginapi`) normalde yalnızca AND'ın kendisinin başlattığı
+AND'ın eklenti API'si (`pluginapi`) normalde yalnızca AND'ın kendisinin başlattığı
 eklenti alt süreçlerine (`AND_API_ADDR`/`AND_API_TOKEN` ortam değişkenleriyle) açılır — bağımsız
 başlatılmış bir VS Code uzantısı bu değişkenleri asla göremez. Bunu çözmek için AND'ın Go
 kaynağına küçük, opt-in bir ekleme yapıldı: `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
@@ -111,7 +111,7 @@ Bu ikinci dinleyicide **bearer token yoktur** — erişim kararını bir sırla 
 sistemi verir, bu yüzden pipe/socket adının kendisi gizli olmak zorunda değildir (adı bilmek
 yalnızca bağlanmayı DENEMEYE izin verir; gerçek erişim OS tarafından kısıtlanır). Uzantı bu adı,
 AND'ın kullandığı `AND_DATA_DIR` yoluyla birebir aynı formülle (bkz. `src/live/liveAddr.ts` ↔
-`internal/pluginapi/externalpipe_*.go`) kendisi hesaplar; ayrıca bir keşif dosyasına gerek yoktur.
+`pluginapi/externalpipe_*.go`) kendisi hesaplar; ayrıca bir keşif dosyasına gerek yoktur.
 
 ### Kurulum (tek seferlik)
 
@@ -196,7 +196,7 @@ yerel-olmayan dosyaları çalışma klasörünün dışında tutun.
 ## Kurulum / Geliştirme
 
 Canlı panel için AND tarafında `go build ./...` ile yeniden derleme gerekir (yalnızca
-`internal/pluginapi` içine `github.com/Microsoft/go-winio` bağımlılığı eklendi — `go.mod`/`go.sum`
+`pluginapi` içine `github.com/Microsoft/go-winio` bağımlılığı eklendi — `go.mod`/`go.sum`
 zaten güncellendi, ek bir adım gerekmez). Bu değişiklik `go build ./...`, `go vet ./...` ve
 `go test ./...` ile doğrulanır.
 
@@ -273,8 +273,8 @@ Canlı panel katmanı (`src/live/`) yukarıdaki DeltaX veri katmanından tamamen
 
 | TypeScript | Go karşılığı | Ne yapar |
 |---|---|---|
-| `src/live/liveAddr.ts` | `internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go` | Pipe adı / socket yolu türetme (birebir aynı formül) |
-| `src/live/liveClient.ts` | `internal/pluginapi/api.go` (`Client`) | Named pipe/Unix socket üzerinden HTTP istekleri (token yok) |
+| `src/live/liveAddr.ts` | `pluginapi/externalpipe_windows.go` / `externalpipe_unix.go` | Pipe adı / socket yolu türetme (birebir aynı formül) |
+| `src/live/liveClient.ts` | `pluginapi/api.go` (`Client`) | Named pipe/Unix socket üzerinden HTTP istekleri (token yok) |
 | `src/live/liveConnection.ts` | — | Bağlantı durumu, periyodik yeniden deneme |
 | `src/live/backgroundSync.ts` | — | Arka plan akışları: DM geçmişi (imleçle), sohbet/dosya/onay long-poll'ları |
 | `src/live/dmCore.ts` | `Eklentiler/DeltaX/gecmis.go` (`dmImleci`), `protokol/dm.go` | DM imleci, makine mesajı denetimi, konuşma görünümü, okunmamış sayısı; `vscode`'a bağımlı değildir |
@@ -282,10 +282,10 @@ Canlı panel katmanı (`src/live/`) yukarıdaki DeltaX veri katmanından tamamen
 | `src/live/lider.ts` | — | Birden çok VS Code penceresinden yalnızca birinin DM'leri işlemesi |
 | `src/live/livePanel.ts` | — | Canlı Panel'in uzantı tarafı: webview mesajlarını AND API çağrılarına bağlar, canlı akışları panele iletir |
 | `src/live/panelHtml.ts` | — | Panelin HTML/CSS/betiği (Kimlik/Ağ/Sohbet/DM/Forum/Site/Dosyalar); `vscode`'a bağımlı değildir, sahte DOM ile birim testi vardır |
-| `src/live/themeColor.ts` | `internal/ui/theme.go` (`Presets`) | AND tema renklerini (xterm-256 kodu ya da hex) CSS'e çevirir, vurgu üzerindeki yazı rengini seçer |
-| `src/live/liveTypes.ts` | `internal/pluginapi/api.go` (struct'lar) | JSON tip tanımları |
+| `src/live/themeColor.ts` | `ui/theme.go` (`Presets`) | AND tema renklerini (xterm-256 kodu ya da hex) CSS'e çevirir, vurgu üzerindeki yazı rengini seçer |
+| `src/live/liveTypes.ts` | `pluginapi/api.go` (struct'lar) | JSON tip tanımları |
 | `src/live/site/sitePage.ts` | `internal/site/site.go` (sınırlar, `reSlug`) + `Eklentiler/site` (`kaydet()`) | Saf yardımcılar: belge biçimi, doğrulama, bayt taşma ofseti, paylaşım kodu, yayın aralığı |
-| `src/live/site/siteFileSystem.ts` | `internal/pluginapi` `/api/v1/site/*` | `and-site-edit:` sanal dosya sistemi — okuma, kaydet = yayınla, silme, değişiklik olayları |
+| `src/live/site/siteFileSystem.ts` | `pluginapi` `/api/v1/site/*` | `and-site-edit:` sanal dosya sistemi — okuma, kaydet = yayınla, silme, değişiklik olayları |
 | `src/live/site/siteEditorStatus.ts` | `Eklentiler/site` (canlı bayt sayaçları) | Durum çubuğu sayacı + sınır aşımı tanılamaları |
 | `src/live/site/siteCommands.ts` | `Eklentiler/site` (liste/yeni/sil) | Yeni / Aç / Sil / Paylaşım Kodunu Kopyala komutları |
 

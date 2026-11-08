@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // ─── Plugin.Name / Label / Launch ─────────────────────────────────────────────

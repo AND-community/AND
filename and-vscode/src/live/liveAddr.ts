@@ -1,7 +1,7 @@
 import * as crypto from "crypto";
 import * as path from "path";
 
-// internal/pluginapi/externalpipe_windows.go / externalpipe_unix.go ile
+// pluginapi/externalpipe_windows.go / externalpipe_unix.go ile
 // BİREBİR aynı türetme mantığı. Bağlantı noktası bir SIR değildir — erişim
 // kararını OS'in kendisi (named pipe security descriptor / Unix socket
 // dosya izinleri) verir; burada yalnızca AYNI adı hesaplıyoruz ki

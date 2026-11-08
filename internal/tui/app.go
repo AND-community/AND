@@ -23,13 +23,13 @@ import (
 	"github.com/lucian95511/and/internal/githubverify"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
-	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
-	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 type appScreen int
@@ -1818,6 +1818,9 @@ func (m appModel) eklentiSatiri(w int, secili bool, pl pluginmgr.Plugin) string 
 	ver := ""
 	if mf.Version != "" {
 		ver = "v" + mf.Version
+	}
+	if pl.Harici {
+		ver += "  " + dil.T("dışarıdan")
 	}
 	satir := ui.Row(w, secili, ui.Seg{Text: fmt.Sprintf("%-24s", dil.T(pluginui.Safe(label))), Bold: secili}, durum, ui.M("   "+ver)) + "\n"
 	if secili && mf.Description != "" {

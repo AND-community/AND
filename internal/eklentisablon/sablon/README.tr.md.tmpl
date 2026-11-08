@@ -1,0 +1,68 @@
+# [[.Etiket]]
+
+Bir [AND](https://github.com/AND-community/AND) eklentisi. English: [README.md](README.md).
+
+`and eklenti yeni [[.Ad]]` ile oluşturuldu ve ayrı bir Go modülüdür: AND'ın herkese açık eklenti SDK'sını
+(`pluginapi`, `ui`, `dil`) içe aktarır, derlemek için AND'ın kaynak kodu gerekmez.
+
+| Dosya | Ne işe yarar |
+|---|---|
+| `plugin.json` | Manifest. AND onu programı **çalıştırmadan** okur: ad, menü adı, sürüm, izinler |
+| `main.go` | Açılış: `--manifest`, `--deneme` (AND olmadan dene), dil, tema, Bubble Tea programı |
+| `model.go` | Ekran: AND'dan verileri bir komutla yükler, tam ekran bir `ui.Page` çizer |
+| `model_test.go` | Yalnızca manifest'teki izinleri veren sahte bir AND'a (`pluginapitest`) karşı testler |
+| `ceviri.json`, `ceviri.go` | Arayüz metinlerinin çevirileri (kaynak Türkçe; en, de, es, fr, ru) |
+
+## Geliştirme
+
+```sh
+go mod tidy              # AND'ın SDK'sını ve bağımlılıklarını indirir
+go run . --deneme        # eklentiyi örnek verili sahte bir AND'la açar, AND gerekmez
+go test ./...            # ekran, manifest ve çeviri testleri
+```
+
+Sahte AND, AND'ın gerçek eklenti API sunucusunu bellekteki verilerle çalıştırır. Gerçeği gibi eklentiye
+yalnızca `plugin.json`'daki izinleri verir: eksik bir izin yayımladıktan sonra değil, geliştirirken `403`
+olarak görünür.
+
+## Derleme ve kurma
+
+```sh
+go build -o and-plugin-[[.Ad]].exe .     # Windows
+go build -o and-plugin-[[.Ad]] .         # Linux, macOS
+and eklenti kur .                        # bu klasörü AND'a kurar
+```
+
+AND klasörü veri dizinine (`eklentiler/[[.Ad]]/`) kopyalar ve programın ve `plugin.json`'ın SHA-256'sını
+kaydeder. Eklentiyi yeniden derlediysen `and eklenti kur .` komutunu tekrar çalıştır: AND, kurulduktan
+sonra dosyaları değişen bir eklentiyi başlatmaz. Yeni bir eklentiyi görmek için AND'ı yeniden başlat.
+
+## İzinler
+
+Eklenti varsayılan olarak yalnızca herkese açık verileri okur: kimlik, eşler, forum konuları, kişisel
+siteler, genel sohbet ve tema. Kullanıcı adına bir şey yapan her istek `plugin.json`'da bir izin ister
+(`"permissions": ["forum"]`): `dm`, `file`, `chat`, `forum`, `site`, `moderation`, `theme`. AND ilk
+açılışta kullanıcıya sorar; bir güncelleme yeni bir izin isterse yeniden sorar.
+
+## Dağıtma
+
+`plugin.json`'ı ve programı kökte ya da tek bir klasörün içinde taşıyan tek bir arşiv (`.zip` ya da
+`.tar.gz`) yayımla. Programlar AND'ın kendi sürüm dosyaları gibi adlandırılırsa tek arşiv her platforma
+yeter:
+
+```sh
+GOOS=windows GOARCH=amd64 go build -o dist/and-plugin-[[.Ad]]_windows_amd64.exe .
+GOOS=linux   GOARCH=amd64 go build -o dist/and-plugin-[[.Ad]]_linux_amd64 .
+GOOS=darwin  GOARCH=arm64 go build -o dist/and-plugin-[[.Ad]]_darwin_arm64 .
+cp plugin.json README.md dist/
+```
+
+Kullanıcılar `and eklenti kur <arşiv ya da https adresi> --sha256 <özet>` ile kurar. AND kullanıcının
+bilgisayarına uyan programı dosya başlığından seçer, kurarken hiçbir şeyi çalıştırmaz ve arşivin
+SHA-256'sını gösterir; senin yayımladığın özetle karşılaştırılabilir.
+
+## Lisans
+
+AND, bu eklentinin içe aktardığı SDK paketleri dahil, GNU AGPL-3.0 lisanslıdır. Bu paketleri programına
+bağlayan bir eklenti genel kabule göre AND'a dayanan bir çalışmadır; bu yüzden eklentiyi kaynak koduyla
+birlikte AGPL-3.0 (ya da uyumlu bir lisans) altında yayımla. Ayrıntılar AND'ın `EKLENTILER.md` belgesinde.

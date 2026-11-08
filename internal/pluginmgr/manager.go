@@ -10,13 +10,20 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 type Plugin struct {
 	Manifest pluginapi.Manifest
 	ExePath  string
 	Enabled  bool
+	// Harici, eklentinin AND'la birlikte gelmediği, kullanıcının "and eklenti
+	// kur" ile veri dizinine kurduğudur (bkz. kurulum.go). Böyle bir eklenti
+	// başlatılmadan önce Dogrula ile denetlenir ve AND'ın güncelleyicisi ona
+	// dokunmaz.
+	Harici bool
+	// kurulum, Harici eklentinin kurulum kaydıdır (beklenen özetler).
+	kurulum *Kurulum
 }
 
 func (p *Plugin) Name() string  { return p.Manifest.Name }
@@ -73,8 +80,11 @@ func Discover() []Plugin {
 	return plugins
 }
 
+// DiscoverWithState, AND'la gelen eklentileri ve veri dizinine dışarıdan
+// kurulmuş olanları bulur, kullanıcının açık/kapalı seçimini uygular.
 func DiscoverWithState(dataDir string) []Plugin {
 	plugins := Discover()
+	plugins = append(plugins, discoverHarici(dataDir, plugins)...)
 	if len(plugins) == 0 {
 		return plugins
 	}

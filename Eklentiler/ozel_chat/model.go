@@ -14,10 +14,10 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
 	"github.com/lucian95511/and/protokol"
+	"github.com/lucian95511/and/ui"
 )
 
 // istemci, eklentinin kullandığı AND API çağrılarıdır (*pluginapi.Client);

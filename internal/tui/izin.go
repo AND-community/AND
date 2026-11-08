@@ -6,10 +6,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 // EklentiAnahtari, eklentiye yalnızca onaylanan izinleri taşıyan bir API
@@ -47,6 +47,13 @@ func (m appModel) eklentiAc(i int, env []string) (tea.Model, tea.Cmd) {
 	}
 	pl := m.plugins[i]
 	if err := pluginmgr.Uyumlu(pl); err != nil {
+		m.izinIstegi = &izinIstegi{eklenti: i, onceki: m.screen, hata: err.Error()}
+		m.screen = screenIzin
+		return m, nil
+	}
+	// Dışarıdan kurulmuş eklenti, kurulumdaki haliyle aynı değilse (sonradan
+	// değiştirilmiş ya da bozulmuş) başlatılmaz.
+	if err := pluginmgr.Dogrula(pl); err != nil {
 		m.izinIstegi = &izinIstegi{eklenti: i, onceki: m.screen, hata: err.Error()}
 		m.screen = screenIzin
 		return m, nil
@@ -136,6 +143,17 @@ func (m appModel) viewIzin() string {
 		return ui.Page(m.width, m.height, b.String(), f)
 	}
 
+	if pl.Harici {
+		uyari := ui.Wrap(dil.T("Bu eklenti AND'la birlikte gelmedi: sen dışarıdan kurdun ve AND geliştiricileri onu incelemedi."), olcu-2)
+		for i, satir := range strings.Split(uyari, "\n") {
+			if i == 0 {
+				b.WriteString(ui.Notice(ui.KindWarning, satir) + "\n")
+			} else {
+				b.WriteString(ui.S.Warning.Render("  "+satir) + "\n")
+			}
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString(ui.S.Title.Render(dil.F("%s şu izinleri istiyor", ad)) + "\n\n")
 	for _, iz := range ist.izinler {
 		bilgi, ok := pluginapi.IzinBul(iz)

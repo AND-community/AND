@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // brokerNoNode creates a Broker without a real network.Node for unit tests

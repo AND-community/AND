@@ -13,16 +13,21 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/lisans"
+	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/updater"
 )
 
-// komutSatiri, bilinen bir bayrağı işleyip true döner. Bayrak yoksa ya da
-// tanınmıyorsa false döner ve AND tam ekran arayüzle açılır; bilinmeyen
-// argümanlar eskisi gibi yok sayılır (güncelleyici yeniden başlarken
-// argümanları aynen geçirir).
-func komutSatiri(args []string, out io.Writer) (bool, error) {
+// komutSatiri, bilinen bir bayrağı ya da komutu (and eklenti …) işleyip true
+// döner. Bayrak yoksa ya da tanınmıyorsa false döner ve AND tam ekran
+// arayüzle açılır; bilinmeyen argümanlar eskisi gibi yok sayılır
+// (güncelleyici yeniden başlarken argümanları aynen geçirir).
+func komutSatiri(args []string, in io.Reader, out io.Writer) (bool, error) {
 	if len(args) == 0 {
 		return false, nil
+	}
+	switch args[0] {
+	case "eklenti", "eklentiler", "plugin", "plugins":
+		return true, eklentiKomutu(args[1:], in, out)
 	}
 	var metin string
 	switch args[0] {
@@ -58,7 +63,7 @@ func surumMetni() string {
 func yardimMetni() string {
 	satir := func(bayrak, aciklama string) string { return fmt.Sprintf("  %-34s %s", bayrak, aciklama) }
 	return strings.Join([]string{
-		dil.T("Kullanım: and [bayrak]"),
+		dil.F("Kullanım: and [bayrak]  ya da  %s %s", pluginmgr.Komut(""), yer(dil.T("komut"))),
 		"",
 		dil.T("Bayrak verilmezse AND tam ekran arayüzle açılır."),
 		"",
@@ -66,5 +71,7 @@ func yardimMetni() string {
 		satir("    --lisans, --license", dil.T("AND'ın lisansının (GNU AGPL-3.0) tam metnini yazar")),
 		satir("    --ucuncu-taraf, --third-party", dil.T("üçüncü taraf bileşenlerin lisans bildirimlerini yazar")),
 		satir("-h, --help", dil.T("bu yardımı yazar")),
+		"",
+		satir(strings.TrimPrefix(pluginmgr.Komut(""), "and ")+" "+yer(dil.T("komut")), dil.F("eklenti kurar, kaldırır, listeler ya da yenisini oluşturur (%s)", pluginmgr.Komut("yardim"))),
 	}, "\n") + "\n"
 }

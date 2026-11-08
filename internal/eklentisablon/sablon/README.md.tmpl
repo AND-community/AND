@@ -1,0 +1,68 @@
+# [[.Etiket]]
+
+An [AND](https://github.com/AND-community/AND) plugin. Türkçesi: [README.tr.md](README.tr.md).
+
+It was created with `and eklenti new [[.Ad]]` and is a separate Go module: it imports AND's public
+plugin SDK (`pluginapi`, `ui`, `dil`) and builds without a copy of AND's source.
+
+| File | What it is |
+|---|---|
+| `plugin.json` | The manifest. AND reads it **without running** the program: name, label, version, permissions |
+| `main.go` | Start-up: `--manifest`, `--deneme` (try without AND), language, theme, the Bubble Tea program |
+| `model.go` | The screen: loads data from AND in a command and draws a full-screen `ui.Page` |
+| `model_test.go` | Tests against a fake AND (`pluginapitest`) that grants only the manifest's permissions |
+| `ceviri.json`, `ceviri.go` | Translations of the UI strings (Turkish source, plus en, de, es, fr, ru) |
+
+## Develop
+
+```sh
+go mod tidy              # fetches AND's SDK and its dependencies
+go run . --deneme        # opens the plugin against a fake AND with sample data, no AND needed
+go test ./...            # screen, manifest and translation tests
+```
+
+The fake AND runs AND's real plugin API server with in-memory data. Like the real one, it gives the
+plugin only the permissions listed in `plugin.json`, so a missing permission shows up as `403` while you
+develop, not after you ship.
+
+## Build and install
+
+```sh
+go build -o and-plugin-[[.Ad]].exe .     # Windows
+go build -o and-plugin-[[.Ad]] .         # Linux, macOS
+and eklenti kur .                        # installs this folder into AND (English alias: and plugin install .)
+```
+
+AND copies the folder into its data directory (`eklentiler/[[.Ad]]/`) and records the SHA-256 of the
+program and of `plugin.json`. Rebuilt the plugin? Run `and eklenti kur .` again; AND refuses to start an
+installed plugin whose files changed after installation. Restart AND to see a new plugin.
+
+## Permissions
+
+By default the plugin can read only public data: identity, peers, forum posts, personal sites, the
+general chat and the theme. Anything that acts on the user's behalf needs a permission in
+`plugin.json` (`"permissions": ["forum"]`): `dm`, `file`, `chat`, `forum`, `site`, `moderation`, `theme`.
+AND asks the user on first launch and again whenever an update asks for a new one.
+
+## Distribute
+
+Publish one archive (`.zip` or `.tar.gz`) that holds `plugin.json` and the program, either at the root or
+inside a single folder. One archive can serve every platform when the programs are named like AND's own
+release files:
+
+```sh
+GOOS=windows GOARCH=amd64 go build -o dist/and-plugin-[[.Ad]]_windows_amd64.exe .
+GOOS=linux   GOARCH=amd64 go build -o dist/and-plugin-[[.Ad]]_linux_amd64 .
+GOOS=darwin  GOARCH=arm64 go build -o dist/and-plugin-[[.Ad]]_darwin_arm64 .
+cp plugin.json README.md dist/
+```
+
+Users install it with `and eklenti kur <archive or https address> --sha256 <hash>`. AND picks the program
+for their computer from the file header, never runs anything while installing, and shows the archive's
+SHA-256 so it can be compared with the one you publish.
+
+## License
+
+AND, including the SDK packages this plugin imports, is licensed under GNU AGPL-3.0. A program that links
+those packages is generally considered a work based on AND, so publish this plugin under AGPL-3.0 (or a
+compatible license) with its source. See AND's `PLUGINS.md` for details.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 func TestIzinOnayi_KaydedilirVeYeniIzindeYenidenSorulur(t *testing.T) {

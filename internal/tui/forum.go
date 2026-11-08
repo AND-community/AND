@@ -21,10 +21,10 @@ import (
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
-	"github.com/lucian95511/and/internal/pluginui"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 // profilRecentChatLimit caps how many of an author's recent chat lines are

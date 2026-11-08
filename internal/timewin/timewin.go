@@ -1,7 +1,7 @@
 // Package timewin holds small helpers shared by the packages that keep a
 // sorted, in-memory sliding window of timestamps for local rate limiting
 // (internal/forum, internal/chatlog, internal/profile, internal/site,
-// internal/pluginapi) — before this package existed each of them carried
+// pluginapi) — before this package existed each of them carried
 // its own byte-identical copy of KeepAfter.
 package timewin
 

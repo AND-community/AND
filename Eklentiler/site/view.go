@@ -1,7 +1,7 @@
 package main
 
 // view.go — Site eklentisinin render mantığı, model.go'nun (durum/Update)
-// yanında. Görsel dil AND'ın kendisiyle ORTAKTIR (internal/ui): aynı palet,
+// yanında. Görsel dil AND'ın kendisiyle ORTAKTIR (ui): aynı palet,
 // çerçeve, başlık çubuğu, liste satırı ve kısayol satırı; etkin AND teması
 // açılışta /api/v1/theme'den okunur (bkz. main.go). Böylece eklenti, ayrı
 // bir program olarak çalışsa da AND'ın bir ekranı gibi görünür.
@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/ui"
 )
 
 // icW, tam ekran çerçevenin içerik genişliğidir (bkz. ui.Page).

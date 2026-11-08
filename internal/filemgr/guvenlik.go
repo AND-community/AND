@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/lucian95511/and/internal/pluginui"
+	"github.com/lucian95511/and/pluginui"
 )
 
 // maxFilenameBytes, kaydedilen dosya adının en fazla uzunluğudur (bayt).

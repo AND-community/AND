@@ -1,0 +1,57 @@
+package main
+
+import (
+	"strings"
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/lucian95511/and/pluginapi/pluginapitest"
+)
+
+func TestManifest(t *testing.T) {
+	m := manifestOku()
+	if m.Name != [[printf "%q" .Ad]] || m.Label == "" || m.Version == "" {
+		t.Fatalf("plugin.json eksik: %+v", m)
+	}
+}
+
+// Ekran, sahte bir AND'ın verileriyle çizilir ve terminale sığar. Sahte AND
+// eklentiye yalnızca plugin.json'daki izinleri verir: yazmayı unuttuğun bir
+// izin burada da 403 döner.
+func TestEkran(t *testing.T) {
+	and := pluginapitest.Yeni().Ornek()
+	c := and.Test(t, manifestOku().Permissions...)
+
+	var m tea.Model = yeniModel(c)
+	yuklendi := m.Init()()
+	for _, boyut := range []tea.WindowSizeMsg{{Width: 80, Height: 24}, {Width: 140, Height: 40}} {
+		m, _ = m.Update(boyut)
+		m, _ = m.Update(yuklendi)
+		ekran := m.View()
+		duz := ansi.Strip(ekran)
+		for _, beklenen := range []string{pluginapitest.VarsayilanKimlik.Ad, "eklenti nasıl gidiyor?"} {
+			if !strings.Contains(duz, beklenen) {
+				t.Errorf("%dx%d ekranda %q yok:\n%s", boyut.Width, boyut.Height, beklenen, duz)
+			}
+		}
+		satirlar := strings.Split(ekran, "\n")
+		if len(satirlar) != boyut.Height {
+			t.Errorf("%dx%d: %d satır, ekran tam dolmalı", boyut.Width, boyut.Height, len(satirlar))
+		}
+		for i, s := range satirlar {
+			if lipgloss.Width(s) > boyut.Width {
+				t.Errorf("%dx%d: satır %d terminalden geniş", boyut.Width, boyut.Height, i)
+			}
+		}
+	}
+}
+
+func TestCikis(t *testing.T) {
+	m := yeniModel(nil)
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); cmd == nil {
+		t.Fatal("q eklentiyi kapatmalı")
+	}
+}

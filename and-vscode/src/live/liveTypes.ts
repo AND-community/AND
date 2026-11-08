@@ -1,6 +1,6 @@
 import { k } from "../dil/dil";
 
-// internal/pluginapi/api.go içindeki JSON tiplerinin birebir karşılığı.
+// pluginapi/api.go içindeki JSON tiplerinin birebir karşılığı.
 // Bu dosya yalnızca AND'ın canlı yerel API'sine (pipe/socket üzerinden,
 // bkz. liveClient.ts) bağlıyken kullanılır — DeltaX'in kendi yerel dosya
 // formatından bağımsızdır.
@@ -151,7 +151,7 @@ export interface ConsentResp {
   accept: boolean;
 }
 
-/** internal/pluginapi/api.go'daki ThemeReq ile birebir aynı. Renk değerleri
+/** pluginapi/api.go'daki ThemeReq ile birebir aynı. Renk değerleri
  * terminal palet numarası ("63") ya da hex kod ("#ff6600") olabilir — bkz.
  * themeColor.ts'deki ansiOrHexToCss(). */
 export interface ThemeReq {

@@ -105,7 +105,7 @@ DeltaX, Pembiş ve Konu Aç ayrı depolardır; nasıl kurulacakları README'nin
 go test ./...
 
 # Belirli bir paketi test et
-go test ./internal/pluginapi/...
+go test ./pluginapi/...
 go test ./internal/dmmgr/...
 go test ./internal/pluginmgr/...
 
@@ -234,14 +234,24 @@ Squash merge tercih edilir; temiz commit geçmişi tutulur.
 
 ### Yeni bir eklenti eklemek
 
-AND eklentileri bağımsız binary'lerdir. Yeni bir eklenti için:
+Yeni bir eklentinin AND deposunda olması gerekmez: `and eklenti yeni <ad>` kendi Go modülünde, herkese
+açık SDK'yla derlenen bir proje kurar; kendi deponda yayımlayıp `and eklenti kur` ile dağıtabilirsin.
+Rehber: [EKLENTILER.md](EKLENTILER.md) (English: [PLUGINS.md](PLUGINS.md)).
 
-1. `Eklentiler/<isim>/main.go` dosyasını oluştur.
-2. `--manifest` davranışını ve `pluginapi.NewClientFromEnv()` kullanımını uygula.
-3. Binary adı `and-plugin-<isim>[.exe]` kuralına uymalıdır.
-4. Eklenti README'si için `Eklentiler/<isim>/README.md` oluştur.
+AND'la birlikte gelecek bir eklenti öneriyorsan:
 
-Detaylı şablon ve API referansı: [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md)
+1. `Eklentiler/<ad>/` altında `plugin.json`, `main.go`, `ceviri.json` ve testlerle başla (iskelet
+   `and eklenti yeni <ad> Eklentiler/<ad>` ile kurulabilir; `go.mod`'u sil, eklenti AND'ın modülüne katılır).
+2. Program adı `and-plugin-<ad>[.exe]` olmalı ve `plugin.json`'ın yanına derlenmeli.
+3. Yalnızca kullandığın izinleri iste; ağdan gelen metni `pluginui.Safe`'ten geçir.
+4. `Eklentiler/<ad>/README.md` yaz ve eklentiyi `.github/workflows/release.yml`'deki listeye ekle.
+
+### Herkese açık SDK
+
+`pluginapi`, `pluginapi/pluginapitest`, `ui`, `pluginui`, `dil` ve `protokol` AND deposunun dışındaki
+eklentiler tarafından içe aktarılır. Bu paketlerdeki dışa açık adları kaldırma ya da anlamını değiştirme;
+yalnızca ekle. Eklenti API'sine uç nokta ya da izin eklersen `pluginapi.APIVersion`'ı artır ve
+`EKLENTILER.md` ile `PLUGINS.md`'yi güncelle.
 
 ### Mevcut eklentileri değiştirmek
 

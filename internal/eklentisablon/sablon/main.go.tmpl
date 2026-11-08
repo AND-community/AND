@@ -1,0 +1,91 @@
+// [[.Etiket]] — bir AND eklentisi.
+//
+// AND bu programı Eklentiler menüsünden, kendi klasöründe ve şu ortam
+// değişkenleriyle başlatır: AND_API_ADDR, AND_API_TOKEN (pluginapi.NewClientFromEnv),
+// AND_DATA_DIR (pluginapi.DataDir) ve AND_DIL (dil.OrtamdanAyarla).
+package main
+
+import (
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginapi/pluginapitest"
+	"github.com/lucian95511/and/ui"
+)
+
+// manifestVerisi, plugin.json'ın kendisidir. AND onu programı çalıştırmadan
+// okur; program da aynı dosyayı gömer, böylece iki kopya birbirinden ayrılmaz.
+//
+//go:embed plugin.json
+var manifestVerisi []byte
+
+func manifestOku() pluginapi.Manifest {
+	var m pluginapi.Manifest
+	if err := json.Unmarshal(manifestVerisi, &m); err != nil {
+		panic(err)
+	}
+	return m
+}
+
+func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--manifest":
+			_, _ = os.Stdout.Write(manifestVerisi)
+			return
+		case "--deneme":
+			// AND olmadan, sahte verili bir AND'a karşı dene: go run . --deneme
+			kapat, err := denemeOrtami()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, dil.F("sahte AND başlatılamadı: %v", err))
+				os.Exit(1)
+			}
+			defer kapat()
+		}
+	}
+
+	dil.OrtamdanAyarla()
+	istemci, err := pluginapi.NewClientFromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, dil.T("Bu program bir AND eklentisidir ve AND'ın Eklentiler menüsünden açılır. AND olmadan denemek için: go run . --deneme"))
+		os.Exit(1)
+	}
+	// AND'ın etkin temasıyla aç; eski bir AND'da uç nokta yoksa varsayılan tema kalır.
+	if tema, err := istemci.GetTheme(); err == nil {
+		ui.Apply(ui.Theme(tema))
+	}
+	if _, err := tea.NewProgram(yeniModel(istemci), tea.WithAltScreen()).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+// denemeOrtami, örnek verili sahte bir AND başlatır ve eklentiyi ona bağlayan
+// ortam değişkenlerini ayarlar. Eklentiye yalnızca plugin.json'da istenen
+// izinler verilir: gerçek AND'daki gibi, eksik bir izin 403 döner.
+func denemeOrtami() (func(), error) {
+	dizin, err := os.MkdirTemp("", "and-deneme-")
+	if err != nil {
+		return nil, err
+	}
+	sn, err := pluginapitest.Yeni().Ornek().Baslat(dizin, manifestOku().Permissions...)
+	if err != nil {
+		_ = os.RemoveAll(dizin)
+		return nil, err
+	}
+	for _, d := range sn.Ortam() {
+		ad, deger, _ := strings.Cut(d, "=")
+		_ = os.Setenv(ad, deger)
+	}
+	return func() {
+		sn.Kapat()
+		_ = os.RemoveAll(dizin)
+	}, nil
+}

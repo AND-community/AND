@@ -12,7 +12,7 @@ import (
 func komut(t *testing.T, args ...string) (bool, string) {
 	t.Helper()
 	var b strings.Builder
-	bitti, err := komutSatiri(args, &b)
+	bitti, err := komutSatiri(args, strings.NewReader(""), &b)
 	if err != nil {
 		t.Fatalf("komutSatiri(%q): %v", args, err)
 	}

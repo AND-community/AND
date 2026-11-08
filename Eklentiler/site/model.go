@@ -21,8 +21,8 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/ui"
 )
 
 // Alan sınırları internal/site.MaxSlugBytes/MaxTitleBytes/MaxBodyBytes/

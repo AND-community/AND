@@ -1,0 +1,120 @@
+package main
+
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lucian95511/and/dil"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
+)
+
+// etiket, ekranın başlığıdır (bir ad olduğu için çevrilmez).
+const etiket = [[printf "%q" .Etiket]]
+
+// istemci, eklentinin AND'dan kullandığıdır. *pluginapi.Client bunu
+// karşılar; testler pluginapitest'in sahte AND'ını kullanır.
+type istemci interface {
+	Identity() (pluginapi.IdentityInfo, error)
+	Peers() ([]pluginapi.PeerInfo, error)
+	AllChat() ([]pluginapi.ChatMsg, error)
+}
+
+// yuklendiMsg, AND'dan okunanlardır.
+type yuklendiMsg struct {
+	kimlik pluginapi.IdentityInfo
+	esler  []pluginapi.PeerInfo
+	sohbet []pluginapi.ChatMsg
+	err    error
+}
+
+type model struct {
+	c             istemci
+	width, height int
+	yukleniyor    bool
+	veri          yuklendiMsg
+}
+
+func yeniModel(c istemci) model { return model{c: c, yukleniyor: true} }
+
+func (m model) Init() tea.Cmd { return yukle(m.c) }
+
+// yukle, AND'a istekleri arayüzü dondurmadan, ayrı bir komutta atar.
+func yukle(c istemci) tea.Cmd {
+	return func() tea.Msg {
+		var v yuklendiMsg
+		if v.kimlik, v.err = c.Identity(); v.err != nil {
+			return v
+		}
+		if v.esler, v.err = c.Peers(); v.err != nil {
+			return v
+		}
+		v.sohbet, v.err = c.AllChat()
+		return v
+	}
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+	case yuklendiMsg:
+		m.yukleniyor, m.veri = false, msg
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "esc", "ctrl+c":
+			return m, tea.Quit
+		case "r":
+			m.yukleniyor = true
+			return m, yukle(m.c)
+		}
+	}
+	return m, nil
+}
+
+// View, AND'ın tam ekran sayfasını kullanır: gövde üstte, alt bilgi en altta.
+// Ağdan gelen her metin (adlar, mesajlar) ekrana basılmadan önce
+// pluginui.Safe'ten geçer: terminal kaçış dizileri içerebilir.
+func (m model) View() string {
+	if m.width == 0 {
+		return ""
+	}
+	w := ui.ContentWidth(m.width)
+	var b strings.Builder
+	durum := ""
+	if m.yukleniyor {
+		durum = ui.S.Muted.Render(dil.T("yükleniyor…"))
+	}
+	b.WriteString(ui.Header(w, []string{etiket}, durum) + "\n\n")
+
+	switch {
+	case m.veri.err != nil:
+		b.WriteString(ui.Notice(ui.KindError, pluginui.Safe(m.veri.err.Error())) + "\n")
+	case !m.yukleniyor:
+		b.WriteString(ui.S.Title.Render(dil.F("Merhaba, %s!", pluginui.Safe(m.veri.kimlik.Name))) + "\n")
+		andDugumu := 0
+		for _, e := range m.veri.esler {
+			if e.AND {
+				andDugumu++
+			}
+		}
+		b.WriteString(ui.S.Muted.Render(dil.F("%d AND düğümüne bağlısın.", andDugumu)) + "\n\n")
+
+		b.WriteString(ui.Section(dil.T("Son sohbet mesajları")) + "\n")
+		son := m.veri.sohbet
+		if n := max(ui.ContentHeight(m.height)-9, 1); len(son) > n {
+			son = son[len(son)-n:]
+		}
+		if len(son) == 0 {
+			b.WriteString(ui.S.Muted.Render(dil.T("Henüz mesaj yok.")) + "\n")
+		}
+		for _, s := range son {
+			b.WriteString(ui.Truncate(ui.S.Bold.Render(pluginui.Safe(s.From))+"  "+pluginui.Safe(s.Text), w) + "\n")
+		}
+	}
+
+	alt := ui.Divider(w) + "\n" + ui.KeyHints(w, ui.H("r", dil.T("yenile")), ui.H("q", dil.T("çıkış")))
+	return ui.Page(m.width, m.height, b.String(), alt)
+}

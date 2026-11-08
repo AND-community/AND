@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lucian95511/and/dil/diltest"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // TestEkranlar_HerDilde: Örnek Eklenti'nin her ekranı her dilde çizilir ve

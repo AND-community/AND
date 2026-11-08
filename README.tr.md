@@ -51,9 +51,9 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 | Özel mesajlaşma | libp2p stream (`/and/dm/1.0.0`) üzerinden P2P doğrudan mesaj |
 | Dosya aktarımı | Yeniden başlatılabilir parçalı aktarım (`/and/file/2.0.0`); onay isteği dialog'u |
 | Moderasyon sistemi | Esnek süreli (1 saat–ömür boyu) ban/unban, devredilebilir/iptal edilebilir moderatör sertifikaları, Yönetici Paneli eklentisi + denetim geçmişi |
-| Dinamik eklenti sistemi | Bağımsız binary'ler; AND'ı yeniden derlemeden eklenti ekle |
+| Dinamik eklenti sistemi | Kendi izinleriyle çalışan bağımsız programlar; `and eklenti kur` ile kur (klasör, arşiv ya da https adresi) ya da herkese açık SDK ve `and eklenti yeni` ile kendin yaz — bkz. [EKLENTILER.md](EKLENTILER.md) |
 | Otomatik güncelleme | Resmi sürümler GitHub Releases'tan, paketle gelen eklentilerle birlikte, yalnızca sürümün imzası doğrulanırsa arka planda güncellenir; kaynaktan derlenenler kendini hiç değiştirmez |
-| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`internal/ui`) |
+| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`ui`) |
 | Temalar | 6 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Mono) + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
 | Arayüz dilleri | Türkçe (varsayılan), English, Deutsch, Español, Français, Русский; Ayarlar → Dil ya da giriş ekranında `ctrl+l` ile anında değişir — bkz. [Arayüz dili](#arayüz-dili) |
 
@@ -70,9 +70,16 @@ Eklentiler/
   admin/            — yönetici paneli eklentisi (bağımsız binary)
   ozel_chat/        — özel mesajlaşma + dosya aktarımı eklentisi
   site/             — kişisel site oluşturma/düzenleme eklentisi
-  ornek/            — yeni eklenti geliştirme rehberi
+  ornek/            — API'nin çoğunu kullanan örnek eklenti
   DeltaX/, Pembis/, konu_ac/
                     — ayrı depolar; derlemek için buraya klonlanır (bkz. Kaynaktan derleme)
+
+pluginapi/          — HERKESE AÇIK eklenti SDK'sı: eklenti HTTP API istemcisi ve sunucusu, tipler, manifest, izinler
+  pluginapitest/    — eklenti testleri ve "go run . --deneme" için sahte AND
+ui/                 — HERKESE AÇIK ortak tasarım sistemi: tema/palet, stiller, tam ekran sayfa iskeleti, bileşenler
+pluginui/           — HERKESE AÇIK eklenti/uzak içerik için ANSI/kontrol karakteri temizliği
+dil/                — HERKESE AÇIK arayüz dilleri (kataloglar, çoğul biçimler, kapsam testleri)
+protokol/           — HERKESE AÇIK, arama motoru ve eklentilerle paylaşılan ağ sabitleri
 
 internal/
   crypto/           — BIP-39 → Ed25519 kimlik, AES-GCM şifreli depolama
@@ -84,11 +91,9 @@ internal/
   profile/          — kullanıcı profili (bio/durum/link/etiket), rol rozetleri
   site/             — çok sayfalı kişisel site (imzalı sayfa yayını/silme, kendi senkron protokolü)
   peersync/         — geçmiş senkronizasyonunun zamanlaması: hangi eşle, ne zaman (bkz. aşağıda)
-  ui/               — ortak tasarım sistemi: tema/palet, stiller, tam ekran sayfa iskeleti, bileşenler
   storage/          — SQLite WAL, şema versiyonlama
-  pluginapi/        — eklenti HTTP IPC API sunucusu + istemci kütüphanesi
-  pluginmgr/        — and-plugin-* binary keşfi ve başlatma
-  pluginui/         — eklenti/uzak içerik render'ı için ANSI/kontrol karakteri temizliği
+  pluginmgr/        — eklenti keşfi, başlatma, dışarıdan eklenti kurulumu ve bütünlük denetimi
+  eklentisablon/    — "and eklenti yeni"nin kurduğu proje şablonu
   dmmgr/            — libp2p DM stream handler + ozel_chat'e long-poll proxy
   filemgr/          — parçalı dosya gönderme/alma; onay (consent) mekanizması
   githubverify/     — GitHub OAuth Device Flow ile hesap doğrulama
@@ -303,8 +308,9 @@ Eklentiler `and`'ın yanındaki `Eklentiler/` klasöründe, her biri kendi klas�
 AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile
 `and-plugin-<ad>` çiftini bulur (`<ad>`, plugin.json'daki `name` alanı). `and`'ın yanına
 doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında aynı adlı bir manifest varsa
-(`and-plugin-x.json`, bkz. [Yeni eklenti yazmak](#yeni-eklenti-yazmak)) yüklenir; manifesti
-olmayan bir dosya güvenlik gereği hiç çalıştırılmaz.
+(`and-plugin-x.json`) yüklenir; manifesti olmayan bir dosya güvenlik gereği hiç çalıştırılmaz.
+`and eklenti kur` ile kurduğun eklentiler ise veri dizinindeki `eklentiler/` klasörüne gider (bkz.
+[Eklenti kurmak](#eklenti-kurmak)).
 
 ### İlk çalıştırma
 
@@ -344,6 +350,7 @@ seçili arayüz diline uyar:
 | `--lisans`, `--license` | AND'ın lisansının (GNU AGPL-3.0) tam metni |
 | `--ucuncu-taraf`, `--third-party` | AND'a giren üçüncü taraf bileşenlerin lisans bildirimleri |
 | `-h`, `--help` | Bayrakların listesi |
+| `eklenti …` / `plugin …` | Eklenti komutları: `liste`, `kur`, `kaldir`, `dogrula`, `yeni` (bkz. [Eklenti kurmak](#eklenti-kurmak)); `and eklenti yardim` hepsini listeler |
 
 Hata bildirirken `and --version` çıktısını ekle.
 
@@ -414,7 +421,7 @@ bir çerçevenin içindedir. Çerçevenin üst kenarında solda `AND` rozeti, sa
 yazar; ekranın başında "Forum › Go › Konu" biçiminde bir başlık yolu, en altında da "tuş açıklama"
 biçiminde kısayol satırı bulunur. Seçili satır tam genişlikte boyanır ve solunda `▌` vurgu çubuğu
 olur; bildirimler tek satırlık `✓`/`✗` biçimindedir. Konu gövdesi gibi uzun yazılar, satırlar göz
-yormasın diye en fazla 100 sütunda sarılır. Bu dil `internal/ui` paketinde tanımlıdır (palet,
+yormasın diye en fazla 100 sütunda sarılır. Bu dil `ui` paketinde tanımlıdır (palet,
 stiller, tam ekran sayfa iskeleti ve bileşenler); eklentiler de aynı paketi kullanır.
 AND Arama Motoru ayrı bir Go modülü olduğu için aynı paleti
 kendi içinde birebir tekrarlar.
@@ -432,7 +439,7 @@ Yerleşik temalar:
 
 Her temada seçili satır metni ve ikincil metin koyu bir terminal zemininde en az 4.5:1 kontrast
 verir (WCAG AA). Yalnızca kalın başlıklarda, tuşlarda, amblemde ve çerçevede kullanılan vurgu
-rengi için alt sınır 3:1'dir. Bunlar `internal/ui` testlerinde doğrulanır.
+rengi için alt sınır 3:1'dir. Bunlar `ui` testlerinde doğrulanır.
 
 Seçilen tema veri dizinindeki `theme.json` dosyasına yazılır ve eklentilere
 `GET /api/v1/theme` ile ulaşır: her eklenti açılışta temayı okuyup kendini aynı renklerle boyar,
@@ -631,11 +638,11 @@ gereken işlemler için TUI'nin Yönetici Paneli eklentisini tercih et.
 
 ## Eklenti Sistemi
 
-AND eklentileri **bağımsız yürütülebilir binary**'lerdir. Her eklenti ayrı bir Go programı olarak derlenir ve AND'dan bağımsız dağıtılabilir.
+AND eklentileri **bağımsız yürütülebilir programlardır**. Her eklenti ayrı bir program olarak derlenir ve AND'dan bağımsız dağıtılabilir; tam rehber: [EKLENTILER.md](EKLENTILER.md).
 
 ### Nasıl çalışır
 
-1. AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile `and-plugin-<isim>` binary'sini arar. `and`'ın yanına doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında `and-plugin-<isim>.json` manifesti varsa yüklenir.
+1. AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile `and-plugin-<isim>` binary'sini arar. `and`'ın yanına doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında `and-plugin-<isim>.json` manifesti varsa yüklenir. `and eklenti kur` ile kurulan eklentiler veri dizinindeki `eklentiler/` klasöründe bulunur.
 2. Kullanıcı bir eklentiyi ilk kez açtığında `plugin.json`'daki izinler sorulur.
 3. AND eklenti binary'sini aynı terminalde, şu ortam değişkenleriyle başlatır:
 
@@ -661,7 +668,7 @@ yalnızca bellekte tutulur ve hiçbir dosyaya yazılmaz.
 
 Bunu güvenli bir şekilde çözmek için `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
 etkinleştirilebilen, **opt-in ve varsayılan kapalı** ikinci bir dinleyici vardır
-(`internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
+(`pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
 
 - **Windows:** yalnızca dinleyiciyi açan kullanıcıya erişim izni veren bir security
   descriptor'lı (`D:P(A;;GA;;;<kullanıcı SID'i>)`; SID alınamazsa `OW`) **named pipe**.
@@ -674,7 +681,7 @@ gizli değildir (bkz. `and-vscode/src/live/liveAddr.ts` — aynı formülle bağ
 şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
 
 İçerik yayınlayan/gönderen uç noktalar (forum, site, sohbet, DM, dosya) ayrıca yerel bir hız
-sınırına tabidir (`internal/pluginapi/ratelimit.go`) — token'lı dinleyicideki HERHANGİ bir
+sınırına tabidir (`pluginapi/ratelimit.go`) — token'lı dinleyicideki HERHANGİ bir
 eklenti ya da harici API'deki herhangi bir yerel süreç, düğümün kendi geçerli imzasıyla ağı
 hızlıca doldurabilir; bu katman olmadan böyle bir hata/kötüye kullanım fark edilmeden ağa
 yayılırdı. AND'ın kendi TUI'sini hiç etkilemez, yalnızca dakikada onlarca çağrıyı aşan
@@ -691,31 +698,47 @@ otomatik/hatalı bir kullanımda devreye girip `429 Too Many Requests` döner.
 | `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (ayrı depo: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
 | `and-plugin-site` | Site | Kendi çok sayfalı kişisel siteni oluştur/düzenle/sil — rol kısıtlaması yok (bkz. [Eklentiler/site/README.md](Eklentiler/site/README.md)) |
 
-### Yeni eklenti yazmak
+### Eklenti kurmak
 
-Ayrıntılı şablon ve API referansı için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md) dosyasına bak.
-
-Kısa adımlar:
+AND'la gelmeyen eklentiler bir klasörden, `.zip`/`.tar.gz` arşivinden ya da bir https adresinden
+kurulur:
 
 ```bash
-# 1. Eklentiler/<isim>/ dizini oluştur ve main.go yaz
-mkdir Eklentiler/meklentim
-
-# 2. Derle ve AND dizinine koy
-go build -o and-plugin-meklentim ./Eklentiler/meklentim
-
-# 3. Manifest JSON oluştur
-./and-plugin-meklentim --manifest > and-plugin-meklentim.json
-
-# AND bir sonraki başlatmada eklentiyi otomatik keşfeder
+and eklenti kur hava-1.0.0.zip
+and eklenti kur https://ornek.org/hava-1.0.0.zip --sha256 <yazarın yayımladığı özet>
+and eklenti liste
+and eklenti kaldir hava
 ```
 
-Eklentiler yalnızca istedikleri izinlerle çalışır: `plugin.json`'daki `permissions` alanı (ör.
-`["dm", "file"]`) ilk açılışta kullanıcıya sorulur; herkese açık içeriği okumak izin istemez. İzin
-listesi ve uç noktaları için [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
+(İngilizce adları da çalışır: `and plugin install`, `list`, `remove`.) AND paketi hiçbir şey
+çalıştırmadan denetler: manifest, bu bilgisayar için derlenmiş bir program (dosya başlığından okunur),
+paketin dışına çıkmayan yollar ve AND'la gelen bir eklentiyi taklit etmeyen bir ad. Sonra eklentiyi,
+yazarını, SHA-256 özetlerini ve istediği izinleri gösterip onay ister. Kurulan eklentiler veri
+dizinindeki `eklentiler/<ad>/` klasöründedir, bu yüzden AND'ın kendi klasörüne yazma izni gerekmez. AND
+programın ve `plugin.json`'ın özetlerini kaydeder; kurulduktan sonra dosyaları değişen bir eklentiyi
+başlatmaz. Otomatik güncelleme bu eklentilere dokunmaz; daha yeni bir paketi kurmak eklentiyi günceller
+ve verilmiş izinleri korur. Dışarıdan kurulan bir eklentinin onay ekranı, onun AND geliştiricileri
+tarafından incelenmediğini söyler.
 
-Eklentinin AND'la aynı dilde açılması için `main`'de `dil.OrtamdanAyarla()` çağır, metinleri
-`dil.T`/`dil.F` ile yaz ve çevirilerini `ceviri.json`'a koy (bkz. [Arayüz dili](#arayüz-dili)).
+### Yeni eklenti yazmak
+
+Eklentilerin bu depoda olması gerekmez. SDK paketleri (`pluginapi`, `ui`, `pluginui`, `dil`,
+`protokol`) herkese açıktır ve `and eklenti yeni` kendi Go modülünde çalışan bir eklenti projesi kurar:
+
+```bash
+and eklenti yeni hava
+cd hava
+go mod tidy
+go run . --deneme      # AND'ı açmadan, sahte verili bir AND'la dene
+go test ./...          # testler aynı sahte AND'la, yalnızca manifest'teki izinlerle çalışır
+go build -o and-plugin-hava.exe .
+and eklenti kur .
+```
+
+Manifest, izinler, tüm API uç noktaları, `ui` bileşenleri, çeviriler, `pluginapitest` ile test, çok
+platformlu paketleme ve lisans için tam rehber: [EKLENTILER.md](EKLENTILER.md) (English:
+[PLUGINS.md](PLUGINS.md)). [Eklentiler/ornek](Eklentiler/ornek/README.md) bu depodaki daha büyük bir
+örnektir.
 
 ---
 
@@ -724,7 +747,7 @@ Eklentinin AND'la aynı dilde açılması için `main`'de `dil.OrtamdanAyarla()`
 **[AND Arama Motoru](https://github.com/AND-community/and-arama-motoru)** (kendi deposunda duran ayrı bir sistem; derlemek için AND ile yan yana klonlanır), AND'ın P2P ağına kendi kimliğiyle katılıp forum/sohbet içeriğini yerel bir SQLite FTS5 indeksinde arattıran bağımsız bir eş. AND'ın iç paketlerini kullanmaz, AND'ı bir alt-süreç olarak çalıştırmaz ve AND kapalıyken de çalışabilir — **aynı ağı** (aynı GossipSub konuları, aynı Ed25519 imza biçimi, aynı senkronizasyon protokolleri) konuşan iki ayrı program. Konu adları ve protokol kimlikleri iki programın da kullandığı `protokol/` paketinden gelir (arama motoru onu yan klasördeki AND'dan alır); AND'ın gerçek koduyla üretilen örnek iletiler (`protokol/testdata/`) arama motorunun testlerinde doğrulanır, böylece ileti biçimi bir tarafta değişirse testler kırılır.
 
 Aynı aileden olduklarını gösteren ortak noktalar:
-- Aynı ANSI 256 renk paleti (vurgu/hata/başarı/soluk tonları — bkz. `internal/ui`) ve aynı "AND" blok-harf logosu.
+- Aynı ANSI 256 renk paleti (vurgu/hata/başarı/soluk tonları — bkz. `ui`) ve aynı "AND" blok-harf logosu.
 - Kimlik türetme şeması bire bir aynı (BIP-39 mnemonic → Ed25519), ama iki program birbirinden TAMAMEN bağımsız kimliklere sahiptir.
 - Forum/sohbet/kişisel-site protokollerinin imza payload biçimleri ve GossipSub konu adları bire bir aynı — bu yüzden Arama Motoru, AND'ın ürettiği içeriği doğrulayıp indeksleyebilir. Bu, `protokol/testdata/`'daki örneklerle her test çalışmasında sınanır.
 

@@ -58,7 +58,7 @@ function icon(name: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ""}</svg>`;
 }
 
-/** AND'ın hazır tema adları (internal/ui/theme.go); panelin alt köşesinde etkin dilde gösterilir. */
+/** AND'ın hazır tema adları (ui/theme.go); panelin alt köşesinde etkin dilde gösterilir. */
 const TEMA_ADLARI = [k("Klasik"), k("Turkuaz"), k("Gece Moru"), k("Kehribar"), k("Orman"), k("Mono")];
 
 /**

@@ -28,7 +28,7 @@ Güvenlik açıklarını doğrudan aşağıdaki adrese gönder:
 Raporunu şu başlıklar altında düzenle:
 
 1. **Açığın türü** — ör. imza doğrulama atlaması, path traversal, IPC yetkisiz erişim
-2. **Etkilenen bileşen** — hangi paket veya binary (ör. `internal/pluginapi`, `cmd/plugin_admin`)
+2. **Etkilenen bileşen** — hangi paket veya binary (ör. `pluginapi`, `cmd/plugin_admin`)
 3. **Sürüm bilgisi** — `./and --version` çıktısı
 4. **Yeniden oluşturma adımları** — sırasıyla ve net biçimde
 5. **Olası etkisi** — ne tür bir saldırıya kapı açabileceğini açıkla
@@ -117,7 +117,7 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 ### Terminal güvenliği
 
 - Ağdan gelen her metin (konu başlıkları, gövdeler, adlar, eklenti çıktıları) ekrana basılmadan önce
-  `internal/pluginui.Safe` ile temizlenir: ANSI/OSC kaçış dizileri (pano yazma, bağlantı yönlendirme,
+  `pluginui.Safe` ile temizlenir: ANSI/OSC kaçış dizileri (pano yazma, bağlantı yönlendirme,
   imleç oynatma), C0/C1 kontrol karakterleri ve yazı yönü karakterleri atılır.
 - Kütüphanelerin günlükleri (libp2p, mDNS) tam ekran arayüz açıkken terminale değil veri dizinindeki
   `and.log`'a yazılır.
@@ -153,12 +153,12 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   süreçlere iletilir; bu ana dinleyiciye yapılan her istek `X-And-Token` başlığıyla doğrulanır —
   doğru token'ı bilmeyen bir istek reddedilir.
 - **İkinci, opt-in bir dinleyici** (`AND_ENABLE_EXTERNAL_API=1` ile açılır; bkz.
-  `internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`) AND'ın kendi başlatmadığı
+  `pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`) AND'ın kendi başlatmadığı
   süreçlerin (ör. `and-vscode` uzantısı) bağlanabilmesi için vardır. Bu dinleyicide bearer token
   YOKTUR — erişim kararını bir sır değil doğrudan işletim sistemi verir: Windows'ta sahibe özel bir
   security descriptor'lı (`D:P(A;;GA;;;OW)`) named pipe, Unix'te `0600` izinli bir domain socket.
   Yalnızca bu dinleyicide açık şekilde işaretlenmiş (`allowExternal:true`) route'lara erişilebilir —
-  varsayılan kapalıdır (bkz. `internal/pluginapi/api.go`'daki `routeTable()`).
+  varsayılan kapalıdır (bkz. `pluginapi/api.go`'daki `routeTable()`).
 - **Eklenti izinleri:** Her eklenti başlatılırken kendi anahtarını alır; anahtar yalnızca eklentinin
   `plugin.json`'da istediği ve kullanıcının ilk açılışta onayladığı izinleri taşır, eklenti kapanınca
   geçersizleşir. İzinler: özel mesajlar (`dm`), dosya aktarımı (`file`), genel sohbete yazma (`chat`),
@@ -168,6 +168,22 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   verilmez. Onaylar `plugins_state.json`'da durur ve Ayarlar › Eklentiler'de `r` ile geri alınır;
   eklenti bir güncellemede yeni bir izin isterse yeniden sorulur. Her uç noktanın hangi izni
   gerektirdiği `routeTable()`'da yazılıdır ve bir test her uç noktanın bilinçli bir izin taşıdığını denetler.
+- **Dışarıdan kurulan eklentiler** (`and eklenti kur`, bkz. [EKLENTILER.md](EKLENTILER.md)): paket
+  kurulurken hiçbir program çalıştırılmaz; programın platformu dosya başlığından (PE/ELF/Mach-O)
+  okunur. Arşivlerde paketin dışına çıkan yollar (`..`, mutlak yollar, sürücü harfleri, Windows aygıt
+  adları), sembolik/sabit bağlantılar ve aygıt dosyaları reddedilir; açılmış boyut 512 MB, dosya sayısı
+  4000 ile sınırlıdır. Adresten kurulum yalnızca https'tir (yönlendirmeler dahil); `--sha256` verilirse
+  arşivin özeti eşleşmelidir. AND'la gelen bir eklentinin adı (harf büyüklüğü fark etmeksizin)
+  dışarıdan kullanılamaz. Kurulan eklenti veri dizinindeki `eklentiler/<ad>/`'a gider;
+  `eklentiler/kurulumlar.json` programın ve `plugin.json`'ın SHA-256'sını tutar ve AND her başlatmadan
+  önce ikisini yeniden denetler: kurulumdan sonra değişen (ya da kaydı olmayan) bir eklenti başlatılmaz.
+  İlk kurulum aynı adla daha önce verilmiş izin onaylarını siler; güncelleme korur. AND'ın güncelleyicisi
+  dışarıdan kurulan eklentilere dokunmaz. Onay ekranı bu eklentilerin AND geliştiricileri tarafından
+  incelenmediğini söyler.
+- İzinler yalnızca AND'ın API'sini sınırlar: bir eklenti kullanıcının hesabıyla çalışan sıradan bir
+  programdır ve işletim sisteminin ona verdiği her şeye (dosyalar, ağ) erişebilir. Kötü niyetli bir
+  eklentinin kullanıcı kurduktan sonra yaptıkları bu politikanın kapsamında değildir; kurulumu
+  atlatıp kullanıcının onaylamadığı bir programı çalıştırmak ya da izin denetimini aşmak kapsamdadır.
 - Anahtar aramaları ham anahtarın değil SHA-256 özetinin üzerinden yapılır; sunucuların başlık okuma
   süresi ve başlık boyutu sınırlıdır, istek gövdeleri her uç noktada boyutla sınırlıdır ve yazma
   işlemleri hız sınırına tabidir.

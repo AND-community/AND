@@ -24,7 +24,7 @@ import (
 	"github.com/lucian95511/and/internal/guvenli"
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // Protocol /and/file/2.0.0 — chunked transfer with resume.

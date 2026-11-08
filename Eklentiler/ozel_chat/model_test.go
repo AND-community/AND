@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/lucian95511/and/dil/diltest"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/protokol"
 )
 

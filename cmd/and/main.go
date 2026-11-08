@@ -30,13 +30,13 @@ import (
 	"github.com/lucian95511/and/internal/moderation"
 	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/peersync"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/profile"
 	"github.com/lucian95511/and/internal/site"
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/internal/updater"
+	"github.com/lucian95511/and/pluginapi"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -157,7 +157,7 @@ func run() error {
 		if yol, err := veriDiziniYolu(); err == nil {
 			dil.Baslat(yol)
 		}
-		if bitti, err := komutSatiri(os.Args[1:], os.Stdout); bitti || err != nil {
+		if bitti, err := komutSatiri(os.Args[1:], os.Stdin, os.Stdout); bitti || err != nil {
 			return err
 		}
 	}
@@ -548,10 +548,15 @@ func kurtarmaUyarisi(k *storage.KurtarmaRaporu) string {
 }
 
 // eklentiHedefleri, otomatik güncellemenin AND ile birlikte güncelleyeceği
-// kurulu eklentilerdir.
+// kurulu eklentilerdir. Dışarıdan kurulanlar AND'ın sürümünde yoktur ve
+// kurulum kaydındaki özetleri bozulmasın diye hiç denenmez: kullanıcı onları
+// "and eklenti kur" ile günceller.
 func eklentiHedefleri(plugins []pluginmgr.Plugin) []updater.EklentiHedefi {
 	out := make([]updater.EklentiHedefi, 0, len(plugins))
 	for _, p := range plugins {
+		if p.Harici {
+			continue
+		}
 		out = append(out, updater.EklentiHedefi{Ad: p.Name(), ExeYolu: p.ExePath})
 	}
 	return out

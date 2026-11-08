@@ -11,10 +11,12 @@
 //   - Terminal injection koruması (safe() ile ANSI temizleme)
 //   - İstek uçuştayken çift-eylem engeli (pending bayrağı)
 //
-// Derleme:
+// Derleme (AND bu klasördeki plugin.json'ın yanındaki programı bulur):
 //
-//	go build -o and-plugin-ornek[.exe] ./Eklentiler/ornek
-//	cp Eklentiler/ornek/plugin.json and-plugin-ornek.json
+//	go build -o Eklentiler/ornek/and-plugin-ornek[.exe] ./Eklentiler/ornek
+//
+// Yeni bir eklentiye AND deposunun dışında "and eklenti yeni <ad>" ile başla
+// (bkz. EKLENTILER.md); bu örnek AND'ın iç paketlerini de kullanır.
 package main
 
 import (
@@ -33,10 +35,10 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
 	"github.com/lucian95511/and/protokol"
+	"github.com/lucian95511/and/ui"
 )
 
 // ─── Manifest ─────────────────────────────────────────────────────────────────
@@ -116,12 +118,12 @@ func main() {
 //
 // P2P ağından gelen her string güvenilmezdir. Bir saldırgan post başlığına
 // ANSI escape kodu yerleştirerek terminali manipüle edebilir (ekran silme,
-// imleç taşıma, clipboard çalma vb.) — bkz. internal/pluginui.Safe.
+// imleç taşıma, clipboard çalma vb.) — bkz. pluginui.Safe.
 func safe(s string) string { return pluginui.Safe(s) }
 
 // ─── Stiller ──────────────────────────────────────────────────────────────────
 //
-// Renkleri kendin seçme: AND'ın ortak tasarım dilini (internal/ui) kullan.
+// Renkleri kendin seçme: AND'ın ortak tasarım dilini (ui) kullan.
 // Böylece eklentin AND'ın kendi ekranlarıyla ve diğer eklentilerle aynı
 // paleti paylaşır, kullanıcının seçtiği temayı (Ayarlar → Temalar) izler.
 // ui.S hazır stilleri, ui.Header/ui.Row/ui.KeyHints/ui.Notice/ui.Page da

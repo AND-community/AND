@@ -21,7 +21,7 @@ import (
 	"github.com/lucian95511/and/internal/dmmgr"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/network"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 type dugum struct {

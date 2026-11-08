@@ -1,0 +1,19 @@
+package main
+
+import (
+	_ "embed"
+
+	"github.com/lucian95511/and/dil"
+)
+
+// ceviriVerisi, eklentinin arayüz metinlerinin çevirileridir. Kaynak dil
+// Türkçedir; her metnin en, de, es, fr ve ru karşılığı olmalı (birden çok
+// çoğul biçimi "|" ile ayrılır, Rusçada üç biçim vardır). Eksiksizliğini
+// TestCeviriKapsami denetler; eksikleri dökmek için:
+//
+//	DIL_ISKELET=eksik.json go test -run CeviriKapsami
+//
+//go:embed ceviri.json
+var ceviriVerisi []byte
+
+func init() { _ = dil.Ekle(ceviriVerisi) }

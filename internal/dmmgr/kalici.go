@@ -30,7 +30,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/lucian95511/and/internal/dosya"
-	"github.com/lucian95511/and/internal/pluginapi"
+	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/protokol"
 )
 

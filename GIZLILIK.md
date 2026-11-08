@@ -45,6 +45,7 @@ her eşin cihazına kopyalanır.
 | Gönderilen ve alınan dosyalar | Alıcının `dosyalar/` dizini | Gönderen ve alıcı | Alıcı silene kadar |
 | Moderasyon kararları (ban, sertifika) | `bans/`, `active_bans.json` ve eşler | Kararlar ağda herkese açıktır | Kararın süresince; denetim geçmişi yerel olarak tutulur |
 | Ayarlar (tema, dil, eklenti izinleri, kurallar onayı) | `theme.json`, `dil.json`, `plugins_state.json`, `kurallar_onayi.json` | Yalnızca sen | Sen silene kadar |
+| Dışarıdan kurduğun eklentiler | `eklentiler/<ad>/` (eklentinin dosyaları) ve `eklentiler/kurulumlar.json` (her eklentinin adı, sürümü, kurduğun klasör ya da adres, kurulma zamanı ve dosyalarının SHA-256 özetleri) | Yalnızca sen | `and eklenti kaldir` ile kaldırana kadar |
 | Veritabanı yedekleri | `yedek/` (yalnızca bu cihaz); `forum.db`'nin kopyaları, şifresiz | Yalnızca sen | Günlük yedekler en çok 3 gün, sürüm yükseltmesinden önce alınanlar en çok 7 gün; silinen ya da süresi dolan içerik bu sürede yedekte kalabilir |
 | Gönderilmemiş forum yanıtları | `yanit_taslaklari.json`; şifresiz | Yalnızca sen | Yanıt gönderilene ya da 30 gün geçene kadar |
 | Kimlik özeti | `kimlik_ozeti.json`: açık anahtarın ve görünen adın (ikisi de zaten herkese açık); kurtarma kodunu yanlış yazarsan uyarmak için | Yalnızca sen | Sen silene kadar |

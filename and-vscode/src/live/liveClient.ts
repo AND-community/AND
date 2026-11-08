@@ -22,10 +22,10 @@ import {
 } from "./liveTypes";
 import { t } from "../dil/dil";
 
-// AND'ın yerel eklenti API'sine (internal/pluginapi/api.go) named pipe /
+// AND'ın yerel eklenti API'sine (pluginapi/api.go) named pipe /
 // Unix domain socket üzerinden konuşan ince bir HTTP istemcisi. Bearer
 // token YOKTUR — erişim zaten OS tarafından (yalnızca bu kullanıcı)
-// kısıtlanmıştır (bkz. liveAddr.ts, internal/pluginapi/externalpipe_*.go).
+// kısıtlanmıştır (bkz. liveAddr.ts, pluginapi/externalpipe_*.go).
 
 export class LiveApiError extends Error {
   constructor(message: string, readonly status?: number) {

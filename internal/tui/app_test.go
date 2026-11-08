@@ -10,9 +10,9 @@ import (
 
 	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/internal/storage"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // keyMsg builds the tea.KeyMsg for a named special key, for tests that

@@ -24,8 +24,8 @@ import (
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/internal/lisans"
-	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
+	"github.com/lucian95511/and/ui"
 )
 
 const (

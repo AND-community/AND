@@ -13,8 +13,8 @@ import (
 
 	"github.com/lucian95511/and/dil"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
-	"github.com/lucian95511/and/internal/ui"
 	"github.com/lucian95511/and/internal/updater"
+	"github.com/lucian95511/and/ui"
 )
 
 var ErrLoginCancelled = errors.New("tui: login cancelled")

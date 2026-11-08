@@ -1,7 +1,7 @@
 package tui
 
 // chrome.go — ekranların ortak iskeleti: içerik genişliği, kısa kimlik/eş
-// durumu metinleri. Görsel bileşenlerin kendisi internal/ui'dedir; burası
+// durumu metinleri. Görsel bileşenlerin kendisi ui'dedir; burası
 // yalnızca TUI'ye özgü ince bir katman.
 
 import (
@@ -12,7 +12,7 @@ import (
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/peersync"
 	"github.com/lucian95511/and/internal/site"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/ui"
 )
 
 // ANDSyncProtocols, bir eşin AND düğümü olduğunu gösteren geçmiş senkronu

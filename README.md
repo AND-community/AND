@@ -51,9 +51,9 @@ A user's identity is an Ed25519 key pair derived from 128 bits of entropy (the e
 | Private messages | Direct P2P messages over a libp2p stream (`/and/dm/1.0.0`) |
 | File transfer | Resumable chunked transfer (`/and/file/2.0.0`) with a consent dialog |
 | Moderation | Flexible bans (1 hour to permanent) and unbans, delegable and revocable moderator certificates, an Admin Panel plugin and an audit history |
-| Dynamic plugins | Standalone binaries; add plugins without rebuilding AND |
+| Dynamic plugins | Standalone programs with their own permissions; install one with `and plugin install` (folder, archive or https address) or write your own with the public SDK and `and plugin new` — see [PLUGINS.md](PLUGINS.md) |
 | Automatic updates | Official release builds update themselves in the background from GitHub Releases, together with the bundled plugins, only if the release's signature is valid; builds made from source never replace themselves |
-| Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea); AND, its plugins and the AND Search Engine share one design system (`internal/ui`) |
+| Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea); AND, its plugins and the AND Search Engine share one design system (`ui`) |
 | Themes | 6 built-in themes (Classic, Turquoise, Night Purple, Amber, Forest, Mono) plus theme plugins; the chosen theme also applies to plugins and the VS Code panel |
 | Interface languages | Turkish (default), English, German, Spanish, French, Russian; switch instantly in Settings → Language or with `ctrl+l` on the login screen — see [Interface language](#interface-language) |
 
@@ -70,9 +70,16 @@ Eklentiler/         — plugins ("eklentiler" is Turkish for "plugins")
   admin/            — Admin Panel plugin (standalone binary)
   ozel_chat/        — private messaging + file transfer plugin
   site/             — personal site creation/editing plugin
-  ornek/            — guide to writing a new plugin ("örnek" means "example")
+  ornek/            — an example plugin that uses most of the API ("örnek" means "example")
   DeltaX/, Pembis/, konu_ac/
                     — separate repositories; clone them here to build them (see Building from source)
+
+pluginapi/          — PUBLIC plugin SDK: the plugin HTTP API client and server, types, manifest, permissions
+  pluginapitest/    — a fake AND for plugin tests and "go run . --deneme"
+ui/                 — PUBLIC shared design system: theme/palette, styles, full-screen page frame, components
+pluginui/           — PUBLIC ANSI/control-character sanitising for plugin and remote content
+dil/                — PUBLIC interface languages (catalogs, plural forms, coverage tests)
+protokol/           — PUBLIC wire constants shared with the search engine and plugins
 
 internal/
   crypto/           — BIP-39 → Ed25519 identity, AES-GCM encrypted storage
@@ -84,11 +91,9 @@ internal/
   profile/          — user profiles (bio/status/link/tags), role badges
   site/             — multi-page personal sites (signed page publish/delete, its own sync protocol)
   peersync/         — scheduling of history sync: with which peer, and when (see below)
-  ui/               — shared design system: theme/palette, styles, full-screen page frame, components
   storage/          — SQLite WAL, schema versioning
-  pluginapi/        — plugin HTTP IPC API server + client library
-  pluginmgr/        — and-plugin-* binary discovery and launch
-  pluginui/         — ANSI/control-character sanitising for plugin and remote content
+  pluginmgr/        — plugin discovery, launch, external plugin installation and integrity checks
+  eklentisablon/    — the project template behind "and plugin new"
   dmmgr/            — libp2p DM stream handler + long-poll proxy for ozel_chat
   filemgr/          — chunked file send/receive; consent mechanism
   githubverify/     — account verification through the GitHub OAuth Device Flow
@@ -304,8 +309,9 @@ Plugins live in the `Eklentiler/` folder next to `and`, each in its own folder:
 At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json`
 and an `and-plugin-<name>` binary (`<name>` is the `name` field of plugin.json). An
 `and-plugin-*` binary placed directly next to `and` is loaded only if a manifest with the same
-name sits beside it (`and-plugin-x.json`, see [Writing a new plugin](#writing-a-new-plugin)); a
-file without a manifest is never executed, for security reasons.
+name sits beside it (`and-plugin-x.json`); a file without a manifest is never executed, for
+security reasons. Plugins you install yourself with `and plugin install` go into `eklentiler/` in
+the data directory instead (see [Installing plugins](#installing-plugins)).
 
 ### First run
 
@@ -348,6 +354,7 @@ interface and follow the selected interface language:
 | `--lisans`, `--license` | The full text of AND's license (GNU AGPL-3.0) |
 | `--ucuncu-taraf`, `--third-party` | The license notices of the third-party components built into AND |
 | `-h`, `--help` | The list of flags |
+| `eklenti …` / `plugin …` | Plugin commands: `list`, `install`, `remove`, `check`, `new` (see [Installing plugins](#installing-plugins)); `and plugin help` lists them |
 
 Include the output of `and --version` when you report a bug.
 
@@ -420,7 +427,7 @@ active theme and version on the right; each screen starts with a breadcrumb such
 "Forum › Go › Topic" and ends with a hint line in the form "key description". The selected row is
 painted across the full width with a `▌` accent bar on its left; notices are one-line `✓`/`✗`
 messages. Long text such as a topic body wraps at 100 columns at most so that lines stay easy to
-read. This language is defined in the `internal/ui` package (palette, styles, full-screen page frame
+read. This language is defined in the `ui` package (palette, styles, full-screen page frame
 and components); plugins use the same package. The AND Search Engine is a separate Go module, so it
 repeats the same palette on its own.
 
@@ -437,7 +444,7 @@ Built-in themes:
 
 In every theme the selected-row text and the secondary text reach a contrast of at least 4.5:1 on a
 dark terminal background (WCAG AA). The floor is 3:1 only for the accent colour, which is used for
-bold headings, keys, the emblem and the frame. This is checked by the `internal/ui` tests.
+bold headings, keys, the emblem and the frame. This is checked by the `ui` tests.
 
 The chosen theme is written to `theme.json` in the data directory and reaches plugins through
 `GET /api/v1/theme`: every plugin reads it at startup and paints itself in the same colours, and the
@@ -629,12 +636,12 @@ take effect immediately, use the Admin Panel plugin in the TUI.
 
 ## Plugin system
 
-AND plugins are **standalone executable binaries**. Each plugin is compiled as a separate Go
-program and can be distributed independently of AND.
+AND plugins are **standalone executable programs**. Each plugin is compiled as a separate program
+and can be distributed independently of AND; see [PLUGINS.md](PLUGINS.md) for the full guide.
 
 ### How it works
 
-1. At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json` and an `and-plugin-<name>` binary. An `and-plugin-*` binary placed directly next to `and` is loaded only if an `and-plugin-<name>.json` manifest sits beside it.
+1. At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json` and an `and-plugin-<name>` binary. An `and-plugin-*` binary placed directly next to `and` is loaded only if an `and-plugin-<name>.json` manifest sits beside it. Plugins installed with `and plugin install` are found in `eklentiler/` in the data directory.
 2. The first time the user opens a plugin, AND asks for the permissions listed in its `plugin.json`.
 3. AND starts the plugin binary in the same terminal with these environment variables:
 
@@ -661,7 +668,7 @@ run and are never written to any file.
 
 To solve this safely there is a second listener that is **opt-in and off by default**, enabled with
 the `AND_ENABLE_EXTERNAL_API=1` environment variable
-(`internal/pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
+(`pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
 
 - **Windows:** a **named pipe** whose security descriptor grants access only to the user who opened
   the listener (`D:P(A;;GA;;;<user SID>)`; `OW` if the SID can't be read).
@@ -675,7 +682,7 @@ Example use: the live Forum/DM/Chat/Network/Site panel in [and-vscode](and-vscod
 editing and publishing personal site pages in the VS Code editor.
 
 Endpoints that publish or send content (forum, site, chat, DM, file) are also subject to a local
-rate limit (`internal/pluginapi/ratelimit.go`) — ANY plugin on the token listener, or any local
+rate limit (`pluginapi/ratelimit.go`) — ANY plugin on the token listener, or any local
 process on the external API, could otherwise flood the network quickly with the node's own valid
 signature; without this layer such a bug or abuse would spread over the network unnoticed. It never
 affects AND's own TUI; it only kicks in for automated or faulty use that exceeds dozens of calls per
@@ -694,34 +701,47 @@ minute, and returns `429 Too Many Requests`.
 
 The READMEs of the plugins inside this repository are in Turkish.
 
-### Writing a new plugin
+### Installing plugins
 
-See [Eklentiler/ornek/README.md](Eklentiler/ornek/README.md) (in Turkish) for a detailed template
-and the API reference.
-
-Short version:
+Plugins that don't come with AND are installed from a folder, a `.zip`/`.tar.gz` archive or an https
+address:
 
 ```bash
-# 1. Create the Eklentiler/<name>/ directory and write main.go
-mkdir Eklentiler/myplugin
-
-# 2. Build it and put it into the AND directory
-go build -o and-plugin-myplugin ./Eklentiler/myplugin
-
-# 3. Generate the manifest JSON
-./and-plugin-myplugin --manifest > and-plugin-myplugin.json
-
-# AND discovers the plugin automatically on its next start
+and plugin install weather-1.0.0.zip
+and plugin install https://example.org/weather-1.0.0.zip --sha256 <hash published by the author>
+and plugin list
+and plugin remove weather
 ```
 
-Plugins run only with the permissions they request: the `permissions` field in `plugin.json` (e.g.
-`["dm", "file"]`) is shown to the user on first launch; reading public content needs no permission.
-For the list of permissions and endpoints see
-[Eklentiler/ornek/README.md](Eklentiler/ornek/README.md#i̇zinler).
+(`and eklenti kur`, `liste` and `kaldir` are the same commands under their Turkish names.) AND checks the
+package without running anything: the manifest, a program built for this computer (read from its file
+header), paths that stay inside the package, and a name that doesn't impersonate a bundled plugin. It
+then shows the plugin, its author, SHA-256 hashes and requested permissions and asks for confirmation.
+Installed plugins live in `eklentiler/<name>/` in the data directory, so AND's own folder doesn't have to
+be writable; AND records the hashes of the program and `plugin.json` and refuses to start a plugin whose
+files changed after installation. Automatic updates never touch them; installing a newer package updates
+one and keeps its granted permissions. The consent screen of an external plugin says that AND's
+developers have not reviewed it.
 
-To have your plugin open in the same language as AND, call `dil.OrtamdanAyarla()` in `main`, write
-texts with `dil.T`/`dil.F` and put their translations into `ceviri.json` (see
-[Interface language](#interface-language)).
+### Writing a new plugin
+
+Plugins don't have to live in this repository. The SDK packages (`pluginapi`, `ui`, `pluginui`, `dil`,
+`protokol`) are public, and `and plugin new` creates a working plugin project in its own Go module:
+
+```bash
+and plugin new weather
+cd weather
+go mod tidy
+go run . --deneme      # try it against a fake AND with sample data, without opening AND
+go test ./...          # tests run against the same fake AND, with only the manifest's permissions
+go build -o and-plugin-weather.exe .
+and plugin install .
+```
+
+The full guide covers the manifest, permissions, every API endpoint, the `ui` components, translations,
+testing with `pluginapitest`, multi-platform packaging and licensing: [PLUGINS.md](PLUGINS.md) (Turkish:
+[EKLENTILER.md](EKLENTILER.md)). [Eklentiler/ornek](Eklentiler/ornek/README.md) is a larger example
+inside this repository.
 
 ---
 
@@ -730,7 +750,7 @@ texts with `dil.T`/`dil.F` and put their translations into `ceviri.json` (see
 **[AND Search Engine](https://github.com/AND-community/and-arama-motoru)** ("arama motoru" is Turkish for "search engine") is a separate system in its own repository; to build it, clone it next to AND. It is an independent peer that joins AND's P2P network with its own identity and makes forum/chat content searchable in a local SQLite FTS5 index. It doesn't use AND's internal packages, doesn't run AND as a subprocess and keeps working while AND is closed — two separate programs that speak **the same network** (the same GossipSub topics, the same Ed25519 signature format, the same sync protocols). Topic names and protocol IDs come from the `protokol/` package that both programs use (the search engine takes it from the AND checkout next to it); sample messages produced with AND's real code (`protokol/testdata/`) are verified in the search engine's tests, so if the message format changes on one side, the tests break.
 
 What shows that they belong to the same family:
-- The same ANSI 256-colour palette (accent/error/success/muted tones — see `internal/ui`) and the same "AND" block-letter logo.
+- The same ANSI 256-colour palette (accent/error/success/muted tones — see `ui`) and the same "AND" block-letter logo.
 - Exactly the same identity derivation scheme (BIP-39 mnemonic → Ed25519), but the two programs have COMPLETELY independent identities.
 - The signature payload formats and GossipSub topic names of the forum/chat/personal-site protocols are identical — which is why the Search Engine can verify and index the content produced by AND. This is tested on every test run with the samples in `protokol/testdata/`.
 

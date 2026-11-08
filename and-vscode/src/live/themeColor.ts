@@ -1,6 +1,6 @@
 // AND'ın tema renkleri (bkz. ThemeReq, Eklentiler/pembis) lipgloss/xterm-256
 // palet numaraları olarak taşınır (ör. "205"), bazen doğrudan hex kod olarak
-// da gelebilir ("#ff6600" — bkz. internal/pluginapi/api.go'daki ThemeReq
+// da gelebilir ("#ff6600" — bkz. pluginapi/api.go'daki ThemeReq
 // yorumu). Bu dosya ikisini de CSS'in anlayacağı bir hex koda çevirir.
 
 const ANSI_16: readonly string[] = [

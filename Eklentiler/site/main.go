@@ -19,9 +19,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/pluginapi"
-	"github.com/lucian95511/and/internal/pluginui"
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 var manifest = pluginapi.Manifest{
@@ -48,7 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// AND'ın o an etkin temasıyla aç (bkz. internal/ui) — eklenti ayrı bir
+	// AND'ın o an etkin temasıyla aç (bkz. ui) — eklenti ayrı bir
 	// program olsa da AND'ın bir ekranı gibi görünsün. Eski bir AND sürümünde
 	// bu uç nokta yoksa varsayılan temada kalınır.
 	if tema, err := client.GetTheme(); err == nil {
@@ -71,7 +71,7 @@ func main() {
 }
 
 // safe, terminale yazmadan önce her stringi temizler — bkz.
-// internal/pluginui.Safe. Buradaki içerik her zaman KULLANICININ KENDİ
+// pluginui.Safe. Buradaki içerik her zaman KULLANICININ KENDİ
 // yazdığıdır (bkz. pluginapi.SiteBackend'in "her uç nokta çağıranın kendi
 // kimliğine sınırlıdır" doc yorumu), ama admin eklentisinin de yaptığı gibi
 // savunma amaçlı uygulanır — ör. bir yere kopyala-yapıştırla gelen kontrol

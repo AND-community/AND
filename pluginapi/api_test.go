@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lucian95511/and/internal/ui"
+	"github.com/lucian95511/and/ui"
 )
 
 // ─── Mock backends ────────────────────────────────────────────────────────────

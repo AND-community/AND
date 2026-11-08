@@ -14,8 +14,8 @@ import (
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/dil/diltest"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
-	"github.com/lucian95511/and/internal/pluginapi"
 	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // ozelAdlar, çevrilmeyen özel adlardır (eklenti ve tema adları).
