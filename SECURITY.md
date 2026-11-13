@@ -101,6 +101,26 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 - Ağdan gelen her akış boyutla sınırlıdır: GossipSub iletileri 64 KB, senkron istek ve yanıtları, DM'ler ve
   dosya aktarımı çerçeveleri ayrı ayrı sınırlıdır; geçmiş senkronizasyonu aynı anda en fazla 4 eşle
   yapılır ve yalnızca AND protokolünü konuşan eşlerle akış açılır (`internal/peersync`).
+- **Eş değişimi** (`/and/pex/1.0.0`, `internal/network/degisim.go`): bir AND düğümü yalnızca bağlı
+  olduğu AND düğümlerinin, onların kendi imzaladığı libp2p adres kayıtlarını (identify'da alınan
+  zarf, aynen) verir. Alan taraf her kaydın imzasını ve imzalayan anahtarın kaydın anlattığı Peer
+  ID'ye ait olduğunu doğrular: hiçbir düğüm başka bir düğüm adına adres uyduramaz. Kötü niyetli bir
+  düğüm yalnızca kendi ürettiği kimlikler için kayıt verebilir (DHT'deki buluşma kaydıyla aynı
+  güven düzeyi); bu da yanıt başına 24 kayıt, kayıt başına 16 adres ve 8 KiB ile sınırlıdır.
+  Bağlantı-yerel, belirsiz ve çok noktaya yayın adresleri hiç çevrilmez; özel ağ adresleri yalnızca
+  kayıtları veren eşle zaten özel bir ağ üzerinden konuşuluyorsa, loopback adresleri yalnızca o eş
+  aynı makinedeyse kabul edilir: internetteki bir eş düğümü yerel ağındaki adresleri taramaya
+  yönlendiremez. Bir eşin istekleri 20 saniyede birle, izlenen eş sayısı 1024 ile sınırlıdır;
+  istek 512 bayt, yanıt 512 KiB, akış 15 saniyedir. Öğrenilen bir düğüm, ona gerçekten bağlanılıp
+  AND protokolünü konuştuğu görülmeden bilinen eşler listesine yazılmaz.
+- **Bilinen eşler** (`bilinen_esler.json`): yalnızca identify'ın AND senkron protokollerini
+  bildirdiği bağlı düğümler yazılır; en çok 256 düğüm, düğüm başına 8 adres (en çok 2 röle adresi),
+  30 gün. Okunamayan dosya kenara alınır.
+- **Röle üzerinden sınırlı bağlantılar:** delik açma başarısız olunca iki düğüm arasında yalnızca
+  süresi ve veri miktarı sınırlı bir röle bağlantısı kalabilir. Bunun üzerinden yalnızca özel
+  mesaj akışı açılır (iki uç arasında şifreli; röle içeriği göremez); forum, sohbet ve site
+  geçmişi senkronu ile dosya aktarımı açılmaz.
+- Eşlerin identify'da bildirdiği sürüm metni ekrana basılmadan önce temizlenir ve 48 baytla kırpılır.
 
 ### Dosya aktarımı
 

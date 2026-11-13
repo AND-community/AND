@@ -1,6 +1,6 @@
 # Gizlilik Bildirimi
 
-**Sürüm 2** · 29 Ekim 2026
+**Sürüm 3** · 13 Kasım 2026
 
 Bu bildirim, AND'ın hangi verileri işlediğini, nerede sakladığını ve kimlerin görebileceğini
 anlatır. AND bir yazılımdır: ağı işleten, kullanıcı verilerini toplayan ya da saklayan merkezi
@@ -18,6 +18,8 @@ ilk açılışta [Kullanım Koşulları](KULLANIM_KOSULLARI.md) ile birlikte ona
 - Forum konuları 5 gün, sohbet mesajları 48 saat sonra kendiliğinden silinir. Yayılmış bir
   içeriğin her eşten silineceği garanti edilemez.
 - Bağlandığın eşler IP adresini görebilir; bu, eşten eşe iletişimin doğal bir sonucudur.
+- AND düğümleri birbirine, bağlı oldukları öteki AND düğümlerini söyler (eş değişimi): bir AND
+  düğümü senin o an hangi AND düğümlerine bağlı olduğunu öğrenebilir.
 - Özel mesajlar iki uç arasında şifrelenir; kimin kiminle ne zaman konuştuğu ise ağdan tamamen
   gizlenemez.
 - AND kullanım istatistiği (telemetri) toplamaz.
@@ -45,6 +47,8 @@ her eşin cihazına kopyalanır.
 | Gönderilen ve alınan dosyalar | Alıcının `dosyalar/` dizini | Gönderen ve alıcı | Alıcı silene kadar |
 | Moderasyon kararları (ban, sertifika) | `bans/`, `active_bans.json` ve eşler | Kararlar ağda herkese açıktır | Kararın süresince; denetim geçmişi yerel olarak tutulur |
 | Ayarlar (tema, dil, eklenti izinleri, kurallar onayı) | `theme.json`, `dil.json`, `plugins_state.json`, `kurallar_onayi.json` | Yalnızca sen | Sen silene kadar |
+| Bilinen eşler | `bilinen_esler.json`: daha önce bağlandığın AND düğümlerinin Peer ID'leri, adresleri ve son görülme zamanları (en çok 256); açılışta onlara önce bağlanmak için | Yalnızca sen | 30 gün görülmeyen silinir |
+| Ağ ayarı | `ag.json`: dinlenen sabit port | Yalnızca sen | Sen silene kadar |
 | Dışarıdan kurduğun eklentiler | `eklentiler/<ad>/` (eklentinin dosyaları) ve `eklentiler/kurulumlar.json` (her eklentinin adı, sürümü, kurduğun klasör ya da adres, kurulma zamanı ve dosyalarının SHA-256 özetleri) | Yalnızca sen | `and eklenti kaldir` ile kaldırana kadar |
 | Veritabanı yedekleri | `yedek/` (yalnızca bu cihaz); `forum.db`'nin kopyaları, şifresiz | Yalnızca sen | Günlük yedekler en çok 3 gün, sürüm yükseltmesinden önce alınanlar en çok 7 gün; silinen ya da süresi dolan içerik bu sürede yedekte kalabilir |
 | Gönderilmemiş forum yanıtları | `yanit_taslaklari.json`; şifresiz | Yalnızca sen | Yanıt gönderilene ya da 30 gün geçene kadar |
@@ -58,8 +62,13 @@ cihazının güvenliği sana bağlıdır.
 
 ## 3. Ağda kimlerle iletişim kurulur?
 
-- **Eşler:** Diğer AND kullanıcıları ve libp2p düğümleri. Bağlandığın her eş IP adresini ve Peer
-  ID'ni görür. Bağlantılar Noise protokolüyle şifrelidir.
+- **Eşler:** Diğer AND kullanıcıları ve libp2p düğümleri. Bağlandığın her eş IP adresini, Peer
+  ID'ni ve kullandığın AND sürümünü görür. Bağlantılar Noise protokolüyle şifrelidir.
+- **Eş değişimi:** Bağlı olduğun AND düğümleri, kendilerine soran öteki AND düğümlerine bağlı
+  oldukları AND düğümlerini söyler; sen de onlara sorarsın. Söylenen, her düğümün Peer ID'si ve o
+  düğümün kendi imzaladığı adres kaydıdır (bu adresler zaten DHT'deki buluşma kaydında ve her
+  bağlantıda karşı tarafa bildirilir). Böylece bir AND düğümü, senin o an hangi AND düğümlerine
+  bağlı olduğunu öğrenebilir. Yalnızca AND düğümleri söylenir; genel DHT düğümleri söylenmez.
 - **Herkese açık IPFS/libp2p başlangıç düğümleri ve DHT:** Eş bulmak için kullanılır; Peer ID'n
   ve ulaşılabilir adreslerin DHT'de yayımlanır.
 - **Röle düğümleri:** NAT arkasındaysan bağlantın bir röle üzerinden kurulabilir. Röle, iki ucun
@@ -107,6 +116,9 @@ açıklarını herkese açık bir issue yerine oradaki adrese bildir.
 Bu bildirimde kullanıcıyı etkileyen bir değişiklik olursa sürüm numarası artırılır; AND yeni
 sürümü bir sonraki açılışta yeniden onaya sunar.
 
+- **Sürüm 3** (13 Kasım 2026): eş değişimi (bağlı olduğun AND düğümlerinin öteki AND düğümlerine
+  söylenmesi), eşlerin gördüğü AND sürümü, bu cihazda tutulan bilinen eşler listesi ve sabit dinleme
+  portu eklendi (bkz. 2. ve 3. bölüm).
 - **Sürüm 2** (29 Ekim 2026): bu cihazda tutulan veritabanı yedekleri, gönderilmemiş forum yanıtları,
   kimlik özeti ve okunamadığı için kenara alınan dosyaların kopyaları eklendi (bkz. 2. bölüm).
 

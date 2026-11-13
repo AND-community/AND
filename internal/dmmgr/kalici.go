@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	mrand "math/rand/v2"
 	"os"
 	"strings"
 	"time"
@@ -45,6 +46,11 @@ const (
 	// ilkDenemeSuresi, sıraya almadan önce doğrudan göndermenin en fazla ne
 	// kadar deneneceğidir.
 	ilkDenemeSuresi = 10 * time.Second
+	// gidenDenemeAraligi, giden kutusunda mesajı bekleyen alıcılara yeniden
+	// ulaşmanın denenme aralığıdır.
+	gidenDenemeAraligi = 2 * time.Minute
+	// gidenTurBoyu, bir turda denenen en fazla alıcıdır.
+	gidenTurBoyu = 8
 
 	dosyaSurumu = 1
 	// ekVeri, hem anahtar türetmede hem şifrelemede (AAD) kullanılır; dosya
@@ -251,6 +257,49 @@ func (b *Broker) baglandi(pid peer.ID) {
 		}()
 		b.kuyruguGonder(pid)
 	}()
+}
+
+// GidenKutusunuIsle, ctx bitene kadar aralıklarla giden kutusunda mesajı
+// bekleyen alıcılara ulaşmayı dener. Eskiden bekleyen mesaj ancak alıcı
+// kendiliğinden bağlanırsa gidiyordu; bu düğüm onu hiç aramıyordu.
+func (b *Broker) GidenKutusunuIsle(ctx context.Context) {
+	t := time.NewTicker(gidenDenemeAraligi)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			b.BekleyenleriDene(gidenTurBoyu)
+		}
+	}
+}
+
+// BekleyenleriDene, giden kutusunda mesajı bekleyen alıcılardan en fazla
+// enFazla tanesine (rastgele seçilir) arka planda göndermeyi dener ve
+// denenen alıcı sayısını döndürür. Alıcı bağlı değilse kayıtlı adreslerinden
+// çevrilir (bkz. network.Node.AdresleriHatirla); ulaşılamazsa mesaj kutuda kalır.
+func (b *Broker) BekleyenleriDene(enFazla int) int {
+	b.suresiDolanlariAyikla(time.Now())
+	b.mu.Lock()
+	gorulen := map[string]bool{}
+	var alicilar []peer.ID
+	for _, d := range b.giden {
+		if gorulen[d.PeerID] {
+			continue
+		}
+		gorulen[d.PeerID] = true
+		if pid, err := peer.Decode(d.PeerID); err == nil {
+			alicilar = append(alicilar, pid)
+		}
+	}
+	b.mu.Unlock()
+	mrand.Shuffle(len(alicilar), func(i, j int) { alicilar[i], alicilar[j] = alicilar[j], alicilar[i] })
+	alicilar = alicilar[:min(enFazla, len(alicilar))]
+	for _, pid := range alicilar {
+		b.baglandi(pid)
+	}
+	return len(alicilar)
 }
 
 // gidenSayisiLocked, giden kutusundaki makine mesajı olan (makine=true) ya

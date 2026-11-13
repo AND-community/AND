@@ -20,6 +20,11 @@ const (
 	// AramaProtokolu, arama motorlarının birbirine sorgu ilettiği protokoldür;
 	// AND düğümleri konuşmaz.
 	AramaProtokolu = "/and-arama-motoru/1.0.0"
+	// EsDegisimProtokolu, AND düğümlerinin birbirine bağlı olduğu öteki AND
+	// düğümlerinin imzalı adres kayıtlarını verdiği protokoldür (eş değişimi):
+	// tek bir AND düğümüne ulaşan, ötekileri DHT'ye gerek kalmadan bulur.
+	// Konuşmayan eski düğümler yok sayılır.
+	EsDegisimProtokolu = "/and/pex/1.0.0"
 )
 
 // Eş keşfi: DHT'deki buluşma anahtarı ve yerel ağdaki mDNS servis etiketi.

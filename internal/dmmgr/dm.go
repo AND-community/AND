@@ -190,6 +190,16 @@ func (b *Broker) SendDM(ctx context.Context, peerIDStr, senderName, message stri
 
 // gonder, tek bir DM paketini pid'e iletir.
 func (b *Broker) gonder(ctx context.Context, pid peer.ID, senderName, message string, at time.Time) error {
+	// İki düğüm birbirine yalnızca bir röle üzerinden ulaşabiliyorsa (delik
+	// açma başarısız: ör. simetrik NAT) aralarındaki bağlantı "sınırlı"dır
+	// (kısa süreli, az veri). libp2p böyle bir bağlantıda akış açmayı ancak
+	// açıkça istenirse kabul eder; istenmezse doğrudan bağlantı bekleyip
+	// zaman aşımına uğrar. Özel mesaj küçüktür ve iki uç arasında şifrelidir
+	// (röle içeriği göremez): sınırlı bağlantıdan da gönderilir.
+	ctx = libp2pnet.WithAllowLimitedConn(ctx, "and-dm")
+	// Alıcı bağlı değilse ve adresi unutulduysa, daha önce bağlanılmış bir AND
+	// düğümü olarak kayıtlı adresleri denenir.
+	b.node.AdresleriHatirla(pid)
 	stream, err := b.node.Host.NewStream(ctx, pid, pluginapi.DMProtocol)
 	if err != nil {
 		return fmt.Errorf("peer'a bağlanılamadı: %w", err)

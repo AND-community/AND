@@ -189,7 +189,7 @@ type appModel struct {
 	banNoticeErr    bool
 
 	settingsIdx  int
-	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar 3=Dil
+	settingsTab  int // 0=Bilgi 1=Eklentiler 2=Temalar 3=Dil 4=Ağ
 	dilIdx       int // Dil sekmesinde seçili dil (dil.Diller içinde)
 	settingsVP   viewport.Model
 	showMnemonic bool
@@ -1398,6 +1398,21 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			m.diliUygula(dil.Diller[m.dilIdx].Kod)
 		}
+	case 4: // Ağ — yalnızca kaydırma
+		switch msg.String() {
+		case "up", "k":
+			m.settingsVP.LineUp(1)
+		case "down", "j":
+			m.settingsVP.LineDown(1)
+		case "pgup":
+			m.settingsVP.HalfViewUp()
+		case "pgdown":
+			m.settingsVP.HalfViewDown()
+		case "g":
+			m.settingsVP.GotoTop()
+		case "G":
+			m.settingsVP.GotoBottom()
+		}
 	case 0: // Bilgi — sadece scroll
 		switch msg.String() {
 		case "up", "k":
@@ -1543,7 +1558,7 @@ func (m *appModel) syncSettingsVP() {
 	}
 	// Etiket sütunu Türkçede 18; daha uzun çevirilerde genişler.
 	labelW := etiketGenisligi(18, "Sürüm", "Platform", "Veri dizini", "Ad", "Genel anahtar", "Rol", "Aktivite",
-		"Kurtarma kodu", "Bio", "Durum", "Bağlantı", "Etiketler", "Peer ID", "Bağlantı durumu", "Adres",
+		"Kurtarma kodu", "Bio", "Durum", "Bağlantı", "Etiketler", "Peer ID", "Bağlantı durumu",
 		"Sohbet geçmişi", "Yasaklar", "Ağ", "Forum", "Toplam konu", "Toplam yanıt")
 	girinti := strings.Repeat(" ", labelW)
 	row := func(k, v string) string { return ui.KV(labelW, k, v) + "\n" }
@@ -1713,14 +1728,8 @@ func (m *appModel) syncSettingsVP() {
 		b.WriteString(ui.Section(dil.T("Ağ")) + "\n")
 		if m.node != nil {
 			b.WriteString(row(dil.T("Peer ID"), kisaPeerID(m.node.Host.ID().String())))
-			b.WriteString(row(dil.T("Bağlantı durumu"), esDurumu(m.peerCount())))
-			addrs := m.node.Host.Network().ListenAddresses()
-			if len(addrs) > 0 {
-				b.WriteString(row(dil.T("Adres"), addrs[0].String()))
-				for _, a := range addrs[1:] {
-					b.WriteString(girinti + a.String() + "\n")
-				}
-			}
+			b.WriteString(row(dil.T("Bağlantı durumu"), esDurumu(m.peerCount())+ui.S.Muted.Render("  ·  "+dil.F("%d AND düğümü", m.andEsSayisi()))))
+			b.WriteString(ipucu(dil.T("Ayrıntılar: Ağ sekmesi")))
 		} else {
 			b.WriteString(row(dil.T("Ağ"), ui.S.Muted.Render(dil.T("başlatılmadı"))))
 		}
@@ -1798,6 +1807,9 @@ func (m *appModel) syncSettingsVP() {
 		for localIdx, globalIdx := range list {
 			b.WriteString(m.eklentiSatiri(w, len(ui.Presets)+localIdx == m.settingsIdx, m.plugins[globalIdx]))
 		}
+
+	case 4: // ── Ağ ────────────────────────────────────────────
+		b.WriteString(m.agSekmesi(w))
 	}
 
 	m.settingsVP.SetContent(b.String())
@@ -2048,7 +2060,7 @@ func (m appModel) viewSettings() string {
 
 	var b strings.Builder
 	b.WriteString(ui.Header(iw, []string{dil.T("Ayarlar")}, ui.S.Muted.Render(dil.F("%s teması", dil.T(ActiveThemeName)))) + "\n")
-	b.WriteString(ui.Tabs(m.settingsTab, dil.T("Bilgi"), dil.T("Eklentiler"), dil.T("Temalar"), dil.T("Dil")) + "\n\n")
+	b.WriteString(ui.Tabs(m.settingsTab, dil.T("Bilgi"), dil.T("Eklentiler"), dil.T("Temalar"), dil.T("Dil"), dil.T("Ağ")) + "\n\n")
 
 	b.WriteString(m.settingsVP.View())
 	b.WriteString("\n")
@@ -2076,6 +2088,8 @@ func (m appModel) viewSettings() string {
 			ui.H("v", dil.T("GitHub doğrula")), ui.H("m", dil.T("kurtarma kodu")), sekme, geri}
 	case m.settingsTab == 1:
 		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("space", dil.T("aç/kapat")), ui.H("r", dil.T("izinleri geri al")), sekme, geri}
+	case m.settingsTab == 4:
+		hints = []ui.Hint{ui.H("↑↓", dil.T("kaydır")), sekme, geri}
 	case m.settingsTab == 3:
 		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("enter", dil.T("uygula")), sekme, geri}
 	default:

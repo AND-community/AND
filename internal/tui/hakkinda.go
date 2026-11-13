@@ -46,7 +46,7 @@ var hakkindaSekmeleri = [hakkindaSekmeSayisi]string{
 // Kullanıcıyı etkileyen bir değişiklikte artırılır; herkes yeni sürümü bir
 // sonraki açılışta yeniden onaylar. GIZLILIK.md ve KULLANIM_KOSULLARI.md'deki
 // sürüm numarasıyla aynı tutulur.
-const kurallarSurumu = 2
+const kurallarSurumu = 3
 
 const kurallarOnayiDosyasi = "kurallar_onayi.json"
 
@@ -82,6 +82,7 @@ var gizlilikMaddeleri = []string{
 	dil.K("Forum konuları, yanıtlar, genel sohbet mesajları, profilin ve kişisel site sayfaların herkese açıktır: eşlere yayılır ve onların cihazlarında da saklanır."),
 	dil.K("Forum konuları 5 gün, sohbet mesajları 48 saat sonra kendiliğinden silinir. Yayılmış bir içeriğin her eşten silineceği garanti edilemez."),
 	dil.K("Bağlandığın eşler IP adresini görebilir; bu, eşten eşe iletişimin doğal bir sonucudur."),
+	dil.K("AND düğümleri birbirine bağlı oldukları öteki AND düğümlerini söyler; bir düğüm senin hangi AND düğümlerine bağlı olduğunu öğrenebilir. Daha önce bağlandığın AND düğümlerinin adresleri bu cihazda saklanır."),
 	dil.K("Özel mesajlar iki uç arasında şifrelenir; kimin kiminle ne zaman konuştuğu ise ağdan tamamen gizlenemez."),
 	dil.K("Kimlik dosyan ve özel mesaj geçmişin bu cihazda şifreli saklanır; forum ve sohbet veritabanı şifresizdir."),
 	dil.K("Bu cihazda veritabanının yedekleri (en çok 3 gün; sürüm yükseltmesinden öncekiler en çok 7 gün) ve gönderilmemiş forum yanıtların tutulur; silinen ya da süresi dolan içerik bu sürede yedekte kalabilir."),

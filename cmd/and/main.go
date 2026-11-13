@@ -220,7 +220,10 @@ func run() error {
 		return fmt.Errorf("init moderation: %w", err)
 	}
 
-	node, err := network.New(id, mod)
+	// Düğüm, veri dizininde kalıcı bir dinleme portu (ag.json) ve daha önce
+	// bağlanılan AND düğümlerinin listesini (bilinen_esler.json) tutar; öteki
+	// düğümlere AND sürümünü bildirir.
+	node, err := network.Yeni(id, network.Secenekler{Gater: mod, VeriDizini: dir, Surum: updater.Version})
 	if err != nil {
 		return fmt.Errorf("start network node: %w", err)
 	}
@@ -347,7 +350,17 @@ func run() error {
 			}
 			return nil
 		},
-		Connected: func() []peer.ID { return node.Host.Network().Peers() },
+		// Periyodik turlar yalnızca doğrudan bağlı AND düğümleriyle yapılır:
+		// röle üzerinden kurulan sınırlı bağlantı geçmiş taşıyamaz.
+		Connected: func() []peer.ID {
+			var out []peer.ID
+			for _, e := range node.Esler.Esler() {
+				if !e.Sinirli {
+					out = append(out, e.ID)
+				}
+			}
+			return out
+		},
 		Supports: func(pid peer.ID) peersync.Support {
 			return peersync.ProtocolSupport(node.Host.Peerstore(), pid, tui.ANDSyncProtocols()...)
 		},
@@ -368,6 +381,9 @@ func run() error {
 		}
 	}
 	tui.OkunmamisDM = dmBroker.OkunmamisSayisi
+	// Giden kutusunda bekleyen mesajların alıcıları aralıklarla aranır;
+	// yalnızca alıcının kendiliğinden bağlanması beklenmez.
+	arka.Git("giden kutusu", func() { dmBroker.GidenKutusunuIsle(ctx) })
 	dosyalarDir := filepath.Join(dir, "dosyalar")
 	_ = os.MkdirAll(dosyalarDir, 0o700)
 	fileBroker := filemgr.New(node, dosyalarDir)

@@ -19,6 +19,7 @@ func TestAgSabitleriDegismez(t *testing.T) {
 		"DMProtokolu":            {DMProtokolu, "/and/dm/1.0.0"},
 		"DosyaProtokolu":         {DosyaProtokolu, "/and/file/2.0.0"},
 		"AramaProtokolu":         {AramaProtokolu, "/and-arama-motoru/1.0.0"},
+		"EsDegisimProtokolu":     {EsDegisimProtokolu, "/and/pex/1.0.0"},
 		"Rendezvous":             {Rendezvous, "and-community/1.0.0"},
 		"MDNSEtiketi":            {MDNSEtiketi, "and-community-mdns"},
 		"DeltaXOnEki":            {DeltaXOnEki, "AND-PROJEAG/"},

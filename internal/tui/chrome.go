@@ -8,17 +8,15 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	"github.com/lucian95511/and/dil"
-	"github.com/lucian95511/and/internal/chatlog"
-	"github.com/lucian95511/and/internal/forum"
+	"github.com/lucian95511/and/internal/network"
 	"github.com/lucian95511/and/internal/peersync"
-	"github.com/lucian95511/and/internal/site"
 	"github.com/lucian95511/and/ui"
 )
 
 // ANDSyncProtocols, bir eşin AND düğümü olduğunu gösteren geçmiş senkronu
 // protokolleridir — bağlı eşlerin çoğu AND değil, genel DHT düğümleridir.
 func ANDSyncProtocols() []protocol.ID {
-	return []protocol.ID{forum.SyncProtocol, chatlog.SyncProtocol, site.SyncProtocol}
+	return network.ANDProtokolleri()
 }
 
 // SyncStatus, cmd/and'daki geçmiş senkronizasyonu zamanlayıcısının özetini
@@ -41,18 +39,13 @@ func okunmamisDM() int {
 	return OkunmamisDM()
 }
 
-// andEsSayisi, bağlı eşlerden AND protokolünü konuştuğu bilinenlerin sayısıdır.
+// andEsSayisi, doğrudan bağlı AND düğümlerinin sayısıdır (bkz.
+// network.EsIzleyici); yalnızca röle üzerinden ulaşılanlar sayılmaz.
 func (m appModel) andEsSayisi() int {
-	if m.node == nil {
+	if m.node == nil || m.node.Esler == nil {
 		return 0
 	}
-	ps, protos, n := m.node.Host.Peerstore(), ANDSyncProtocols(), 0
-	for _, p := range m.node.Host.Network().Peers() {
-		if peersync.ProtocolSupport(ps, p, protos...) == peersync.SupportYes {
-			n++
-		}
-	}
-	return n
+	return m.node.Esler.Say()
 }
 
 // icGenislik, terminal genişliği w iken tam ekran çerçevenin içerik

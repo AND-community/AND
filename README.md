@@ -83,7 +83,8 @@ protokol/           — PUBLIC wire constants shared with the search engine and 
 
 internal/
   crypto/           — BIP-39 → Ed25519 identity, AES-GCM encrypted storage
-  network/          — libp2p node, GossipSub, DHT discovery, sync protocol
+  network/          — libp2p node, GossipSub, discovery (known peers, mDNS, DHT rendezvous, peer
+                       exchange), relays, AND peer tracking, network status
   forum/            — topic/reply management, signature checks, TTL, tombstone sync
   chatlog/          — public P2P chat channel (signed messages, rate limits, sync)
   moderation/       — founder/moderator certificates, flexible bans/unbans, audit
@@ -166,6 +167,37 @@ At most 4 syncs run at once, and two syncs with the same peer never overlap. Eve
 peers connect at startup, hundreds of streams don't open at once. The top of the main menu shows
 how many connected peers are AND nodes and when the last sync happened.
 
+### Network: finding and reaching other nodes
+
+AND has no servers. A node finds other AND nodes in four ways, all running in parallel:
+
+| Source | How it works |
+|---|---|
+| Known peers | AND nodes you have connected to before are kept in `bilinen_esler.json` (only nodes that proved they speak AND, at most 256, forgotten after 30 days). At start-up AND dials them first, without waiting for the DHT; while it has no AND peers it keeps retrying them, also when the internet DHT can't be reached |
+| Local network | Nodes on the same network find each other with mDNS |
+| Rendezvous | Each node announces itself under AND's key in the public libp2p DHT and searches there. Searching starts as soon as the DHT knows its first peers and doesn't wait for the announcement; it is frequent while you have no AND peers (backing off from 30 s to 5 min when you are alone) and rare once you have enough. The announcement is renewed every 15 minutes, and right away when your public or relay addresses change |
+| Peer exchange (`/and/pex/1.0.0`) | Every AND node tells the nodes connected to it which other AND nodes it is connected to. Reaching one AND node is enough to find the rest without the DHT. Each address comes as the described node's own signed record, so nobody can make up addresses for other nodes; addresses on private networks are only accepted from a peer on the same private network |
+
+Most home computers are behind NAT and can't be reached from the internet directly. AND handles this in
+three steps:
+
+- **Fixed port.** AND picks a port on first start and keeps it (`ag.json`; the `AND_PORT` environment
+  variable overrides it, `AND_PORT=0` means random). If you forward this port (TCP and UDP) to your
+  computer on your router, other nodes can connect to you directly.
+- **Relays.** A node behind NAT reserves a slot on two relays chosen from the peers it is connected to;
+  any public libp2p node that offers a relay qualifies, AND nodes first. Other nodes then reach it
+  through the relay. Before this version only AND nodes counted as relay candidates, so in a small
+  network with no publicly reachable AND node, nobody behind NAT could be reached at all.
+- **Hole punching.** Over the relayed connection both sides try to open a direct connection. If that
+  fails (symmetric NAT, common on mobile networks), only the limited relayed connection remains: it
+  lasts minutes and carries little data, so forum and chat history doesn't flow over it, but private
+  messages (small and end-to-end encrypted) do.
+
+AND nodes are tagged in the connection manager, so when the connection limit is hit, public DHT nodes are
+dropped first. **Settings → Network** shows all of this: whether you are reachable, your NAT type, the
+port, relays, every connected AND node with its address, transport, latency and version, and when
+discovery last ran.
+
 ### Resilience
 
 AND treats everything that comes from the network as untrusted and tries to keep a single error
@@ -177,7 +209,7 @@ from bringing down the whole node:
 | Panic guards (`internal/guvenli`) | An unexpected error in code that handles a gossip message or a stream opened by a peer drops only that input (the stack trace goes to `and.log`); the node keeps running. If one of the background loops stops, the interface closes cleanly and shows the error — the terminal is not left broken |
 | Fuzz tests | Forum, chat, profile, site and moderation messages and file-transfer frames are exercised with malformed, random and edge-case input, including input validly signed with an attacker's own key (`go test -fuzz`) |
 | SQLite settings | `busy_timeout` (5 s), WAL and `synchronous=NORMAL` are applied on every connection; another process using the file at the same time (e.g. `andmod`) doesn't immediately get "database is locked". At shutdown the background jobs stop first, then the database is closed |
-| Reconnection | If all peers drop after waking from sleep or a network change, AND reconnects to the bootstrap nodes within 15 s, backing off (up to 5 min) while that fails; once a connection is back it refreshes without waiting for discovery |
+| Reconnection | If all peers drop after waking from sleep or a network change, AND reconnects to the bootstrap nodes and the known AND peers within 15 s, backing off (up to 5 min) while that fails; once a connection is back, or the last AND peer leaves, it searches without waiting. Private messages waiting in the outbox are retried every 2 minutes by dialling the recipient at its known address, instead of only when the recipient happens to connect |
 | Log limit | `and.log` rotates to `and.log.1` at 5 MB, even while running; a noisy library can't fill the disk |
 | One AND per data directory | Only one AND can use a data directory at a time (`and.kilit`, an operating-system lock that is released automatically on a crash). Two ANDs can't write to the same files and overwrite each other's DM history, outbox or ban lists; after an update the restarted version waits for the old one to exit |
 | Database backup and recovery | A daily backup of `forum.db` goes into the `yedek/` directory (the newest three, at most 3 days old); an existing database is also backed up before it is upgraded (at most 7 days). Each migration step runs in its own transaction. `PRAGMA quick_check` runs at startup: if the file is corrupt, AND still opens — the corrupt file is moved aside instead of being deleted, the newest good backup is restored, the readable rows are salvaged from the corrupt file and a notice appears on the home screen |
@@ -410,7 +442,7 @@ emblem hide themselves.
 
 ### Settings screen
 
-It has four tabs; switch with `←`/`→` (or `tab`), and `esc` returns to the main menu.
+It has five tabs; switch with `←`/`→` (or `tab`), and `esc` returns to the main menu.
 
 | Tab | Contents |
 |---|---|
@@ -418,6 +450,7 @@ It has four tabs; switch with `←`/`→` (or `tab`), and `esc` returns to the m
 | Plugins | Name, version, status and description of the installed plugins; `space` turns them on/off |
 | Themes | Built-in themes (with colour swatches) and theme plugins; `enter` applies the selected theme immediately |
 | Language | Interface language; `enter` applies and saves the selected language immediately |
+| Network | Whether other nodes can reach you (directly, through a relay, or not at all), NAT type, the fixed port, connected AND nodes (address, transport, latency, version), known peers and the last discovery runs; refreshed every 5 seconds (see [Network](#network-finding-and-reaching-other-nodes)) |
 
 ### Appearance and themes
 
@@ -777,6 +810,8 @@ All data is stored under `%APPDATA%\and\` (Windows), `~/.config/and/` (Linux) or
 | `mod_rates.json` | Hourly ban/unban/revoke rate-limit counters per moderator |
 | `dosyalar/` | Received files |
 | `bootstrap.txt` | Extra bootstrap node multiaddrs (optional) |
+| `bilinen_esler.json` | AND nodes you connected to before (Peer ID, addresses, last seen; at most 256, forgotten after 30 days); dialled first at start-up |
+| `ag.json` | The fixed listening port (TCP and UDP); the `AND_PORT` environment variable overrides it |
 | `taslaklar_<category>.json` | Topic drafts (konu_ac plugin, local — gitignored) |
 | `theme.json` | Selected theme (written by Settings → Themes or by a theme plugin; Classic is used if it is missing) |
 | `dil.json` | Selected interface language (Settings → Language or `ctrl+l` on the login screen; Turkish if it is missing; the `AND_DIL` environment variable overrides it) |

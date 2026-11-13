@@ -83,7 +83,8 @@ protokol/           — HERKESE AÇIK, arama motoru ve eklentilerle paylaşılan
 
 internal/
   crypto/           — BIP-39 → Ed25519 kimlik, AES-GCM şifreli depolama
-  network/          — libp2p düğümü, GossipSub, DHT keşfi, sync protokolü
+  network/          — libp2p düğümü, GossipSub, keşif (bilinen eşler, mDNS, DHT buluşma noktası,
+                       eş değişimi), röleler, AND eşlerinin izlenmesi, ağ durumu
   forum/            — konu/yanıt yönetimi, imza doğrulama, TTL, tombstone senkronu
   chatlog/          — genel P2P sohbet kanalı (imzalı mesaj, hız sınırı, senkron)
   moderation/       — kurucu/moderatör sertifikası, esnek süreli ban/unban, denetim
@@ -166,6 +167,36 @@ Aynı anda en fazla 4 senkron çalışır ve aynı eşle iki senkron asla eşzam
 yüzlerce eş birden bağlansa da yüzlerce akış birden açılmaz. Ana menünün üst bölümü kaç
 bağlı eşin AND düğümü olduğunu ve son senkronun ne zaman yapıldığını gösterir.
 
+### Ağ: öteki düğümleri bulmak ve onlara ulaşmak
+
+AND'ın sunucusu yoktur. Bir düğüm öteki AND düğümlerini dört yoldan, hepsi aynı anda çalışarak bulur:
+
+| Kaynak | Nasıl çalışır |
+|---|---|
+| Bilinen eşler | Daha önce bağlandığın AND düğümleri `bilinen_esler.json`'da tutulur (yalnızca AND konuştuğu doğrulanan düğümler; en çok 256; 30 gün görülmeyen silinir). AND açılınca DHT'yi beklemeden önce bunları çevirir; hiç AND eşi yokken, internetteki DHT'ye ulaşılamasa da, onları denemeyi sürdürür |
+| Yerel ağ | Aynı ağdaki düğümler birbirini mDNS ile bulur |
+| Buluşma noktası | Her düğüm genel libp2p DHT'sinde AND'ın anahtarı altında kendini duyurur ve orada arar. Arama, DHT ilk eşlerini tanır tanımaz başlar ve duyurunun bitmesini beklemez; hiç AND eşin yokken sık (yalnızsan 30 sn'den 5 dk'ya kadar katlanarak), yeterince eşin varken seyrek yapılır. Duyuru 15 dakikada bir, açık ya da röle adreslerin değişince de hemen yenilenir |
+| Eş değişimi (`/and/pex/1.0.0`) | Her AND düğümü, kendisine bağlananlara bağlı olduğu öteki AND düğümlerini söyler. Tek bir AND düğümüne ulaşmak, DHT olmadan ötekileri bulmaya yeter. Her adres, anlattığı düğümün kendi imzaladığı kayıtla gelir: kimse başka düğümler adına adres uyduramaz; özel ağ adresleri yalnızca aynı özel ağdaki bir eşten kabul edilir |
+
+Evlerdeki bilgisayarların çoğu NAT arkasındadır ve internetten doğrudan ulaşılamaz. AND bunu üç adımda
+çözer:
+
+- **Sabit port.** AND ilk açılışta bir port seçer ve onu korur (`ag.json`; `AND_PORT` ortam değişkeni
+  onu geçersiz kılar, `AND_PORT=0` rastgele demektir). Bu portu (TCP ve UDP) modeminde bilgisayarına
+  yönlendirirsen öteki düğümler sana doğrudan bağlanabilir.
+- **Röleler.** NAT arkasındaki düğüm, bağlı olduğu eşlerden seçilen iki rölede yer ayırtır; röle
+  hizmeti sunan her genel libp2p düğümü olabilir, önce AND düğümleri denenir. Öteki düğümler ona röle
+  üzerinden ulaşır. Bu sürümden önce yalnızca AND düğümleri röle adayıydı: internetten doğrudan
+  erişilebilen bir AND düğümü olmayan küçük bir ağda, NAT arkasındaki hiç kimseye ulaşılamıyordu.
+- **Delik açma.** Röle üzerindeki bağlantıdan iki taraf doğrudan bir bağlantı açmayı dener. Bu
+  başarısız olursa (simetrik NAT, mobil ağlarda yaygın) yalnızca sınırlı röle bağlantısı kalır:
+  birkaç dakika sürer ve az veri taşır; forum ve sohbet geçmişi bundan akmaz ama özel mesajlar (küçük
+  ve uçtan uca şifreli) gider.
+
+AND düğümleri bağlantı yöneticisinde etiketlenir: bağlantı sınırı aşılınca önce genel DHT düğümleri
+düşürülür. **Ayarlar → Ağ** bunların hepsini gösterir: sana ulaşılıp ulaşılamadığı, NAT türün, port,
+röleler, bağlı her AND düğümü (adres, taşıyıcı, gecikme, sürüm) ve keşfin en son ne zaman çalıştığı.
+
 ### Dayanıklılık
 
 AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün düğümü düşürmemesine
@@ -177,7 +208,7 @@ AND ağdan gelen her şeyi güvenilmez kabul eder ve tek bir hatanın bütün d�
 | Panik koruması (`internal/guvenli`) | Bir gossip iletisini ya da eşin açtığı akışı işleyen kodda beklenmedik bir hata yalnızca o girdiyi düşürür (yığın izi `and.log`'a yazılır); düğüm çalışmaya devam eder. Arka plan döngülerinden biri durursa arayüz düzgün kapanır ve hata gösterilir — terminal bozuk kalmaz |
 | Fuzz testleri | Forum, sohbet, profil, site ve moderasyon iletileri ile dosya aktarımı çerçeveleri bozuk, rastgele ve saldırganın kendi anahtarıyla geçerli imzalanmış uç değerlerle denenir (`go test -fuzz`) |
 | SQLite ayarları | `busy_timeout` (5 sn), WAL ve `synchronous=NORMAL` her bağlantıda uygulanır; dosyayı aynı anda kullanan başka bir süreç (ör. `andmod`) hemen "database is locked" almaz. Kapanışta önce arka plan işleri durur, sonra veritabanı kapatılır |
-| Yeniden bağlanma | Uykudan uyanma ya da ağ değişikliğiyle bütün eşler düşerse bootstrap'a 15 sn içinde, sonuçsuz kaldıkça katlanan aralıklarla (en çok 5 dk) yeniden bağlanılır; bağlantı gelince keşif beklemeden yenilenir |
+| Yeniden bağlanma | Uykudan uyanma ya da ağ değişikliğiyle bütün eşler düşerse bootstrap düğümlerine ve bilinen AND eşlerine 15 sn içinde, sonuçsuz kaldıkça katlanan aralıklarla (en çok 5 dk) yeniden bağlanılır; bağlantı gelince ya da son AND eşi ayrılınca beklemeden aranır. Giden kutusunda bekleyen özel mesajlar için alıcı 2 dakikada bir bilinen adresinden çevrilir; alıcının kendiliğinden bağlanması beklenmez |
 | Günlük sınırı | `and.log` çalışırken de 5 MB'ta `and.log.1`'e döner; gürültülü bir kütüphane diski dolduramaz |
 | Tek AND, tek veri dizini | Veri dizinini aynı anda yalnızca bir AND kullanabilir (`and.kilit`, işletim sistemi kilidi; çökmede kendiliğinden bırakılır). İki AND aynı dosyalara yazıp birbirinin DM geçmişini, giden kutusunu ya da yasak listelerini ezemez; güncellemeden sonra yeniden başlayan sürüm eskisinin kapanmasını bekler |
 | Veritabanı yedeği ve kurtarma | `forum.db`'nin günde bir yedeği `yedek/` dizinine alınır (en yeni üçü, en çok 3 gün); var olan bir veritabanı yükseltilmeden önce de yedeklenir (en çok 7 gün). Migrasyonların her adımı kendi işleminde uygulanır. Açılışta `PRAGMA quick_check` çalışır: dosya bozuksa AND yine açılır: bozuk dosya silinmeden kenara alınır, en yeni sağlam yedek geri yüklenir, bozuk dosyadan okunabilen kayıtlar aktarılır ve ana ekranda bildirilir |
@@ -405,7 +436,7 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 
 ### Ayarlar ekranı
 
-Dört sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye döner.
+Beş sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye döner.
 
 | Sekme | İçerik |
 |---|---|
@@ -413,6 +444,7 @@ Dört sekmesi vardır; `←`/`→` (ya da `tab`) ile geçilir, `esc` ana menüye
 | Eklentiler | Yüklü eklentilerin adı, sürümü, durumu ve açıklaması; `space` ile aç/kapat |
 | Temalar | Yerleşik temalar (renk örnekleriyle) ve tema eklentileri; `enter` seçili temayı anında uygular |
 | Dil | Arayüz dili; `enter` seçili dili anında uygular ve kaydeder |
+| Ağ | Öteki düğümlerin sana ulaşıp ulaşamadığı (doğrudan, röle üzerinden ya da hiç), NAT türü, sabit port, bağlı AND düğümleri (adres, taşıyıcı, gecikme, sürüm), bilinen eşler ve keşfin son çalışmaları; 5 saniyede bir yenilenir (bkz. [Ağ](#ağ-öteki-düğümleri-bulmak-ve-onlara-ulaşmak)) |
 
 ### Görünüm ve temalar
 
@@ -774,6 +806,8 @@ olduğu [GIZLILIK.md](GIZLILIK.md)'de anlatılır.
 | `mod_rates.json` | Moderatör başına saatlik ban/unban/revoke hız sınırı sayaçları |
 | `dosyalar/` | Alınan dosyalar |
 | `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
+| `bilinen_esler.json` | Daha önce bağlandığın AND düğümleri (Peer ID, adresler, son görülme; en çok 256, 30 gün sonra silinir); açılışta önce bunlar çevrilir |
+| `ag.json` | Sabit dinleme portu (TCP ve UDP); `AND_PORT` ortam değişkeni onu geçersiz kılar |
 | `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
 | `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
 | `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |

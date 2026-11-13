@@ -12,8 +12,8 @@ import (
 	"github.com/lucian95511/and/dil"
 )
 
-// settingsTabSayisi, Ayarlar'daki sekme sayısıdır (Bilgi, Eklentiler, Temalar, Dil).
-const settingsTabSayisi = 4
+// settingsTabSayisi, Ayarlar'daki sekme sayısıdır (Bilgi, Eklentiler, Temalar, Dil, Ağ).
+const settingsTabSayisi = 5
 
 // dilSirasi, kodun dil.Diller içindeki sırasıdır (bulunamazsa 0).
 func dilSirasi(kod string) int {
