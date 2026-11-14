@@ -5,6 +5,10 @@
 # ve CR karakteri tam ekran arayüzü bozar (bkz. internal/lisans).
 internal/lisans/*.txt text eol=lf
 
+# "and eklenti yeni"nin gömülü iskelet şablonları da LF: üretilen go.mod ve
+# Go dosyaları her platformda aynı olsun (bkz. internal/eklentisablon).
+internal/eklentisablon/sablon/* text eol=lf
+
 # Simge, logo ve Windows kaynak nesneleri ikilidir; bayt bayt korunmalılar
 # (cmd/and/winres/uret'in testi depodaki .syso'ları yeniden üretip karşılaştırır).
 *.syso binary

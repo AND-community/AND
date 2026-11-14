@@ -60,6 +60,14 @@ func TestOlustur_Dosyalar(t *testing.T) {
 		t.Error("plugin.json boş da olsa permissions alanını göstermeli")
 	}
 
+	// Şablonlar CRLF ile çekilmiş olsa da (Windows, core.autocrlf=true)
+	// iskelet LF yazar.
+	for _, ad := range yazilan {
+		if b, _ := os.ReadFile(filepath.Join(hedef, ad)); bytes.Contains(b, []byte("\r")) {
+			t.Errorf("%s CR karakteri içeriyor; iskelet LF yazmalı", ad)
+		}
+	}
+
 	fset := token.NewFileSet()
 	for _, ad := range yazilan {
 		if strings.HasSuffix(ad, ".go") {

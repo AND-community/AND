@@ -140,6 +140,10 @@ func isle(ad string, veri any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Depo Windows'ta core.autocrlf=true ile çekildiyse gömülen şablonlar CRLF
+	// olur (.gitattributes bunu önler ama ZIP indirmeleri ve eski kopyalar için
+	// güvenmeyiz). İskelet her platformda LF yazar.
+	ham = bytes.ReplaceAll(ham, []byte("\r\n"), []byte("\n"))
 	t, err := template.New(ad).Delims("[[", "]]").Option("missingkey=error").Parse(string(ham))
 	if err != nil {
 		return nil, err
