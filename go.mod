@@ -3,9 +3,10 @@ module github.com/lucian95511/and
 go 1.26.4
 
 // go1.26.9, standart kütüphanede govulncheck'in bulduğu açıkları (net/http,
-// net/textproto, net/url, crypto/tls, encoding/asn1) kapatır. GOTOOLCHAIN=auto
+// net/textproto, net/url, crypto/tls, encoding/asn1) kapatır; go1.26.11 de net/http'deki
+// GO-2026-6859'u (MaxBytesReader başlık yarışıyla sunucu çökmesi). GOTOOLCHAIN=auto
 // (varsayılan) bu sürümü gerekirse otomatik indirir.
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
