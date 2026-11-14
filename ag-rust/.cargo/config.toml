@@ -1,0 +1,12 @@
+# Windows, GNU araç zinciri (C derleyicisi gerektirmeyen kurulum):
+#
+# - Rust'ın paketlediği GNU ld, raw-dylib içe aktarma kütüphanelerindeki bazı
+#   girişleri (ör. TlsGetValue) hiçbir içe aktarma tanımlayıcısına koymuyor;
+#   program main'e girmeden erişim ihlaliyle çöküyordu. Bunun yerine Rust'ın
+#   kendi lld'si kullanılır.
+# - raw-dylib için gereken dlltool: derle.sh, Rust'ın llvm-tools bileşenindeki
+#   llvm-ar'ı dlltool adıyla PATH'e koyar (GNU dlltool, pakette olmayan bir
+#   montajcı ister).
+[target.x86_64-pc-windows-gnu]
+linker = "rust-lld"
+rustflags = ["-C", "linker-flavor=ld.lld"]

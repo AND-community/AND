@@ -1,0 +1,21 @@
+[package]
+name = "and-ag"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures = "0.3.34"
+libp2p = { version = "0.57.1", default-features = false, features = ["tokio", "tcp", "noise", "yamux", "gossipsub", "identify", "kad", "autonat", "relay", "dcutr", "ping", "dns", "macros", "ed25519", "rsa"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
+
+# ring (C kodu) yerine saf Rust (RustCrypto) kullanan iki küçük yama; ayrıntılar
+# yama/*/AND-YAMASI.md'de.
+[patch.crates-io]
+libp2p-noise = { path = "yama/libp2p-noise" }
+libp2p-identity = { path = "yama/libp2p-identity" }

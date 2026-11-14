@@ -16,6 +16,7 @@ package network
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -48,7 +49,11 @@ func TestCanli_Kesif(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer node.Close()
-	ctx, iptal := context.WithTimeout(context.Background(), 240*time.Second)
+	sure := 240 * time.Second
+	if s, err := time.ParseDuration(os.Getenv("CANLI_SURE")); err == nil && s > 0 {
+		sure = s
+	}
+	ctx, iptal := context.WithTimeout(context.Background(), sure)
 	defer iptal()
 
 	kdht, err := dual.New(ctx, node.Host)
