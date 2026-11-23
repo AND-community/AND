@@ -719,21 +719,24 @@
   let gezinmeAlani = null;
 
   function uygulamaCiz() {
-    durumAlani = el("div", { class: "durum" });
+    durumAlani = el("footer", { class: "durum-cubugu", role: "status" });
     seritAlani = el("div");
     gorunumAlani = el("div", { class: "gorunum" });
     gezinmeAlani = el("nav", { class: "gezinme", "aria-label": t("Gezinme") });
     const o = D.oturum;
+    const profileGit = () => { D.ayarSekmesi = "profil"; git("ayarlar"); };
     bosalt(kok(), el("div", { class: "uygulama" },
       el("aside", { class: "kenar" },
-        el("div", { class: "marka" }, el("img", { class: "logo", src: "logo.png", alt: "" }),
-          el("div", null, el("div", { class: "marka-ad" }, "AND"), el("div", { class: "marka-surum" }, o.surum))),
+        el("div", { class: "marka" }, el("img", { class: "logo", src: "logo.png", alt: "" }), el("span", { class: "marka-ad" }, "AND")),
+        el("button", { class: "arama-dugmesi", on: { click: hizliErisim } },
+          ikon("ara"), el("span", null, t("Ara ya da git…")), el("kbd", null, "Ctrl K")),
         gezinmeAlani,
         el("div", { class: "kullanici-karti" },
-          avatar(o.ad, o.anahtar),
-          el("div", { class: "bilgi" }, el("div", { class: "ad", title: o.ad }, o.ad || t("adsız")), durumAlani),
+          el("button", { class: "kullanici", title: t("Profil"), on: { click: profileGit } },
+            avatar(o.ad, o.anahtar, "kucuk"),
+            el("span", { class: "bilgi" }, el("span", { class: "ad" }, o.ad || t("adsız")), el("span", { class: "rol" }, o.rol || t("Profil")))),
           el("button", { class: "ikon-dugme", title: t("Çıkış"), "aria-label": t("Çıkış"), on: { click: cikis } }, ikon("guc")))),
-      el("main", { class: "ana" }, seritAlani, gorunumAlani)));
+      el("main", { class: "ana" }, seritAlani, gorunumAlani, durumAlani)));
     gezinmeCiz();
     durumuGuncelle();
     gorunumCiz();
@@ -772,13 +775,15 @@
     if (!durumAlani) return;
     const d = D.durum || {};
     const esler = d.esler || 0;
-    let nokta = "uyari";
-    let metin = t("ağa bağlanıyor…");
-    if (esler > 0) {
-      nokta = d.erisimDurum === "iyi" ? "iyi" : d.erisimDurum === "uyari" ? "uyari" : "";
-      metin = tf("Eşler: %d", esler) + (d.erisim ? ", " + d.erisim : "");
-    }
-    bosalt(durumAlani, el("span", { class: "nokta " + nokta }), el("span", { title: metin }, metin));
+    // Durum çubuğu: ağın durumu, eş sayısı, son senkron ve sürüm.
+    const parca = (ozellik, ...c) => el("span", { class: "parca", ...ozellik }, c);
+    const nokta = esler === 0 ? "uyari" : d.erisimDurum === "iyi" ? "iyi" : d.erisimDurum === "uyari" ? "uyari" : "";
+    bosalt(durumAlani,
+      parca({ title: t("Erişilebilirlik") }, el("span", { class: "nokta " + nokta }), esler > 0 ? (d.erisim || t("Erişilebilirlik")) : t("ağa bağlanıyor…")),
+      esler > 0 ? parca(null, ikon("ag"), tf("Eşler: %d", esler)) : null,
+      d.senkron ? parca(null, ikon("yenile"), t("Son senkron"), " ", zamanEtiketi(d.senkron)) : null,
+      el("span", { class: "bosluk" }),
+      parca(null, "AND " + ((D.oturum && D.oturum.surum) || D.surum)));
     const seritler = [];
     if (d.guncelleme) seritler.push(el("div", { class: "serit bilgi" }, ikon("yildiz"), el("span", null, d.guncelleme)));
     if (D.oturum && D.oturum.uyari && !D.uyariKapandi) {
@@ -813,6 +818,10 @@
   }
 
   function gorunumCiz() {
+    // Ekran değişirken kısa bir geçiş (hareket azaltılmışsa yok).
+    gorunumAlani.classList.remove("gecis");
+    void gorunumAlani.offsetWidth;
+    gorunumAlani.classList.add("gecis");
     switch (D.gorunum) {
       case "sohbet": return sohbetCiz();
       case "ayarlar": return ayarlarCiz();
@@ -883,13 +892,25 @@
     D.forum.veri = await api("/api/forum" + q);
   }
 
+  // iskelet, yükleme uzarsa (150 ms'den çok) gösterilen yer tutucudur; kısa
+  // yüklemelerde ekran hiç kırpışmaz.
+  function iskeletSatirlari(n) {
+    return Array.from({ length: n }, () => el("div", { class: "iskelet-satir" },
+      el("span", { class: "iskelet k1" }), el("span", { class: "iskelet k2" }), el("span", { class: "iskelet k3" })));
+  }
+
   async function forumCiz() {
-    bosalt(gorunumAlani, el("div", { class: "forum" }, el("div", { class: "bos-durum" }, el("div", { class: "donen" }))));
+    const iskelet = setTimeout(() => bosalt(gorunumAlani, el("div", { class: "forum" },
+      el("div", { class: "sutun" }, el("div", { class: "sutun-ust" }, el("span", { class: "iskelet baslik-iskelet" })), iskeletSatirlari(6)),
+      el("section", { class: "detay" }))), 150);
     try {
       await forumYukle();
     } catch (e) {
+      clearTimeout(iskelet);
       bosalt(gorunumAlani, bosDurum("uyari", t("Forum yüklenemedi."), e.message));
       return;
+    } finally {
+      clearTimeout(iskelet);
     }
     if (D.gorunum !== "forum") return;
     gezinmeCiz(); // kenar çubuğundaki kategori sayıları
@@ -1462,10 +1483,101 @@
     }
   }
 
+  // ── Hızlı erişim (Ctrl+K) ─────────────────────────────────────────────
+  //
+  // Ekranlara, ayar sekmelerine, konusu olan kategorilere, yüklenmiş
+  // konulara ve eklentilere klavyeden ulaşılır: yaz, ↑↓ ile seç, Enter.
+
+  function erisimKomutlari() {
+    const k = [];
+    const ekle = (grup, ikonAd, ad, is, alt) => k.push({ grup, ikonAd, ad, is, alt });
+    ekle(t("Gezinme"), "forum", t("Forum"), () => { D.forum.kategori = ""; git("forum"); });
+    ekle(t("Gezinme"), "sohbet", t("Sohbet"), () => git("sohbet"));
+    for (const [ad, ikonAd, etiket] of AYAR_SEKMELERI) {
+      ekle(t("Gezinme"), ikonAd, t("Ayarlar") + " › " + t(etiket), () => { D.ayarSekmesi = ad; git("ayarlar"); });
+    }
+    ekle(t("Gezinme"), "bilgi", t("AND hakkında"), () => git("hakkinda"));
+    const v = D.forum.veri;
+    if (v) {
+      for (const kat of v.kategoriler.filter((x) => x.sayi > 0)) {
+        ekle(t("Kategoriler"), "forum", kat.etiket, () => { D.forum.kategori = kat.ad; D.forum.secili = null; git("forum"); }, String(kat.sayi));
+      }
+      for (const konu of v.konular) {
+        ekle(t("Konular"), "sohbet", konu.baslik, () => { D.forum.secili = konu.id; git("forum"); }, konu.yazar);
+      }
+    }
+    for (const e of (D.oturum && D.oturum.menu) || []) ekle(t("Eklentiler"), "eklenti", e.etiket, () => eklentiAc(e.ad));
+    return k;
+  }
+
+  function hizliErisim() {
+    if (D.asama !== "uygulama" || document.querySelector(".palet")) return;
+    const girdi = el("input", { class: "palet-girdi", placeholder: t("Ara ya da git…"), "aria-label": t("Hızlı erişim"), spellcheck: "false" });
+    const liste = el("div", { class: "palet-liste", role: "listbox", "aria-label": t("Hızlı erişim") });
+    const komutlar = erisimKomutlari();
+    let sonuc = [];
+    let secili = 0;
+    const onceki = document.activeElement;
+    const kapat = () => {
+      perde.remove();
+      if (onceki && onceki.focus) onceki.focus();
+    };
+    const calistir = (k) => { kapat(); k.is(); };
+    const ciz = () => {
+      const aranan = girdi.value.trim().toLocaleLowerCase(DIL);
+      sonuc = komutlar.filter((k) => !aranan || (k.ad + " " + (k.alt || "")).toLocaleLowerCase(DIL).includes(aranan)).slice(0, 40);
+      secili = Math.min(secili, Math.max(sonuc.length - 1, 0));
+      if (!sonuc.length) {
+        bosalt(liste, el("div", { class: "palet-bos" }, t("Sonuç yok")));
+        return;
+      }
+      const ogeler = [];
+      let grup = "";
+      butonlar = sonuc.map((k, i) => el("button", {
+        class: "palet-oge", role: "option", tabindex: "-1",
+        on: { click: () => calistir(k), mousemove: () => { if (secili !== i) isaretle(i, false); } },
+      }, ikon(k.ikonAd), el("span", { class: "ad" }, k.ad), k.alt ? el("span", { class: "alt" }, k.alt) : null));
+      sonuc.forEach((k, i) => {
+        if (k.grup !== grup) { grup = k.grup; ogeler.push(el("div", { class: "palet-grup" }, grup)); }
+        ogeler.push(butonlar[i]);
+      });
+      bosalt(liste, ogeler);
+      isaretle(secili, true);
+    };
+    let butonlar = [];
+    const isaretle = (i, kaydir) => {
+      secili = i;
+      butonlar.forEach((b, j) => {
+        b.classList.toggle("secili", j === i);
+        b.setAttribute("aria-selected", j === i ? "true" : "false");
+      });
+      if (kaydir && butonlar[i]) butonlar[i].scrollIntoView({ block: "nearest" });
+    };
+    girdi.addEventListener("input", () => { secili = 0; ciz(); });
+    girdi.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); isaretle(Math.min(secili + 1, sonuc.length - 1), true); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); isaretle(Math.max(secili - 1, 0), true); }
+      else if (e.key === "Enter") { e.preventDefault(); if (sonuc[secili]) calistir(sonuc[secili]); }
+      else if (e.key === "Escape") { e.preventDefault(); kapat(); }
+    });
+    const perde = el("div", { class: "perde palet-perde", on: { mousedown: (e) => { if (e.target === perde) kapat(); } } },
+      el("div", { class: "palet", role: "dialog", "aria-modal": "true", "aria-label": t("Hızlı erişim") },
+        el("div", { class: "palet-ust" }, ikon("ara"), girdi, el("kbd", null, "Esc")), liste));
+    document.getElementById("katman").append(perde);
+    ciz();
+    girdi.focus();
+  }
+
   // ── Klavye ────────────────────────────────────────────────────────────
 
   document.addEventListener("keydown", (e) => {
-    if (D.asama !== "uygulama" || !e.altKey || e.ctrlKey || e.metaKey) return;
+    if (D.asama !== "uygulama") return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      hizliErisim();
+      return;
+    }
+    if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const kisayol = { 1: "forum", 2: "sohbet", 3: "ayarlar", 4: "hakkinda" }[e.key];
     if (kisayol) { e.preventDefault(); git(kisayol); }
   });
