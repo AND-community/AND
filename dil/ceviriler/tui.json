@@ -626,7 +626,6 @@
   "Yeni iletiler": {"en": "New messages", "de": "Neue Nachrichten", "es": "Mensajes nuevos", "fr": "Nouveaux messages", "ru": "Новые сообщения"},
   "Yeni konu açmak için Konu Aç eklentisini Ayarlar › Eklentiler'den etkinleştir.": {"en": "To create topics, enable the New Topic plugin in Settings › Plugins.", "de": "Um Themen zu erstellen, aktiviere das Plugin „Neues Thema“ unter Einstellungen › Plugins.", "es": "Para crear temas, activa el complemento Nuevo tema en Ajustes › Complementos.", "fr": "Pour créer des sujets, active le plugin Nouveau sujet dans Paramètres › Plugins.", "ru": "Чтобы создавать темы, включи плагин «Новая тема» в Настройки › Плагины."},
   "Yüklenemedi.": {"en": "Could not load.", "de": "Konnte nicht geladen werden.", "es": "No se pudo cargar.", "fr": "Chargement impossible.", "ru": "Не удалось загрузить."},
-  "[code]…[/code] kod bloğu; Ctrl+Enter gönderir": {"en": "[code]…[/code] for a code block; Ctrl+Enter sends", "de": "[code]…[/code] für einen Codeblock; Strg+Enter sendet", "es": "[code]…[/code] para un bloque de código; Ctrl+Intro envía", "fr": "[code]…[/code] pour un bloc de code ; Ctrl+Entrée envoie", "ru": "[code]…[/code] — блок кода; Ctrl+Enter отправляет"},
   "adsız": {"en": "unnamed", "de": "unbenannt", "es": "sin nombre", "fr": "sans nom", "ru": "без имени"},
   "ağa bağlanıyor…": {"en": "connecting to the network…", "de": "verbinde mit dem Netz…", "es": "conectando a la red…", "fr": "connexion au réseau…", "ru": "подключение к сети…"},
   "en çok %d": {"en": "up to %d", "de": "höchstens %d", "es": "como máximo %d", "fr": "%d au plus", "ru": "не более %d"},
@@ -659,5 +658,6 @@
   "Yönetim": {"en": "Moderation", "de": "Moderation", "es": "Moderación", "fr": "Modération", "ru": "Модерация"},
   "Geliştirme": {"en": "Development", "de": "Entwicklung", "es": "Desarrollo", "fr": "Développement", "ru": "Разработка"},
   "Araçlar": {"en": "Tools", "de": "Werkzeuge", "es": "Herramientas", "fr": "Outils", "ru": "Инструменты"},
-  "Diğer": {"en": "Other", "de": "Sonstiges", "es": "Otros", "fr": "Autres", "ru": "Другое"}
+  "Diğer": {"en": "Other", "de": "Sonstiges", "es": "Otros", "fr": "Autres", "ru": "Другое"},
+  "gönderir": {"en": "to send", "de": "zum Senden", "es": "para enviar", "fr": "pour envoyer", "ru": "— отправить"}
 }

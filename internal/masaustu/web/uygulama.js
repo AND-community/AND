@@ -88,6 +88,7 @@
     yildiz: "M12 3l2.6 5.6L20.5 9l-4.4 4 1.2 6L12 16.2 6.7 19l1.2-6L3.5 9l5.9-.4z",
     muhur: "M12 3l2.2 1.6 2.7-.2.9 2.6 2.2 1.6-.9 2.6.9 2.6-2.2 1.6-.9 2.6-2.7-.2L12 21l-2.2-1.6-2.7.2-.9-2.6-2.2-1.6.9-2.6-.9-2.6 2.2-1.6.9-2.6 2.7.2zM9 12l2 2 4-4",
     kod: "M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14",
+    yanitla: "M9 7l-5 5 5 5M4 12h10a6 6 0 0 1 6 6v1",
   };
 
   function svgEl(etiket, ozellik, ...cocuklar) {
@@ -851,14 +852,28 @@
     }
   }
 
-  function ustCubuk(baslik, altBaslik, ...sag) {
+  // ustCubuk, her ekranın başındaki araç çubuğudur: simge, başlık, kısa
+  // açıklama ve sağda o ekranın işlemleri.
+  function ustCubuk(ikonAd, baslik, altBaslik, ...sag) {
     return el("header", { class: "ust-cubuk" },
-      el("div", null, el("h1", null, baslik), altBaslik ? el("div", { class: "alt-baslik" }, altBaslik) : null),
+      ikon(ikonAd, "baslik-ikon"),
+      el("div", { class: "baslik-grubu" }, el("h1", null, baslik), altBaslik ? el("span", { class: "alt-baslik" }, altBaslik) : null),
       el("div", { class: "bosluk" }), sag);
   }
 
+  // bosHarita, giriş ekranındaki ağ haritasının küçük bir parçasıdır: iki
+  // hat, birkaç durak ve ortada ekranın simgesini taşıyan durak.
+  function bosHarita(ikonAd) {
+    return svgEl("svg", { class: "bos-harita", viewBox: "0 0 176 64", "aria-hidden": "true" },
+      svgEl("path", { class: "hat hat-yan", d: "M4 14H172" }),
+      svgEl("path", { class: "hat hat-ana", d: "M4 54H40L62 32H172" }),
+      [[30, 14], [146, 14], [24, 54], [140, 32]].map(([x, y]) => svgEl("circle", { class: "durak", cx: x, cy: y, r: 3.5 })),
+      svgEl("circle", { class: "merkez", cx: 92, cy: 32, r: 21 }),
+      svgEl("svg", { class: "simge", x: 80, y: 20, width: 24, height: 24, viewBox: "0 0 24 24" }, svgEl("path", { d: IKONLAR[ikonAd] || "" })));
+  }
+
   function bosDurum(ikonAd, baslik, metin) {
-    return el("div", { class: "bos-durum" }, ikon(ikonAd), el("h3", null, baslik), metin ? el("p", null, metin) : null);
+    return el("div", { class: "bos-durum" }, bosHarita(ikonAd), el("h3", null, baslik), metin ? el("p", null, metin) : null);
   }
 
   async function cikis() {
@@ -1020,12 +1035,12 @@
     const ayniKonu = D.forum.cizilen === k.konu.id;
 
     const yazma = el("textarea", { class: "metin-alani", placeholder: t("Yanıtını yaz…"), value: D.forum.taslaklar[k.konu.id] || "" });
-    const sayac = el("span");
+    const sayac = el("span", { class: "sayac" });
     const gonder = el("button", { class: "dugme birincil", on: { click: () => yanitGonder(k.konu.id, yazma, gonder) } }, ikon("gonder"), tb("gönder"));
     const sayacGuncelle = () => {
       const bayt = new TextEncoder().encode(yazma.value).length;
       sayac.textContent = bayt + " / " + k.sinir;
-      sayac.className = bayt > k.sinir ? "asim" : "";
+      sayac.classList.toggle("asim", bayt > k.sinir);
       D.forum.taslaklar[k.konu.id] = yazma.value;
     };
     yazma.addEventListener("input", sayacGuncelle);
@@ -1034,13 +1049,22 @@
     });
     sayacGuncelle();
 
+    // Araç çubuğu: kategori (tıklayınca o kategorinin konuları), başlık
+    // yukarı kaydırılınca onun kısa hâli, yanıt sayısı ve Yanıtla.
+    const aracKonu = el("span", { class: "arac-konu", "aria-hidden": "true" }, ikon("asagi", "arac-ayrac"), el("span", null, k.konu.baslik));
+    const arac = el("div", { class: "detay-arac" },
+      el("button", { class: "kirinti", title: k.konu.kategoriAd, on: { click: () => kategoriSec(k.konu.kategori) } }, ikon("forum"), k.konu.kategoriAd),
+      aracKonu,
+      el("span", { class: "yanit-sayisi" + (k.yanitlar.length ? "" : " sifir"), title: t("Yanıtlar") }, ikon("sohbet"), String(k.yanitlar.length)),
+      el("button", { class: "dugme kucuk", on: { click: () => { yazma.focus(); yazma.scrollIntoView({ block: "nearest" }); } } }, ikon("yanitla"), tb("yanıtla")));
+
     // Konu bir makale gibi okunur; yanıtlar sol kenardaki bir izlek
     // çizgisiyle konuya ve birbirine bağlanır.
+    const baslik = el("h1", null, k.konu.baslik);
     const govde = el("div", { class: "detay-govde" },
       el("div", { class: "okuma" },
         el("header", { class: "detay-ust" },
-          el("div", { class: "konu-kategori" }, k.konu.kategoriAd),
-          el("h1", null, k.konu.baslik),
+          baslik,
           el("div", { class: "konu-yazar" }, avatar(k.konu.yazar, k.konu.yazarKisa, "kucuk"), yazarSatiri(k.konu))),
         el("article", { class: "ana-metin" }, govdeCiz(k.govde)),
         el("h2", { class: "yanitlar-basligi" }, k.yanitlar.length ? tf("Yanıtlar (%d)", k.yanitlar.length) : t("Henüz yanıt yok")),
@@ -1049,11 +1073,23 @@
           el("div", { class: "icerik" }, yazarSatiri(y), govdeCiz(y.govde))))) : null));
 
     bosalt(D.forum.detayAlani,
+      arac,
       govde,
       el("div", { class: "yazma" }, yazma,
-        el("div", { class: "yazma-alt" }, el("span", null, t("[code]…[/code] kod bloğu; Ctrl+Enter gönderir")), el("span", { class: "bosluk" }), sayac, gonder)));
+        el("div", { class: "yazma-alt" }, yazmaIpuclari(), sayac, gonder)));
+    // Başlık görünür alandan çıkınca araç çubuğunda kısa hâli belirir.
+    if (D.forum.gozlemci) D.forum.gozlemci.disconnect();
+    D.forum.gozlemci = new IntersectionObserver(([g]) => aracKonu.classList.toggle("gorunur", !g.isIntersecting), { root: govde });
+    D.forum.gozlemci.observe(baslik);
     if (ayniKonu) govde.scrollTop = altta ? govde.scrollHeight : eskiKonum;
     D.forum.cizilen = k.konu.id;
+  }
+
+  // yazmaIpuclari, konu ve yanıt yazarken gösterilen kısayol ipuçlarıdır.
+  function yazmaIpuclari() {
+    return el("div", { class: "ipuclari" },
+      el("span", { class: "ipucu" }, el("kbd", null, "Ctrl"), el("kbd", null, "Enter"), t("gönderir")),
+      el("span", { class: "ipucu" }, el("code", null, "[code]…[/code]"), t("kod bloğu")));
   }
 
   async function yanitGonder(konu, yazma, dugme) {
@@ -1105,7 +1141,7 @@
     const kapat = pencereAc({
       baslik: tb("yeni konu"), genis: true,
       govde: [hata, alan(t("Kategori"), kategori), alan(t("Başlık"), baslik, baslikSayaci),
-        alan(t("İçerik"), metin, null, t("[code]…[/code] kod bloğu; Ctrl+Enter gönderir"))],
+        alan(t("İçerik"), metin, null, yazmaIpuclari())],
       dugmeler: [el("button", { class: "dugme", on: { click: () => kapat() } }, tb("vazgeç")), ac],
     });
     metin.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ac.click(); } });
@@ -1161,7 +1197,7 @@
     gonder.addEventListener("click", gonderF);
     D.sohbet.yeniDugmesi = el("button", { class: "dugme kucuk birincil yeni-iletiler gizli", on: { click: () => asagiKaydir() } }, ikon("asagi"), t("Yeni iletiler"));
     bosalt(gorunumAlani,
-      ustCubuk(t("Sohbet"), t("Herkese açık genel sohbet; iletiler 48 saat sonra silinir.")),
+      ustCubuk("sohbet", t("Sohbet"), t("Herkese açık genel sohbet; iletiler 48 saat sonra silinir.")),
       el("div", { class: "sohbet" }, D.sohbet.liste, D.sohbet.yeniDugmesi, el("div", { class: "sohbet-yaz" }, girdi, sayac, gonder)));
     D.sohbet.liste.addEventListener("scroll", () => { if (alttaMi()) D.sohbet.yeniDugmesi.classList.add("gizli"); });
     sayacGuncelle();
@@ -1248,7 +1284,7 @@
   function ayarlarCiz() {
     sayfaAlani = el("div", { class: "sayfa" });
     bosalt(gorunumAlani,
-      ustCubuk(t("Ayarlar")),
+      ustCubuk("ayarlar", t("Ayarlar")),
       sekmeler(AYAR_SEKMELERI, D.ayarSekmesi, (ad) => { D.ayarSekmesi = ad; adresiYaz(); ayarlarCiz(); }),
       sayfaAlani);
     sayfaCiz();
@@ -1259,23 +1295,38 @@
     if (D.gorunum !== "ayarlar" || !sayfaAlani) return;
     const ic = el("div", { class: "sayfa-ic" });
     bosalt(sayfaAlani, ic);
+    // Yükleme uzarsa (150 ms'den çok) dönen bir gösterge; kısa yüklemelerde
+    // ekran kırpışmaz.
+    const yukleniyor = setTimeout(() => {
+      if (!ic.childNodes.length) bosalt(ic, el("div", { class: "sayfa-yukleniyor" }, el("div", { class: "donen" })));
+    }, 150);
     try {
       switch (D.ayarSekmesi) {
         case "gorunum": return await gorunumSekmesi(ic);
         case "dil": return dilSekmesi(ic);
         case "eklentiler": return await eklentilerSekmesi(ic);
-        case "ag":
+        case "ag": {
           await agSekmesi(ic);
+          // Her 5 saniyede yenilenir; yeni içerik o an ekrandakinin yerine
+          // geçer (ilk içeriğin değil: o ilk yenilemede ekrandan çıkar).
+          let ekrandaki = ic;
           agZamanlayici = setInterval(() => {
-            if (D.gorunum !== "ayarlar" || D.ayarSekmesi !== "ag") { clearInterval(agZamanlayici); return; }
+            if (D.gorunum !== "ayarlar" || D.ayarSekmesi !== "ag" || !ekrandaki.isConnected) { clearInterval(agZamanlayici); return; }
             const yeni = el("div", { class: "sayfa-ic" });
-            agSekmesi(yeni).then(() => ic.replaceWith(yeni)).catch(() => {});
+            agSekmesi(yeni).then(() => {
+              if (!ekrandaki.isConnected) return;
+              ekrandaki.replaceWith(yeni);
+              ekrandaki = yeni;
+            }).catch(() => {});
           }, 5000);
           return;
+        }
         default: return await profilSekmesi(ic);
       }
     } catch (e) {
       bosalt(ic, bosDurum("uyari", t("Yüklenemedi."), e.message));
+    } finally {
+      clearTimeout(yukleniyor);
     }
   }
 
@@ -1583,7 +1634,7 @@
 
   async function hakkindaCiz() {
     const alanH = el("div", { class: "sayfa" });
-    bosalt(gorunumAlani, ustCubuk(t("AND hakkında"), "AND " + ((D.oturum && D.oturum.surum) || D.surum)),
+    bosalt(gorunumAlani, ustCubuk("bilgi", t("AND hakkında"), "AND " + ((D.oturum && D.oturum.surum) || D.surum)),
       sekmeler(HAKKINDA_SEKMELERI, D.hakkindaSekmesi, (ad) => { D.hakkindaSekmesi = ad; adresiYaz(); hakkindaCiz(); }), alanH);
     const ic = el("div", { class: "sayfa-ic" }, el("div", { class: "donen" }));
     alanH.append(ic);

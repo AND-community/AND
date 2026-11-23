@@ -10,7 +10,6 @@ import "github.com/lucian95511/and/dil"
 // metinlerdir. dil.K, onları çeviri kapsam testine (dil/kapsam_test.go)
 // tanıtır: her birinin beş dilde çevirisi olmalıdır.
 var arayuzKaynaklari = []string{
-	dil.K("[code]…[/code] kod bloğu; Ctrl+Enter gönderir"),
 	dil.K("%s kendi penceresinde açıldı."),
 	dil.K("%s kendi penceresinde açılır"),
 	dil.K("✓ eşleşiyor"),
@@ -66,6 +65,7 @@ var arayuzKaynaklari = []string{
 	dil.K("github.com/kullanici-adi"),
 	dil.K("Gizlilik"),
 	dil.K("gönder"),
+	dil.K("gönderir"),
 	dil.K("Görünen ad"),
 	dil.K("görünen adın"),
 	dil.K("Görünen adını belirle"),
@@ -109,6 +109,7 @@ var arayuzKaynaklari = []string{
 	dil.K("Kimliğinin kilidini aç"),
 	dil.K("Kimlik"),
 	dil.K("kod"),
+	dil.K("kod bloğu"),
 	dil.K("koda dön"),
 	dil.K("Kodu gerçekten kaydettiğinden emin olmak için tamamını yaz. Tireleri yazmasan da olur."),
 	dil.K("Konu"),
@@ -165,6 +166,7 @@ var arayuzKaynaklari = []string{
 	dil.K("Yanıt boş olamaz"),
 	dil.K("Yanıtın gönderildi."),
 	dil.K("Yanıtını yaz…"),
+	dil.K("yanıtla"),
 	dil.K("Yanıtlar"),
 	dil.K("Yanıtlar (%d)"),
 	dil.K("Yasal bildirim"),
