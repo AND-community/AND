@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,10 +45,19 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "and:", err)
+		if konsolGizlendi {
+			// Çift tıklamayla açılan masaüstü kipinde konsol yoktur.
+			hataKutusu("AND: " + err.Error())
+		} else {
+			fmt.Fprintln(os.Stderr, "and:", err)
+		}
 		os.Exit(1)
 	}
 }
+
+// konsolGizlendi, AND'ın çift tıklamayla açılıp konsol penceresini
+// gizlediğidir (bkz. konsoluGizle).
+var konsolGizlendi bool
 
 // kutuphaneGunlugu, kütüphane günlüklerinin (ve guvenli'nin panik
 // kayıtlarının) yazılacağı dosyayı ekleme kipinde açar. Dosya 5 MB'ı aşınca
@@ -151,11 +161,7 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 }
 
 func run() error {
-	// --masaustu: AND terminal yerine kendi penceresinde, masaüstü
-	// arayüzüyle açılır (bkz. internal/masaustu). Güncelleyici yeniden
-	// başlatırken argümanları aynen geçirdiği için kip korunur.
-	masaustuKipi := len(os.Args) > 1 && masaustuBayragi(os.Args[1])
-	if len(os.Args) > 1 && !masaustuKipi {
+	if len(os.Args) > 1 && !masaustuBayragi(os.Args[1]) && !terminalBayragi(os.Args[1]) {
 		// --version, --lisans gibi bayraklar arayüz açılmadan yanıtlanır ve
 		// seçili dile uyar; dil.json yalnızca okunur, veri dizini oluşturulmaz.
 		if yol, err := veriDiziniYolu(); err == nil {
@@ -164,6 +170,16 @@ func run() error {
 		if bitti, err := komutSatiri(os.Args[1:], os.Stdin, os.Stdout); bitti || err != nil {
 			return err
 		}
+	}
+	// AND varsayılan olarak kendi penceresinde, masaüstü arayüzüyle açılır
+	// (bkz. internal/masaustu); --terminal tam ekran terminal arayüzünü
+	// açar. Güncelleyici yeniden başlatırken argümanları aynen geçirdiği
+	// için seçilen arayüz korunur.
+	masaustuKipi := masaustuSecilsin(os.Args[1:], os.Getenv, runtime.GOOS)
+	if masaustuKipi {
+		// Çift tıklamayla açıldıysa boş konsol penceresi gizlenir; bir
+		// terminalden açıldıysa terminale dokunulmaz.
+		konsolGizlendi = konsoluGizle()
 	}
 
 	dir, err := appDir()

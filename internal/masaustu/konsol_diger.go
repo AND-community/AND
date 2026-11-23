@@ -40,5 +40,5 @@ func konsoldaBaslat(cmd *exec.Cmd) (func() error, error) {
 			return k.Wait, nil
 		}
 	}
-	return nil, errors.New(dil.T("Eklentiler bu sistemde şimdilik yalnızca terminal arayüzünden açılabilir: and"))
+	return nil, errors.New(dil.T("Eklentiler bu sistemde şimdilik yalnızca terminal arayüzünden açılabilir: and --terminal"))
 }

@@ -65,8 +65,9 @@ func yardimMetni() string {
 	return strings.Join([]string{
 		dil.F("Kullanım: and [bayrak]  ya da  %s %s", pluginmgr.Komut(""), yer(dil.T("komut"))),
 		"",
-		dil.T("Bayrak verilmezse AND tam ekran arayüzle açılır."),
+		dil.T("Bayrak verilmezse AND kendi penceresinde, masaüstü arayüzüyle açılır; SSH oturumunda ya da ekranı olmayan bir sistemde terminal arayüzüyle."),
 		"",
+		satir("    --terminal, --tui", dil.T("AND'ı tam ekran terminal arayüzüyle açar")),
 		satir("    --masaustu, --desktop", dil.T("AND'ı terminal yerine kendi penceresinde, masaüstü arayüzüyle açar")),
 		satir("-v, --version", dil.T("sürüm, telif ve lisans bilgisini yazar")),
 		satir("    --lisans, --license", dil.T("AND'ın lisansının (GNU AGPL-3.0) tam metnini yazar")),

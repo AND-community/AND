@@ -372,8 +372,11 @@ sığmıyorsa kabul, metnin sonuna kadar kaydırıldıktan sonra geçerli olur.
 
 ### Komut satırı
 
-Bayrak verilmezse AND tam ekran arayüzle açılır. Şu bayraklar arayüzü açmadan yanıt verir ve
-seçili arayüz diline uyar:
+Bayrak verilmezse AND kendi penceresinde, masaüstü arayüzüyle açılır (bkz. [Masaüstü
+arayüzü](#masaüstü-arayüzü)); tam ekran terminal arayüzü `and --terminal` ile açılır. SSH
+oturumunda ya da ekranı olmayan bir Linux'ta AND kendiliğinden terminal arayüzünü seçer;
+`AND_ARAYUZ=terminal` ya da `AND_ARAYUZ=masaustu` bu seçimi kalıcı olarak değiştirir. Şu bayraklar
+arayüzü açmadan yanıt verir ve seçili arayüz diline uyar:
 
 | Bayrak | Ne yazar |
 |---|---|
@@ -381,7 +384,8 @@ seçili arayüz diline uyar:
 | `--lisans`, `--license` | AND'ın lisansının (GNU AGPL-3.0) tam metni |
 | `--ucuncu-taraf`, `--third-party` | AND'a giren üçüncü taraf bileşenlerin lisans bildirimleri |
 | `-h`, `--help` | Bayrakların listesi |
-| `--masaustu`, `--desktop` | Arayüzü açar, ama terminal yerine kendi penceresinde (bkz. [Masaüstü arayüzü](#masaüstü-arayüzü)) |
+| `--terminal`, `--tui` | Arayüzü açar, ama kendi penceresi yerine tam ekran terminalde |
+| `--masaustu`, `--desktop` | Masaüstü arayüzünü açar (varsayılan; SSH'ta bile) |
 | `eklenti …` / `plugin …` | Eklenti komutları: `liste`, `kur`, `kaldir`, `dogrula`, `yeni` (bkz. [Eklenti kurmak](#eklenti-kurmak)); `and eklenti yardim` hepsini listeler |
 
 Hata bildirirken `and --version` çıktısını ekle.
@@ -392,8 +396,9 @@ açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)). `ctrl+r` k
 
 ### Masaüstü arayüzü
 
-`and --masaustu` (ya da Windows kurulum paketindeki `and-masaustu.exe`), AND'ı terminal yerine
-kendi penceresinde, fareyle kullanılan bir arayüzle açar. Çekirdek aynıdır: kimlik, ağ, forum,
+AND varsayılan olarak terminal yerine kendi penceresinde, fareyle kullanılan bir arayüzle açılır.
+`and.exe`'ye çift tıklayınca açılan boş konsol penceresi hemen gizlenir; hiç görünmemesi için
+Windows kurulum paketindeki `and-masaustu.exe` kullanılabilir. Çekirdek aynıdır: kimlik, ağ, forum,
 sohbet, profil, temalar, dil ve eklentiler iki arayüzde de aynı veri dizinini kullanır; birinde
 yapılan değişiklik ötekinde de görünür. Aynı veri dizininde aynı anda yalnızca bir AND açık olabilir.
 

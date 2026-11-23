@@ -377,8 +377,11 @@ small terminal, they can be accepted only after scrolling to the end of the text
 
 ### Command line
 
-Without flags AND opens the full-screen interface. These flags answer without opening the
-interface and follow the selected interface language:
+Without flags AND opens in its own window with the desktop interface (see [Desktop
+interface](#desktop-interface)); `and --terminal` opens the full-screen terminal interface. In an
+SSH session or on Linux without a display AND picks the terminal interface by itself;
+`AND_ARAYUZ=terminal` or `AND_ARAYUZ=masaustu` changes the choice for good. These flags answer
+without opening the interface and follow the selected interface language:
 
 | Flag | Prints |
 |---|---|
@@ -386,7 +389,8 @@ interface and follow the selected interface language:
 | `--lisans`, `--license` | The full text of AND's license (GNU AGPL-3.0) |
 | `--ucuncu-taraf`, `--third-party` | The license notices of the third-party components built into AND |
 | `-h`, `--help` | The list of flags |
-| `--desktop`, `--masaustu` | Opens the interface in its own window instead of the terminal (see [Desktop interface](#desktop-interface)) |
+| `--terminal`, `--tui` | Opens the interface full-screen in the terminal instead of its own window |
+| `--desktop`, `--masaustu` | Opens the desktop interface (the default; even over SSH) |
 | `eklenti …` / `plugin …` | Plugin commands: `list`, `install`, `remove`, `check`, `new` (see [Installing plugins](#installing-plugins)); `and plugin help` lists them |
 
 Include the output of `and --version` when you report a bug.
@@ -397,8 +401,9 @@ identity from its recovery code (see [First run](#first-run)).
 
 ### Desktop interface
 
-`and --desktop` (or `and-masaustu.exe` in the Windows package) opens AND in its own window with a
-mouse-driven interface instead of the terminal. The core is the same: identity, network, forum,
+By default AND opens in its own window with a mouse-driven interface instead of the terminal.
+The empty console window that double-clicking `and.exe` opens is hidden right away; to never see
+it, use `and-masaustu.exe` from the Windows package. The core is the same: identity, network, forum,
 chat, profile, themes, language and plugins share one data directory between both interfaces, so
 a change in one shows up in the other. Only one AND can run on a data directory at a time.
 
