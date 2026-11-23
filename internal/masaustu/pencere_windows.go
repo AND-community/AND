@@ -191,6 +191,13 @@ func (p *winPencere) calistir(adres, veriDizini string, zemin [3]uint8, hazir ch
 	ch := edge.NewChromium()
 	ch.DataPath = veriDizini
 	ch.SetErrorCallback(func(err error) { log.Printf("masaüstü: WebView2: %v", err) })
+	ch.NavigationCompletedCallback = func(*edge.ICoreWebView2, *edge.ICoreWebView2NavigationCompletedEventArgs) {
+		log.Printf("masaüstü: sayfa yüklendi")
+	}
+	ch.ProcessFailedCallback = func(_ *edge.ICoreWebView2, args *edge.ICoreWebView2ProcessFailedEventArgs) {
+		tur, _ := args.GetProcessFailedKind()
+		log.Printf("masaüstü: WebView2 süreci çöktü (tür %d)", tur)
+	}
 	if !ch.Embed(hwnd) {
 		pDestroyWindow.Call(hwnd)
 		hazir <- errors.New("WebView2 gömülemedi")
@@ -206,6 +213,9 @@ func (p *winPencere) calistir(adres, veriDizini string, zemin [3]uint8, hazir ch
 	ch.SetBackgroundColour(zemin[0], zemin[1], zemin[2], 255)
 	p.hazir.Store(true)
 	ch.Resize()
+	if err := ch.Show(); err != nil {
+		log.Printf("masaüstü: WebView2 gösterilemedi: %v", err)
+	}
 	ch.Navigate(adres)
 
 	pShowWindow.Call(hwnd, swShow)

@@ -16,7 +16,10 @@ import (
 // kapanırsa standart hata çıktısını (AND'ın etkin dildeki iletisi) döner.
 func baslat(and string) error {
 	cmd := exec.Command(and, "--masaustu")
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	// CREATE_NO_WINDOW konsol penceresini açtırmaz. HideWindow kullanılmaz:
+	// STARTUPINFO'daki SW_HIDE, AND'ın ilk ShowWindow çağrısına uygulanır ve
+	// pencereyi gizli bırakırdı.
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	var hata sinirliTampon
 	cmd.Stderr = &hata
 	if err := cmd.Run(); err != nil {
