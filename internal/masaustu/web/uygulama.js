@@ -86,7 +86,34 @@
     asagi: "M6 9l6 6 6-6",
     imza: "M4 17c3-1 4-6 6-6s1 5 3 5 3-3 4-3 1 2 3 2M4 21h16",
     yildiz: "M12 3l2.6 5.6L20.5 9l-4.4 4 1.2 6L12 16.2 6.7 19l1.2-6L3.5 9l5.9-.4z",
+    muhur: "M12 3l2.2 1.6 2.7-.2.9 2.6 2.2 1.6-.9 2.6.9 2.6-2.2 1.6-.9 2.6-2.7-.2L12 21l-2.2-1.6-2.7.2-.9-2.6-2.2-1.6.9-2.6-.9-2.6 2.2-1.6.9-2.6 2.7.2zM9 12l2 2 4-4",
   };
+
+  function svgEl(etiket, ozellik, ...cocuklar) {
+    const e = document.createElementNS(SVG, etiket);
+    for (const [k, v] of Object.entries(ozellik || {})) e.setAttribute(k, String(v));
+    for (const c of cocuklar.flat()) if (c) e.append(c);
+    return e;
+  }
+
+  // agHaritasi, giriş ekranının tek gösterişli öğesidir: AND ağının bir
+  // metro hattı şeması gibi çizimi. Sen bir duraksın, eşler öteki duraklar;
+  // hatlar açılışta bir kez çizilir (hareket azaltılmışsa çizili gelir).
+  const HATLAR = [
+    "M30 300H150L230 220H390L470 140V60",
+    "M230 40V330",
+    "M60 110H330L410 190H490",
+  ];
+  const DURAKLAR = [[30, 300], [150, 300], [310, 220], [470, 60], [230, 40], [230, 330], [60, 110], [140, 110], [330, 110], [490, 190]];
+  const AKTARMALAR = [[230, 110], [420, 190]];
+  function agHaritasi() {
+    return svgEl("svg", { class: "ag-haritasi", viewBox: "0 0 520 360", "aria-hidden": "true" },
+      HATLAR.map((d, i) => svgEl("path", { class: "hat hat-" + (i + 1), d, pathLength: 1 })),
+      DURAKLAR.map(([x, y]) => svgEl("circle", { class: "durak", cx: x, cy: y, r: 6 })),
+      AKTARMALAR.map(([x, y]) => svgEl("circle", { class: "durak aktarma", cx: x, cy: y, r: 9 })),
+      svgEl("circle", { class: "dalga", cx: 230, cy: 220, r: 12 }),
+      svgEl("circle", { class: "sen", cx: 230, cy: 220, r: 12 }));
+  }
 
   function ikon(ad, sinif) {
     const s = document.createElementNS(SVG, "svg");
@@ -255,13 +282,15 @@
     });
   }
 
+  // yazarSatiri: ad (genel anahtarın kısası üzerine gelince), rol, zaman ve
+  // imza mührü. AND, ağdan gelen her konu ve yanıtın imzasını saklamadan önce
+  // doğrular; mühür bunu söyler.
   function yazarSatiri(o, ek) {
     return el("div", { class: "yazar-satiri" },
-      el("span", { class: "ad" + (o.kendi ? " kendi" : "") }, o.yazar || t("adsız")),
+      el("span", { class: "ad" + (o.kendi ? " kendi" : ""), title: o.yazarKisa ? t("Genel anahtar") + ": " + o.yazarKisa : undefined }, o.yazar || t("adsız")),
       o.rol ? el("span", { class: "rozet rol" }, o.rol) : null,
-      o.yazarKisa ? el("span", { class: "cok-soluk es-aralikli", title: t("Genel anahtar") }, o.yazarKisa) : null,
-      el("span", { class: "cok-soluk" }, "·"),
-      zamanEtiketi(o.zaman, "cok-soluk"),
+      zamanEtiketi(o.zaman, "zaman"),
+      el("span", { class: "imza", title: t("Her konu ve mesaj Ed25519 ile imzalanır") }, ikon("muhur")),
       ek);
   }
 
@@ -370,13 +399,14 @@
 
   function tanitim() {
     return el("section", { class: "tanitim" },
-      el("img", { class: "logo", src: "logo.png", alt: "" }),
-      el("h1", null, "AND"),
-      el("p", { class: "slogan" }, t("Sunucusuz, eşten eşe topluluk")),
-      el("ul", null,
-        el("li", null, ikon("kilit"), t("Hesap ve sunucu yok; kimliğin bu cihazda üretilir")),
-        el("li", null, ikon("imza"), t("Her konu ve mesaj Ed25519 ile imzalanır")),
-        el("li", null, ikon("ag"), t("İçerik eşler arasında doğrudan yayılır"))),
+      agHaritasi(),
+      el("div", { class: "tanitim-metin" },
+        el("div", { class: "amblem" }, el("img", { class: "logo", src: "logo.png", alt: "" }), el("h1", null, "AND")),
+        el("p", { class: "slogan" }, t("Sunucusuz, eşten eşe topluluk")),
+        el("ul", null,
+          el("li", null, ikon("kilit"), t("Hesap ve sunucu yok; kimliğin bu cihazda üretilir")),
+          el("li", null, ikon("muhur"), t("Her konu ve mesaj Ed25519 ile imzalanır")),
+          el("li", null, ikon("ag"), t("İçerik eşler arasında doğrudan yayılır")))),
       el("div", { class: "surum" }, "AND " + D.surum));
   }
 
@@ -714,20 +744,28 @@
     const o = D.oturum;
     const nav = (ad, ikonAd, etiket, sayac) => el("button", {
       class: "nav" + (D.gorunum === ad ? " etkin" : ""), "aria-current": D.gorunum === ad ? "page" : undefined, title: etiket,
-      on: { click: () => git(ad) },
+      on: { click: () => { if (ad === "forum") D.forum.kategori = ""; git(ad); } },
     }, ikon(ikonAd), el("span", null, etiket), sayac ? el("b", { class: "sayac" }, String(sayac)) : null);
+    // Konusu olan kategoriler Forum'un altında kanal gibi listelenir; geri
+    // kalanı forumun başlığındaki seçimdedir.
+    const kategoriler = D.forum.veri ? D.forum.veri.kategoriler.filter((k) => k.sayi > 0) : [];
+    const kategoriAc = (ad) => { D.forum.kategori = ad; D.forum.secili = null; git("forum"); };
     bosalt(gezinmeAlani,
       el("div", { class: "grup-basligi" }, t("Topluluk")),
       nav("forum", "forum", t("Forum")),
+      kategoriler.length ? el("div", { class: "alt-gezinme" }, kategoriler.map((k) => el("button", {
+        class: "alt-nav" + (D.gorunum === "forum" && D.forum.kategori === k.ad ? " etkin" : ""), title: k.etiket,
+        on: { click: () => kategoriAc(k.ad) },
+      }, el("span", null, k.etiket), el("span", { class: "sayi" }, String(k.sayi))))) : null,
       nav("sohbet", "sohbet", t("Sohbet"), D.sohbet.yeniVar && D.gorunum !== "sohbet" ? "•" : null),
       el("div", { class: "grup-basligi" }, t("Eklentiler")),
       (o.menu && o.menu.length)
         ? o.menu.map((e) => el("button", { class: "nav", title: tf("%s kendi penceresinde açılır", e.etiket), on: { click: () => eklentiAc(e.ad) } },
           ikon("eklenti"), el("span", null, e.etiket), ikon("dis", "dis")))
         : el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok")),
-      el("div", { class: "grup-basligi" }, t("Sistem")),
-      nav("ayarlar", "ayarlar", t("Ayarlar")),
-      nav("hakkinda", "bilgi", t("AND hakkında")));
+      el("div", { class: "gezinme-alt" },
+        nav("ayarlar", "ayarlar", t("Ayarlar")),
+        nav("hakkinda", "bilgi", t("AND hakkında"))));
   }
 
   function durumuGuncelle() {
@@ -738,7 +776,7 @@
     let metin = t("ağa bağlanıyor…");
     if (esler > 0) {
       nokta = d.erisimDurum === "iyi" ? "iyi" : d.erisimDurum === "uyari" ? "uyari" : "";
-      metin = tf("Eşler: %d", esler) + (d.erisim ? " · " + d.erisim : "");
+      metin = tf("Eşler: %d", esler) + (d.erisim ? ", " + d.erisim : "");
     }
     bosalt(durumAlani, el("span", { class: "nokta " + nokta }), el("span", { title: metin }, metin));
     const seritler = [];
@@ -854,12 +892,13 @@
       return;
     }
     if (D.gorunum !== "forum") return;
+    gezinmeCiz(); // kenar çubuğundaki kategori sayıları
     const v = D.forum.veri;
-    const kategoriEtiketi = D.forum.kategori ? (v.kategoriler.find((k) => k.ad === D.forum.kategori) || {}).etiket : t("Tüm konular");
 
-    const katSecimi = el("select", { class: "secim", "aria-label": t("Kategori"), on: { change: () => kategoriSec(katSecimi.value) } },
+    // Sütunun başlığı aynı zamanda kategori seçimidir.
+    const katSecimi = el("select", { class: "baslik-secimi", "aria-label": t("Kategori"), on: { change: () => kategoriSec(katSecimi.value) } },
       el("option", { value: "" }, t("Tüm konular")),
-      v.kategoriler.map((k) => el("option", { value: k.ad }, k.etiket + " (" + k.sayi + ")")));
+      v.kategoriler.map((k) => el("option", { value: k.ad }, k.etiket)));
     katSecimi.value = D.forum.kategori;
 
     const arama = el("input", { class: "girdi", type: "search", placeholder: t("Konularda ara"), value: D.forum.arama,
@@ -873,16 +912,8 @@
     D.forum.detayAlani = el("section", { class: "detay" });
 
     bosalt(gorunumAlani, el("div", { class: "forum" },
-      el("div", { class: "sutun kategori-sutunu" },
-        el("div", { class: "sutun-ust" }, el("h2", null, t("Kategoriler"))),
-        el("div", { class: "kaydirma kategoriler" },
-          el("button", { class: "kat-dugme" + (D.forum.kategori ? "" : " etkin"), on: { click: () => kategoriSec("") } },
-            el("span", null, t("Tüm konular")), el("span", { class: "sayi" }, String(v.toplam))),
-          v.kategoriler.map((k) => el("button", { class: "kat-dugme" + (D.forum.kategori === k.ad ? " etkin" : ""), title: k.etiket, on: { click: () => kategoriSec(k.ad) } },
-            el("span", null, k.etiket), el("span", { class: "sayi" }, k.sayi ? String(k.sayi) : ""))))),
       el("div", { class: "sutun" },
-        el("div", { class: "sutun-ust" }, el("h2", { title: kategoriEtiketi }, kategoriEtiketi), yeniKonu),
-        el("div", { class: "kategori-secimi" }, katSecimi),
+        el("div", { class: "sutun-ust" }, el("label", { class: "baslik-sarmal" }, katSecimi, ikon("asagi")), yeniKonu),
         el("div", { class: "arama" }, ikon("ara"), arama),
         D.forum.listeAlani),
       D.forum.detayAlani));
@@ -893,6 +924,8 @@
 
   function kategoriSec(ad) {
     D.forum.kategori = ad;
+    D.forum.secili = null;
+    adresiYaz();
     forumCiz();
   }
 
@@ -911,13 +944,13 @@
       class: "konu-satiri" + (D.forum.secili === k.id ? " etkin" : ""), role: "listitem", "data-id": k.id,
       on: { click: () => konuAc(k.id) },
     },
+      D.forum.kategori ? null : el("div", { class: "konu-kategori" }, k.kategoriAd),
       el("div", { class: "baslik" }, k.baslik),
       el("div", { class: "meta" },
-        el("span", { class: "yazar" }, k.yazar || t("adsız")),
+        el("span", { class: "yazar" + (k.kendi ? " kendi" : "") }, k.yazar || t("adsız")),
         k.rol ? el("span", { class: "rozet rol" }, k.rol) : null,
-        D.forum.kategori ? null : el("span", { class: "rozet kategori" }, k.kategoriAd),
-        zamanEtiketi(k.sonEtkinlik),
-        el("span", { class: "yanit-sayisi", title: t("Yanıtlar") }, ikon("sohbet"), String(k.yanit))))));
+        zamanEtiketi(k.sonEtkinlik, "zaman"),
+        el("span", { class: "yanit-sayisi" + (k.yanit ? "" : " sifir"), title: t("Yanıtlar") }, ikon("sohbet"), String(k.yanit))))));
   }
 
   async function konuAc(id, sessiz) {
@@ -959,18 +992,21 @@
     });
     sayacGuncelle();
 
+    // Konu bir makale gibi okunur; yanıtlar sol kenardaki bir izlek
+    // çizgisiyle konuya ve birbirine bağlanır.
     const govde = el("div", { class: "detay-govde" },
-      el("article", { class: "ana-gonderi" },
-        el("div", { class: "gonderi" }, avatar(k.konu.yazar, k.konu.yazarKisa),
-          el("div", { class: "icerik" }, yazarSatiri(k.konu), govdeCiz(k.govde)))),
-      el("div", { class: "yanitlar-basligi" }, k.yanitlar.length ? tf("Yanıtlar (%d)", k.yanitlar.length) : t("Henüz yanıt yok")),
-      k.yanitlar.map((y) => el("article", { class: "gonderi" }, avatar(y.yazar, y.yazarKisa),
-        el("div", { class: "icerik" }, yazarSatiri(y), govdeCiz(y.govde)))));
+      el("div", { class: "okuma" },
+        el("header", { class: "detay-ust" },
+          el("div", { class: "konu-kategori" }, k.konu.kategoriAd),
+          el("h1", null, k.konu.baslik),
+          el("div", { class: "konu-yazar" }, avatar(k.konu.yazar, k.konu.yazarKisa, "kucuk"), yazarSatiri(k.konu))),
+        el("article", { class: "ana-metin" }, govdeCiz(k.govde)),
+        el("h2", { class: "yanitlar-basligi" }, k.yanitlar.length ? tf("Yanıtlar (%d)", k.yanitlar.length) : t("Henüz yanıt yok")),
+        k.yanitlar.length ? el("ol", { class: "izlek" }, k.yanitlar.map((y) => el("li", { class: "yanit" + (y.kendi ? " kendi" : "") },
+          avatar(y.yazar, y.yazarKisa, "kucuk"),
+          el("div", { class: "icerik" }, yazarSatiri(y), govdeCiz(y.govde))))) : null));
 
     bosalt(D.forum.detayAlani,
-      el("header", { class: "detay-ust" },
-        el("span", { class: "rozet kategori" }, k.konu.kategoriAd),
-        el("h1", null, k.konu.baslik)),
       govde,
       el("div", { class: "yazma" }, yazma,
         el("div", { class: "yazma-alt" }, el("span", null, t("[code]…[/code] kod bloğu; Ctrl+Enter gönderir")), el("span", { class: "bosluk" }), sayac, gonder)));
@@ -1242,7 +1278,7 @@
         el("div", { class: "kimlik-karti" }, avatar(p.ad, p.anahtar, "buyuk"),
           el("div", null,
             el("div", { class: "ad" }, p.ad || t("adsız"), " ", p.rol ? el("span", { class: "rozet rol" }, p.rol) : null),
-            el("div", { class: "satir" }, el("span", null, t("Peer ID")), el("span", { class: "kopyalanabilir", title: p.peerID }, p.peerID),
+            el("div", { class: "satir" }, el("span", null, t("Peer ID")), el("span", { class: "kopyalanabilir", title: p.peerID }, p.peerID || "—"),
               el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(p.peerID) } }, ikon("kopyala"))),
             el("div", { class: "satir" }, el("span", null, t("Genel anahtar")), el("span", { class: "kopyalanabilir", title: p.anahtar }, p.anahtar),
               el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(p.anahtar) } }, ikon("kopyala"))))),
@@ -1267,10 +1303,16 @@
     bosalt(ic, el("div", { class: "bolum" }, el("h3", null, t("Tema")),
       el("p", { class: "paragraf soluk" }, t("Tema, terminal arayüzünde ve eklentilerde de geçerlidir.")),
       el("div", { class: "tema-izgarasi" }, r.temalar.map((tm) => {
+        // Önizleme, giriş ekranındaki ağ haritasının o temanın renkleriyle
+        // küçük bir çizimidir.
         const onizleme = el("div", { class: "tema-onizleme" },
-          el("div", { class: "cizgi" }), el("div", { class: "renkler" }, el("span"), el("span"), el("span"), el("span")));
-        onizleme.querySelector(".cizgi").style.setProperty("background", "linear-gradient(90deg," + tm.vurgu + "," + tm.secimZemin + ")");
-        [tm.vurgu, tm.secimZemin, tm.isim, tm.rozet].forEach((renk, i) => onizleme.querySelectorAll(".renkler span")[i].style.setProperty("background", renk));
+          svgEl("svg", { class: "tema-harita", viewBox: "0 0 160 64", "aria-hidden": "true" },
+            svgEl("path", { d: "M8 14H152", stroke: tm.isim }),
+            svgEl("path", { d: "M90 6V58", stroke: tm.secimZemin }),
+            svgEl("path", { d: "M8 50H50L74 26H152", stroke: tm.vurgu }),
+            svgEl("circle", { class: "aktarma", cx: 90, cy: 14, r: 5 }),
+            svgEl("circle", { class: "durak", cx: 130, cy: 26, r: 4, fill: tm.rozet }),
+            svgEl("circle", { class: "sen", cx: 90, cy: 26, r: 7, fill: tm.vurgu })));
         const etkin = tm.ad === r.etkin.ad;
         return el("button", { class: "tema-karti" + (etkin ? " etkin" : ""), "aria-pressed": etkin ? "true" : "false", on: { click: () => temaSec(tm.ad) } },
           onizleme, el("div", { class: "tema-adi" }, tm.etiket, etkin ? ikon("tamam") : null));

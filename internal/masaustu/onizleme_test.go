@@ -81,11 +81,11 @@ func TestOnizleme(t *testing.T) {
 		{"k1", "Yazılım", "Elif", "Go ile eşten eşe uygulama geliştirirken dikkat edilmesi gerekenler",
 			"Merhaba! libp2p ile küçük bir proje yapıyorum. Bağlantı kurulduktan sonra mesajları nasıl doğruluyorsunuz?\n\nŞu an şöyle yapıyorum:\n[code=go]\nimza := ed25519.Sign(anahtar, veri)\nif !ed25519.Verify(genel, veri, imza) {\n\treturn errors.New(\"imza geçersiz\")\n}\n[/code]\nBelgeler için: https://docs.libp2p.io/concepts/",
 			3 * time.Hour, [][3]string{{"Can", "Ben de aynı yöntemi kullanıyorum; ek olarak mesaj kimliğini imzalı içerikten türetmek tekrar saldırılarını kolayca ayıklıyor.", "150"}, {"Umut", "AND'da da öyle: her konu ve yanıt Ed25519 ile imzalanıyor, kimlik imzalı içerikten türetiliyor.", "95"}, {"Zeynep", "Teşekkürler, çok faydalı oldu!", "20"}}},
-		{"k2", "Oyun", "Mert", "Bu hafta sonu açık kaynak oyun gecesi?", "Cumartesi akşamı birlikte Minetest oynamak isteyen var mı? Sunucuyu ben açarım.", 26 * time.Hour,
+		{"k2", "Etkinlikler ve Duyurular", "Mert", "Bu hafta sonu açık kaynak oyun gecesi?", "Cumartesi akşamı birlikte Minetest oynamak isteyen var mı? Sunucuyu ben açarım.", 26 * time.Hour,
 			[][3]string{{"Elif", "Ben varım!", "900"}}},
 		{"k3", "Genel", "Zeynep", "AND'a hoş geldiniz — kendinizi tanıtın", "Yeni katılanlar buraya kısaca kendilerini tanıtabilir. Ben Zeynep, İzmir'den yazıyorum.", 2 * 24 * time.Hour, nil},
-		{"k4", "Bilim", "Can", "Kuantum bilgisayarlar şifrelemeyi ne zaman kırar?", "Son okuduğum makaleye göre RSA-2048 için milyonlarca kararlı kübit gerekiyor. Sizce ne kadar zamanımız var?", 40 * time.Minute, nil},
-		{"k5", "Müzik", "Elif", "Çalışırken dinlediğiniz albümler", "Ben son günlerde lo-fi ve klasik karışık dinliyorum. Önerilerinizi bekliyorum.", 3 * 24 * time.Hour,
+		{"k4", "Siber Güvenlik", "Can", "Kuantum bilgisayarlar şifrelemeyi ne zaman kırar?", "Son okuduğum makaleye göre RSA-2048 için milyonlarca kararlı kübit gerekiyor. Sizce ne kadar zamanımız var?", 40 * time.Minute, nil},
+		{"k5", "Genel", "Elif", "Çalışırken dinlediğiniz albümler", "Ben son günlerde lo-fi ve klasik karışık dinliyorum. Önerilerinizi bekliyorum.", 3 * 24 * time.Hour,
 			[][3]string{{"Mert", "Pink Floyd — The Dark Side of the Moon, her zaman.", "3000"}}},
 	}
 	for _, k := range konular {
