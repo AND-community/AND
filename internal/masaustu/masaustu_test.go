@@ -426,3 +426,42 @@ func TestXtermHex(t *testing.T) {
 		}
 	}
 }
+
+func TestTema_OzelRenk(t *testing.T) {
+	d := yeniDeneme(t)
+	// Önizleme kaydetmez.
+	w := d.al("/api/tema/ozel?renk=%23ff8800")
+	if w.Code != http.StatusOK || jsonCoz(t, w)["vurgu"] != "#ff8800" {
+		t.Fatalf("önizleme = %d %s", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(d.u.dir, "theme.json")); err == nil {
+		t.Fatal("önizleme temayı kaydetmemeli")
+	}
+	if w := d.al("/api/tema/ozel?renk=turuncu"); w.Code != http.StatusBadRequest {
+		t.Errorf("geçersiz renk = %d", w.Code)
+	}
+	// Uygulama kaydeder; terminal arayüzü de aynı dosyayı okur.
+	if w := d.gonder("/api/tema/ozel", map[string]string{"renk": "#ff8800"}); w.Code != http.StatusOK {
+		t.Fatalf("uygula = %d %s", w.Code, w.Body.String())
+	}
+	r := jsonCoz(t, d.al("/api/temalar"))
+	etkin := r["etkin"].(map[string]any)
+	if etkin["ad"] != r["ozelAd"] || etkin["vurgu"] != "#ff8800" {
+		t.Fatalf("etkin tema = %v", etkin)
+	}
+}
+
+func TestUzerindekiYazi(t *testing.T) {
+	for zemin, beklenen := range map[string]string{
+		"#5f5fff": "#ffffff", // Klasik: beyaz okunur
+		"#00afff": "#0b0b0e", // Okyanus: açık, koyu yazı
+		"#87d787": "#0b0b0e", // Orman
+		"#eeeeee": "#0b0b0e", // Mono
+		"#af005f": "#ffffff",
+		"bozuk":   "#ffffff",
+	} {
+		if got := uzerindekiYazi(zemin); got != beklenen {
+			t.Errorf("uzerindekiYazi(%s) = %s, beklenen %s", zemin, got, beklenen)
+		}
+	}
+}

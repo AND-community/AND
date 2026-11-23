@@ -319,6 +319,7 @@
     r.setProperty("--secim-yazi", tema.secimYazi);
     r.setProperty("--isim", tema.isim);
     r.setProperty("--rozet", tema.rozet);
+    r.setProperty("--vurgu-yazi", tema.vurguYazi || "#ffffff");
   }
 
   function metinleriUygula(veri) {
@@ -1319,25 +1320,65 @@
           el("div", { class: "sag-hizali" }, kaydet)))));
   }
 
+  // temaOnizleme, giriş ekranındaki ağ haritasının bir temanın renkleriyle
+  // küçük bir çizimidir; zemini de temanın tonunu taşır.
+  function temaOnizleme(tm) {
+    const kutu = el("div", { class: "tema-onizleme" },
+      svgEl("svg", { class: "tema-harita", viewBox: "0 0 160 64", "aria-hidden": "true" },
+        svgEl("path", { d: "M8 14H152", stroke: tm.isim }),
+        svgEl("path", { d: "M90 6V58", stroke: tm.secimZemin }),
+        svgEl("path", { d: "M8 50H50L74 26H152", stroke: tm.vurgu }),
+        svgEl("circle", { class: "aktarma", cx: 90, cy: 14, r: 5 }),
+        svgEl("circle", { class: "durak", cx: 130, cy: 26, r: 4, fill: tm.rozet }),
+        svgEl("circle", { class: "sen", cx: 90, cy: 26, r: 7, fill: tm.vurgu })));
+    kutu.style.setProperty("--onizleme-vurgu", tm.vurgu);
+    return kutu;
+  }
+
   async function gorunumSekmesi(ic) {
     const r = await api("/api/temalar");
-    bosalt(ic, el("div", { class: "bolum" }, el("h3", null, t("Tema")),
-      el("p", { class: "paragraf soluk" }, t("Tema, terminal arayüzünde ve eklentilerde de geçerlidir.")),
-      el("div", { class: "tema-izgarasi" }, r.temalar.map((tm) => {
-        // Önizleme, giriş ekranındaki ağ haritasının o temanın renkleriyle
-        // küçük bir çizimidir.
-        const onizleme = el("div", { class: "tema-onizleme" },
-          svgEl("svg", { class: "tema-harita", viewBox: "0 0 160 64", "aria-hidden": "true" },
-            svgEl("path", { d: "M8 14H152", stroke: tm.isim }),
-            svgEl("path", { d: "M90 6V58", stroke: tm.secimZemin }),
-            svgEl("path", { d: "M8 50H50L74 26H152", stroke: tm.vurgu }),
-            svgEl("circle", { class: "aktarma", cx: 90, cy: 14, r: 5 }),
-            svgEl("circle", { class: "durak", cx: 130, cy: 26, r: 4, fill: tm.rozet }),
-            svgEl("circle", { class: "sen", cx: 90, cy: 26, r: 7, fill: tm.vurgu })));
-        const etkin = tm.ad === r.etkin.ad;
-        return el("button", { class: "tema-karti" + (etkin ? " etkin" : ""), "aria-pressed": etkin ? "true" : "false", on: { click: () => temaSec(tm.ad) } },
-          onizleme, el("div", { class: "tema-adi" }, tm.etiket, etkin ? ikon("tamam") : null));
-      }))));
+    const ozelEtkin = r.etkin.ad === r.ozelAd;
+
+    // Özel renk: renk seçilirken türetilen tema önizlenir, Uygula ile kaydedilir.
+    const renk = el("input", { type: "color", class: "renk-secici", value: r.etkin.vurgu, "aria-label": t("Özel renk") });
+    const kod = el("span", { class: "renk-kodu" }, r.etkin.vurgu);
+    const onizlemeYeri = el("div", { class: "ozel-onizleme" }, temaOnizleme(r.etkin));
+    let zaman;
+    renk.addEventListener("input", () => {
+      kod.textContent = renk.value;
+      clearTimeout(zaman);
+      zaman = setTimeout(async () => {
+        try {
+          bosalt(onizlemeYeri, temaOnizleme(await api("/api/tema/ozel?renk=" + encodeURIComponent(renk.value))));
+        } catch { /* önizleme isteğe bağlı */ }
+      }, 80);
+    });
+    const uygula = el("button", { class: "dugme birincil" }, ikon("palet"), tb("uygula"));
+    uygula.addEventListener("click", async () => {
+      try {
+        temaUygula(await api("/api/tema/ozel", { renk: renk.value }));
+        sayfaCiz();
+      } catch (e) {
+        bildir(e.message, "hata");
+      }
+    });
+
+    bosalt(ic,
+      el("div", { class: "bolum" }, el("h3", null, t("Tema")),
+        el("p", { class: "paragraf soluk" }, t("Tema, terminal arayüzünde ve eklentilerde de geçerlidir.")),
+        el("div", { class: "tema-izgarasi" }, r.temalar.map((tm) => {
+          const etkin = tm.ad === r.etkin.ad;
+          return el("button", { class: "tema-karti" + (etkin ? " etkin" : ""), "aria-pressed": etkin ? "true" : "false", on: { click: () => temaSec(tm.ad) } },
+            temaOnizleme(tm), el("div", { class: "tema-adi" }, tm.etiket, etkin ? ikon("tamam") : null));
+        }))),
+      el("div", { class: "bolum" }, el("h3", null, t("Özel renk")),
+        el("p", { class: "paragraf soluk" }, t("Kendi vurgu rengini seç; AND öteki renkleri okunur kalacak biçimde ondan türetir.")),
+        el("div", { class: "ozel-tema" + (ozelEtkin ? " etkin" : "") },
+          onizlemeYeri,
+          el("div", { class: "ozel-denetim" },
+            el("label", { class: "renk-alani" }, renk, kod),
+            uygula,
+            ozelEtkin ? el("span", { class: "ozel-etkin" }, ikon("tamam"), t("Özel")) : null))));
   }
 
   async function temaSec(ad) {

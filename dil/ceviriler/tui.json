@@ -645,5 +645,12 @@
   "Ara ya da git…": {"en": "Search or jump to…", "de": "Suchen oder springen zu…", "es": "Buscar o ir a…", "fr": "Rechercher ou aller à…", "ru": "Найти или перейти…"},
   "Hızlı erişim": {"en": "Quick access", "de": "Schnellzugriff", "es": "Acceso rápido", "fr": "Accès rapide", "ru": "Быстрый доступ"},
   "Sonuç yok": {"en": "No results", "de": "Keine Ergebnisse", "es": "Sin resultados", "fr": "Aucun résultat", "ru": "Ничего не найдено"},
-  "Konular": {"en": "Topics", "de": "Themen", "es": "Temas", "fr": "Sujets", "ru": "Темы"}
+  "Konular": {"en": "Topics", "de": "Themen", "es": "Temas", "fr": "Sujets", "ru": "Темы"},
+  "Gül": {"en": "Rose", "de": "Rose", "es": "Rosa", "fr": "Rose", "ru": "Роза"},
+  "Okyanus": {"en": "Ocean", "de": "Ozean", "es": "Océano", "fr": "Océan", "ru": "Океан"},
+  "Gün Batımı": {"en": "Sunset", "de": "Sonnenuntergang", "es": "Atardecer", "fr": "Coucher de soleil", "ru": "Закат"},
+  "Lavanta": {"en": "Lavender", "de": "Lavendel", "es": "Lavanda", "fr": "Lavande", "ru": "Лаванда"},
+  "Özel": {"en": "Custom", "de": "Eigene", "es": "Personalizado", "fr": "Personnalisé", "ru": "Своя"},
+  "Özel renk": {"en": "Custom colour", "de": "Eigene Farbe", "es": "Color personalizado", "fr": "Couleur personnalisée", "ru": "Свой цвет"},
+  "Kendi vurgu rengini seç; AND öteki renkleri okunur kalacak biçimde ondan türetir.": {"en": "Pick your own accent colour; AND derives the other colours from it so that everything stays readable.", "de": "Wähle deine eigene Akzentfarbe; AND leitet die übrigen Farben so davon ab, dass alles lesbar bleibt.", "es": "Elige tu propio color de acento; AND deriva de él los demás colores para que todo siga siendo legible.", "fr": "Choisis ta propre couleur d'accent ; AND en dérive les autres couleurs pour que tout reste lisible.", "ru": "Выбери свой акцентный цвет — AND подберёт остальные цвета так, чтобы всё оставалось читаемым."}
 }

@@ -59,6 +59,8 @@ func (u *Uygulama) rotalar() {
 	m.HandleFunc("POST /api/profil", u.cekirdekle(u.profilKaydet))
 	m.HandleFunc("GET /api/temalar", u.temalar)
 	m.HandleFunc("POST /api/tema", u.temaSec)
+	m.HandleFunc("GET /api/tema/ozel", u.temaOzelOnizle)
+	m.HandleFunc("POST /api/tema/ozel", u.temaOzel)
 	m.HandleFunc("GET /api/eklentiler", u.cekirdekle(u.eklentiListesi))
 	m.HandleFunc("POST /api/eklenti/etkin", u.cekirdekle(u.eklentiEtkin))
 	m.HandleFunc("POST /api/eklenti/ac", u.cekirdekle(u.eklentiAc))

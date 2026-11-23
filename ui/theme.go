@@ -50,6 +50,10 @@ var Presets = []Theme{
 	{ThemeName: dil.K("Gece Moru"), Accent: "99", SelBG: "55", SelFG: "255", Muted: "245", Name: "86", Badge: "75"},
 	{ThemeName: dil.K("Kehribar"), Accent: "214", SelBG: "94", SelFG: "230", Muted: "245", Name: "180", Badge: "117"},
 	{ThemeName: dil.K("Orman"), Accent: "114", SelBG: "22", SelFG: "255", Muted: "245", Name: "223", Badge: "117"},
+	{ThemeName: dil.K("Gül"), Accent: "211", SelBG: "125", SelFG: "255", Muted: "245", Name: "223", Badge: "117"},
+	{ThemeName: dil.K("Okyanus"), Accent: "39", SelBG: "24", SelFG: "255", Muted: "245", Name: "122", Badge: "215"},
+	{ThemeName: dil.K("Gün Batımı"), Accent: "209", SelBG: "124", SelFG: "255", Muted: "245", Name: "222", Badge: "141"},
+	{ThemeName: dil.K("Lavanta"), Accent: "183", SelBG: "61", SelFG: "255", Muted: "245", Name: "152", Badge: "218"},
 	{ThemeName: dil.K("Mono"), Accent: "255", SelBG: "240", SelFG: "255", Muted: "246", Name: "252", Badge: "250"},
 }
 
