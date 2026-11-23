@@ -67,6 +67,7 @@ func yardimMetni() string {
 		"",
 		dil.T("Bayrak verilmezse AND tam ekran arayüzle açılır."),
 		"",
+		satir("    --masaustu, --desktop", dil.T("AND'ı terminal yerine kendi penceresinde, masaüstü arayüzüyle açar")),
 		satir("-v, --version", dil.T("sürüm, telif ve lisans bilgisini yazar")),
 		satir("    --lisans, --license", dil.T("AND'ın lisansının (GNU AGPL-3.0) tam metnini yazar")),
 		satir("    --ucuncu-taraf, --third-party", dil.T("üçüncü taraf bileşenlerin lisans bildirimlerini yazar")),

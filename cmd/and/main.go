@@ -151,7 +151,11 @@ func loadExtraBootstrap(dataDir string) []peer.AddrInfo {
 }
 
 func run() error {
-	if len(os.Args) > 1 {
+	// --masaustu: AND terminal yerine kendi penceresinde, masaüstü
+	// arayüzüyle açılır (bkz. internal/masaustu). Güncelleyici yeniden
+	// başlatırken argümanları aynen geçirdiği için kip korunur.
+	masaustuKipi := len(os.Args) > 1 && masaustuBayragi(os.Args[1])
+	if len(os.Args) > 1 && !masaustuKipi {
 		// --version, --lisans gibi bayraklar arayüz açılmadan yanıtlanır ve
 		// seçili dile uyar; dil.json yalnızca okunur, veri dizini oluşturulmaz.
 		if yol, err := veriDiziniYolu(); err == nil {
@@ -184,8 +188,26 @@ func run() error {
 	// yoksa Türkçe.
 	dil.Baslat(dir)
 
-	id, err := tui.Login(identityFile, dir)
-	if err != nil {
+	var (
+		id       *stdcrypto.Identity
+		masaustu *masaustuArayuzu
+	)
+	if masaustuKipi {
+		// Masaüstünde konsol yoktur: günlükler en baştan and.log'a gider.
+		log.SetOutput(kutuphaneGunlugu(filepath.Join(dir, "and.log")))
+		ma, err := masaustuAc(dir, identityFile)
+		if err != nil {
+			return err
+		}
+		defer ma.Kapat()
+		masaustu = ma
+		if id, err = ma.Giris(); err != nil {
+			if masaustuKapatildi(err) {
+				return nil // kullanıcı girişten önce pencereyi kapattı
+			}
+			return err
+		}
+	} else if id, err = tui.Login(identityFile, dir); err != nil {
 		return err
 	}
 
@@ -468,6 +490,10 @@ func run() error {
 			k.Sebep, k.BozukDosya, k.Yedek, k.Kurtarilan)
 		tui.BaslangicUyarisi = kurtarmaUyarisi(k)
 	}
+	var eklentiAnahtari func(string, []string) (string, func(), error)
+	if apiAddr != "" {
+		eklentiAnahtari = apiSrv.EklentiAnahtari
+	}
 
 	// Kapanış sırası: önce arka plan işleri durur, sonra paylaşılan
 	// veritabanı kapanır (WAL dosyası ana dosyaya işlenir), güncelleme
@@ -495,7 +521,16 @@ func run() error {
 		}
 	}()
 
-	err = tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh)
+	if masaustu != nil {
+		err = masaustu.Calistir(ctx, masaustuCekirdegi{
+			Kimlik: id, Dugum: node, Forum: forumStore, Sohbet: chatStore, Profil: profileStore,
+			Eklentiler: plugins, APIAdresi: apiAddr, EklentiAnahtari: eklentiAnahtari,
+			Senkron: senkron.Status, OkunmamisDM: dmBroker.OkunmamisSayisi,
+			Uyari: tui.BaslangicUyarisi, Kurucu: isFounder, Guncelleme: updateCh, Tema: themeCh,
+		})
+	} else {
+		err = tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh)
+	}
 	if m := olumcul.Load(); m != nil {
 		// Arayüz, bir arka plan işi panik yaptığı için kapatıldı.
 		return fmt.Errorf(dil.T("beklenmeyen bir hata nedeniyle kapandı (%s); ayrıntılar: %s"), *m, gunlukYolu)

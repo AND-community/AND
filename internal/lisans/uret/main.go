@@ -74,6 +74,15 @@ var elleDogrulanan = map[string]struct{ ad, not, metin string }{
 	},
 }
 
+// altDizinLisanslari, programa derlenen ve modül kökündekinden ayrı bir
+// lisans taşıyan alt paketlerdir (modül yolu → alt dizinler). Bu dizinlerdeki
+// lisans dosyaları da bildirime "altdizin/LICENSE" adıyla eklenir.
+var altDizinLisanslari = map[string][]string{
+	// webviewloader, OpenWebView2Loader'ın Go'ya aktarımıdır ve ISC
+	// lisanslıdır; modülün geri kalanı MIT (masaüstü arayüzü, Windows).
+	"github.com/wailsapp/go-webview2": {"webviewloader"},
+}
+
 func mitMetni(sahip string) string {
 	return `MIT License
 
@@ -494,6 +503,19 @@ func calistir() error {
 			m.Not, m.Dosyalar = ist.not, []lisansDosyasi{{Ad: ist.ad, Metin: ist.metin}}
 		} else if m.Dosyalar, err = lisansDosyalari(dizinler[g.Yol+"@"+g.Surum]); err != nil {
 			return err
+		}
+		for _, alt := range altDizinLisanslari[g.Yol] {
+			ek, err := lisansDosyalari(filepath.Join(dizinler[g.Yol+"@"+g.Surum], filepath.FromSlash(alt)))
+			if err != nil {
+				return err
+			}
+			if len(ek) == 0 {
+				return fmt.Errorf("%s: %s altında lisans dosyası yok (bkz. altDizinLisanslari)", g.Yol, alt)
+			}
+			for _, d := range ek {
+				d.Ad = alt + "/" + d.Ad
+				m.Dosyalar = append(m.Dosyalar, d)
+			}
 		}
 		if m.lisans() == "" {
 			gozden = append(gozden, g.Yol+"@"+g.Surum)

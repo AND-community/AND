@@ -386,6 +386,7 @@ interface and follow the selected interface language:
 | `--lisans`, `--license` | The full text of AND's license (GNU AGPL-3.0) |
 | `--ucuncu-taraf`, `--third-party` | The license notices of the third-party components built into AND |
 | `-h`, `--help` | The list of flags |
+| `--desktop`, `--masaustu` | Opens the interface in its own window instead of the terminal (see [Desktop interface](#desktop-interface)) |
 | `eklenti …` / `plugin …` | Plugin commands: `list`, `install`, `remove`, `check`, `new` (see [Installing plugins](#installing-plugins)); `and plugin help` lists them |
 
 Include the output of `and --version` when you report a bug.
@@ -393,6 +394,28 @@ Include the output of `and --version` when you report a bug.
 On the login screen `ctrl+l` (or `F2`) changes the interface language; the choice is saved and
 used on later starts too (see [Interface language](#interface-language)). `ctrl+r` restores an
 identity from its recovery code (see [First run](#first-run)).
+
+### Desktop interface
+
+`and --desktop` (or `and-masaustu.exe` in the Windows package) opens AND in its own window with a
+mouse-driven interface instead of the terminal. The core is the same: identity, network, forum,
+chat, profile, themes, language and plugins share one data directory between both interfaces, so
+a change in one shows up in the other. Only one AND can run on a data directory at a time.
+
+- **Screens:** login, registration (with the recovery code and its check), restoring from a
+  recovery code, the rules consent, the forum (categories, search, topics and replies, `[code]`
+  blocks, new topics), the public chat, Settings (profile, appearance, language, plugins,
+  network) and About AND.
+- **Plugins** are terminal programs; opened from the desktop they start in their own terminal
+  window. Permission consent works as in the terminal interface.
+- **Window:** on Windows AND gets its own window through the WebView2 component that ships with
+  Windows 10/11 (no C compiler needed). Without WebView2, and on Linux/macOS, the interface opens
+  in the default browser; closing the tab also closes AND.
+- **Security:** the interface is served by a local server listening only on `127.0.0.1` on a
+  random port. The window gets a session cookie with a one-time launch code; requests without
+  the cookie, from another Host or from another site are refused. Pages are served with a strict
+  Content Security Policy and content from the network is never treated as HTML.
+- With no console on the desktop, logs go to `and.log` in the data directory.
 
 ### Main menu
 

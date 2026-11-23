@@ -381,6 +381,7 @@ seçili arayüz diline uyar:
 | `--lisans`, `--license` | AND'ın lisansının (GNU AGPL-3.0) tam metni |
 | `--ucuncu-taraf`, `--third-party` | AND'a giren üçüncü taraf bileşenlerin lisans bildirimleri |
 | `-h`, `--help` | Bayrakların listesi |
+| `--masaustu`, `--desktop` | Arayüzü açar, ama terminal yerine kendi penceresinde (bkz. [Masaüstü arayüzü](#masaüstü-arayüzü)) |
 | `eklenti …` / `plugin …` | Eklenti komutları: `liste`, `kur`, `kaldir`, `dogrula`, `yeni` (bkz. [Eklenti kurmak](#eklenti-kurmak)); `and eklenti yardim` hepsini listeler |
 
 Hata bildirirken `and --version` çıktısını ekle.
@@ -388,6 +389,27 @@ Hata bildirirken `and --version` çıktısını ekle.
 Giriş ekranında `ctrl+l` (ya da `F2`) arayüz dilini değiştirir; seçim kaydedilir ve sonraki
 açılışlarda da kullanılır (bkz. [Arayüz dili](#arayüz-dili)). `ctrl+r` kurtarma koduyla kimliği geri yükler
 (bkz. [İlk çalıştırma](#i̇lk-çalıştırma)).
+
+### Masaüstü arayüzü
+
+`and --masaustu` (ya da Windows kurulum paketindeki `and-masaustu.exe`), AND'ı terminal yerine
+kendi penceresinde, fareyle kullanılan bir arayüzle açar. Çekirdek aynıdır: kimlik, ağ, forum,
+sohbet, profil, temalar, dil ve eklentiler iki arayüzde de aynı veri dizinini kullanır; birinde
+yapılan değişiklik ötekinde de görünür. Aynı veri dizininde aynı anda yalnızca bir AND açık olabilir.
+
+- **Ekranlar:** giriş, kayıt (kurtarma kodu ve doğrulamasıyla), kurtarma koduyla geri yükleme,
+  kurallar onayı, forum (kategoriler, arama, konu ve yanıtlar, `[code]` blokları, yeni konu),
+  genel sohbet, Ayarlar (profil, görünüm, dil, eklentiler, ağ) ve AND hakkında.
+- **Eklentiler** terminal programlarıdır; masaüstünden açılınca kendi terminal penceresinde
+  başlar. İzin onayı terminal arayüzündekiyle aynıdır.
+- **Pencere:** Windows'ta AND'ın kendi penceresi, Windows 10/11 ile gelen WebView2 bileşeniyle
+  açılır (C derleyicisi gerekmez). WebView2 yoksa ve Linux/macOS'ta arayüz varsayılan tarayıcıda
+  açılır; sekme kapatılınca AND da kapanır.
+- **Güvenlik:** Arayüzü yalnızca `127.0.0.1`'de, rastgele bir portta dinleyen yerel bir sunucu
+  sunar. Pencere tek kullanımlık bir açılış koduyla oturum çerezi alır; çerezsiz, başka bir
+  Host'tan ya da başka bir siteden gelen istekler reddedilir. Sayfalar sıkı bir içerik güvenliği
+  politikasıyla sunulur ve ağdan gelen içerik hiçbir zaman HTML olarak işlenmez.
+- Masaüstünde konsol olmadığından günlükler veri dizinindeki `and.log`'a yazılır.
 
 ### Ana menü
 

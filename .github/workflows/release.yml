@@ -102,6 +102,16 @@ jobs:
             -o "andmod_${OS}_${ARCH}${SUFFIX}" \
             ./cmd/andmod
 
+          # Masaüstü başlatıcısı (yalnızca Windows): GUI alt sistemiyle
+          # derlenir, konsol penceresi açmadan "and --masaustu" çalıştırır.
+          # Yalnızca kurulum paketine girer; AND'ın kendisi gibi
+          # güncellenmesi gerekmez.
+          if [ "${OS}" = "windows" ]; then
+            go build -trimpath -ldflags "${LDFLAGS} -H=windowsgui" \
+              -o "and-masaustu_${OS}_${ARCH}${SUFFIX}" \
+              ./cmd/and-masaustu
+          fi
+
           # Eklenti binary'leri (liste: işin EKLENTILER değişkeni). DeltaX,
           # Pembis ve konu_ac bir önceki adımda ayrı depolarından alınır.
           for e in ${EKLENTILER}; do
@@ -132,6 +142,9 @@ jobs:
           mkdir -p "${PAKET}/Eklentiler"
           cp "and_${OS}_${ARCH}${SUFFIX}" "${PAKET}/and${SUFFIX}"
           cp "andmod_${OS}_${ARCH}${SUFFIX}" "${PAKET}/andmod${SUFFIX}"
+          if [ -f "and-masaustu_${OS}_${ARCH}${SUFFIX}" ]; then
+            cp "and-masaustu_${OS}_${ARCH}${SUFFIX}" "${PAKET}/and-masaustu${SUFFIX}"
+          fi
           for e in ${EKLENTILER}; do
             klasor="${e%%:*}"
             ad="${e##*:}"

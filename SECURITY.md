@@ -166,6 +166,25 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   satır ve `.github/update-signing-pubkey.hex` birlikte değişir; biri değişip öteki değişmediyse
   güvenme.
 
+### Masaüstü arayüzünün yerel sunucusu
+
+`and --masaustu` arayüzü yerel bir HTTP sunucusundan sunar (bkz. `internal/masaustu/sunucu.go`):
+
+- Yalnızca `127.0.0.1`'de, rastgele bir portta dinler. Pencere (ya da tarayıcı) adresteki tek
+  kullanımlık, 256 bitlik bir açılış koduyla `HttpOnly`, `SameSite=Strict` bir oturum çerezi alır;
+  kod ilk kullanımda silinir. Çerezi olmayan hiçbir istek (sayfanın kendisi dahil) yanıt almaz.
+- `Host` başlığı tam olarak `127.0.0.1:<port>` olmalıdır (DNS yeniden bağlama). Durum değiştiren
+  her istek özel bir `X-AND` başlığı taşımalıdır; başka bir kökenden gelen bir sayfa bunu CORS ön
+  uçuşu olmadan gönderemez ve sunucu hiçbir kökene CORS izni vermez. `Origin` ya da
+  `Sec-Fetch-Site` başka bir site gösteriyorsa istek reddedilir. İstek gövdesi 64 KB ile sınırlıdır.
+- Sayfalar sıkı bir içerik güvenliği politikasıyla sunulur (`default-src 'none'`, yalnızca
+  kendi kökeninden betik ve stil, satır içi betik yok, `frame-ancestors 'none'`). Ağdan gelen
+  metinler arayüzde yalnızca metin düğümü olarak yazılır; HTML'i yorumlayan DOM API'lerinin
+  kullanılmadığını bir test denetler. İçerikteki bağlantılar kullanıcı onaylayınca ve yalnızca
+  `http`/`https` ise varsayılan tarayıcıda açılır.
+- Windows'ta pencere, sistemin WebView2 bileşenini saf Go bir yükleyiciyle kullanır (gömülü bir
+  DLL yoktur); geliştirici araçları ve web mesajlaşması kapalıdır.
+
 ### Eklenti IPC güvenlik sınırları
 
 - AND, eklenti API sunucusunu yalnızca `127.0.0.1` (localhost) üzerinde rastgele bir portta başlatır.
