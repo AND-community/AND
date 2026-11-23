@@ -14,3 +14,8 @@ internal/eklentisablon/sablon/* text eol=lf
 *.syso binary
 *.ico binary
 *.png binary
+
+# Masaüstü arayüzüne gömülen xterm.js, npm paketinden olduğu gibi kopyalanır
+# (sürümü ve lisansı: internal/lisans/uret, webBilesenleri).
+internal/masaustu/web/xterm/** linguist-vendored -diff
+internal/masaustu/web/xterm-fit/** linguist-vendored -diff

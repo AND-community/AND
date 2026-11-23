@@ -78,6 +78,9 @@ func TestModullerGoModIleAyni(t *testing.T) {
 	}
 	listede := map[string]string{}
 	for _, m := range moduller[1:] {
+		if webBileseni(m) {
+			continue // masaüstü arayüzüne gömülen npm paketi (bkz. TestWebBilesenleriGomulu)
+		}
 		listede[m.Yol] = m.Surum
 		if s, ok := gereksinimler[m.Yol]; !ok {
 			t.Errorf("%s@%s bildirimde var ama go.mod'da yok", m.Yol, m.Surum)
@@ -92,6 +95,35 @@ func TestModullerGoModIleAyni(t *testing.T) {
 	}
 	if t.Failed() {
 		t.Log("bildirimleri yeniden üret: go generate ./internal/lisans")
+	}
+}
+
+// webBileseni, bileşenin bir Go modülü değil, masaüstü arayüzüne gömülen bir
+// npm paketi olmasıdır (npm kapsamlı adları @ ile başlar, Go modül yolları
+// başlamaz).
+func webBileseni(m Modul) bool { return strings.HasPrefix(m.Yol, "@") }
+
+// Bildirimdeki npm paketlerinin dosyaları ve lisansları masaüstü arayüzünde
+// gerçekten bulunur; arayüzdeki npm paketleri de bildirimde.
+func TestWebBilesenleriGomulu(t *testing.T) {
+	klasorler := map[string]string{"@xterm/xterm": "xterm", "@xterm/addon-fit": "xterm-fit"}
+	bulunan := 0
+	for _, m := range Moduller() {
+		if !webBileseni(m) {
+			continue
+		}
+		bulunan++
+		k, ok := klasorler[m.Yol]
+		if !ok {
+			t.Errorf("%s: arayüzdeki klasörü bilinmiyor", m.Yol)
+			continue
+		}
+		if _, err := os.Stat(filepath.Join("..", "masaustu", "web", k, "LICENSE")); err != nil {
+			t.Errorf("%s: lisans dosyası arayüzde yok: %v", m.Yol, err)
+		}
+	}
+	if bulunan != len(klasorler) {
+		t.Errorf("bildirimde %d npm paketi var, arayüzde %d", bulunan, len(klasorler))
 	}
 }
 

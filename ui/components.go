@@ -2,6 +2,7 @@ package ui
 
 import (
 	"hash/fnv"
+	"os"
 	"regexp"
 	"strings"
 
@@ -121,6 +122,16 @@ const (
 // adı görünür.
 var FrameTag string
 
+// GomuluOrtamDegiskeni, AND'ın masaüstü arayüzünün kendi penceresinin
+// içinde başlattığı eklentilere verdiği ortam değişkenidir (değeri "1").
+const GomuluOrtamDegiskeni = "AND_GOMULU"
+
+// Gomulu, programın AND'ın masaüstü penceresinin içinde çalıştığıdır.
+// Başlık çubuğunu ve kenarı orada AND çizer; bu yüzden Page çerçevenin
+// kenarlığını ve "AND" rozetini çizmez, yerlerini boş bırakır. İçerik aynı
+// yerde kalır: ContentWidth ve ContentHeight değişmez.
+var Gomulu = os.Getenv(GomuluOrtamDegiskeni) == "1"
+
 // ContentWidth, termW sütunluk bir terminalde tam ekran çerçevenin içine
 // sığan içerik genişliğidir (kenarlık + yatay dolgu düşülür).
 func ContentWidth(termW int) int { return max(termW-2-2*framePadX, 20) }
@@ -175,6 +186,9 @@ func Page(w, h int, body, footer string) string {
 		if footer != "" {
 			content += "\n\n" + footer
 		}
+		if Gomulu {
+			return lipgloss.NewStyle().Padding(framePadY+1, framePadX+1).Render(content)
+		}
 		return S.Frame.Render(content)
 	}
 	if w < 24 || h < 6 {
@@ -201,9 +215,13 @@ func Page(w, h int, body, footer string) string {
 
 	edge := lipgloss.NewStyle().Foreground(P.Accent)
 	side := edge.Render("│")
+	top, bottom := frameTop(w, edge), edge.Render("╰"+repeat("─", w-2)+"╯")
+	if Gomulu {
+		side, top, bottom = " ", repeat(" ", w), repeat(" ", w)
+	}
 	blank := side + repeat(" ", w-2) + side
 	var b strings.Builder
-	b.WriteString(frameTop(w, edge))
+	b.WriteString(top)
 	for range framePadY {
 		b.WriteString("\n" + blank)
 	}
@@ -216,7 +234,7 @@ func Page(w, h int, body, footer string) string {
 	for range framePadY {
 		b.WriteString("\n" + blank)
 	}
-	b.WriteString("\n" + edge.Render("╰"+repeat("─", w-2)+"╯"))
+	b.WriteString("\n" + bottom)
 	return b.String()
 }
 

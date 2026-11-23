@@ -151,4 +151,6 @@ var moduller = []Modul{
 	{Yol: "modernc.org/mathutil", Surum: "v1.7.1", Lisans: "BSD-3-Clause"},
 	{Yol: "modernc.org/memory", Surum: "v1.11.0", Lisans: "BSD-3-Clause"},
 	{Yol: "modernc.org/sqlite", Surum: "v1.52.0", Lisans: "BSD-3-Clause"},
+	{Yol: "@xterm/xterm", Surum: "5.5.0", Lisans: "MIT"},
+	{Yol: "@xterm/addon-fit", Surum: "0.10.0", Lisans: "MIT"},
 }

@@ -9,11 +9,14 @@ LICENSE). The AND programs and the plugins built from this repository also
 contain the open source components listed below. Each component is
 distributed under its own license; the license texts follow the summary. The
 source code of every component is available at the listed version from its
-module path (for example through https://proxy.golang.org).
+module path (for example through https://proxy.golang.org); components marked
+"npm package" are available from the npm registry (https://www.npmjs.com).
 
-SUMMARY: 148 components
+SUMMARY: 150 components
 -----------------------
 go (Go standard library)                     go1.26.11                              BSD-3-Clause
+@xterm/addon-fit (npm package, desktop UI)   0.10.0                                 MIT
+@xterm/xterm (npm package, desktop UI)       5.5.0                                  MIT
 filippo.io/bigmod                            v0.1.1-0.20260103110540-f8a47775ebe5   BSD-3-Clause
 filippo.io/keygen                            v0.0.0-20260114151900-8e2790ea4c5b     ISC
 github.com/Jorropo/jsync                     v1.0.1                                 Apache-2.0, MIT
@@ -234,6 +237,60 @@ implementation of Go constitutes direct or contributory patent
 infringement, or inducement of patent infringement, then any patent
 rights granted to you under this License for this implementation of Go
 shall terminate as of the date such litigation is filed.
+
+
+==============================================================================
+@xterm/addon-fit 0.10.0
+------------------------------------------------------------------------------
+LICENSE
+
+Copyright (c) 2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+==============================================================================
+@xterm/xterm 5.5.0
+------------------------------------------------------------------------------
+LICENSE
+
+Copyright (c) 2017-2019, The xterm.js authors (https://github.com/xtermjs/xterm.js)
+Copyright (c) 2014-2016, SourceLair Private Company (https://www.sourcelair.com)
+Copyright (c) 2012-2013, Christopher Jeffrey (https://github.com/chjj/)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
 
 ==============================================================================

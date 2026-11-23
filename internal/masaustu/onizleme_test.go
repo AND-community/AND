@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/ui"
 )
 
 func ornekKimlik(t *testing.T, ad string) (*stdcrypto.Identity, string) {
@@ -125,10 +127,27 @@ func TestOnizleme(t *testing.T) {
 		{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriTema, Description: "Tema paketi."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "hava", Label: "Hava durumu", Version: "0.1.0", Author: "Ayşe"}, Enabled: false, Harici: true},
 	}
+	// ONIZLEME_TERMINAL, "--deneme" kipi olan bir eklenti programıdır (ör.
+	// "and eklenti yeni" iskeletinden derlenen): AND'ın içinde, Araçlar
+	// bölümünde "Örnek" adıyla çalışır.
+	terminalProgrami := os.Getenv("ONIZLEME_TERMINAL")
+	if terminalProgrami != "" {
+		eklentiler = append(eklentiler, pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "ornek", Label: "Örnek", Version: "0.1.0", Author: "Umut",
+			Category: pluginapi.KategoriArac, Description: "Kimliğini, bağlı AND düğümlerini ve genel sohbeti gösteren bir AND eklentisi."}, Enabled: true})
+	}
 
 	u, err := yeniUygulama(dir, kimlikYolu)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if terminalProgrami != "" {
+		cmd := exec.Command(terminalProgrami, "--deneme")
+		cmd.Dir = filepath.Dir(terminalProgrami)
+		cmd.Env = append(os.Environ(), dil.OrtamDegiskeni+"="+dil.Etkin(), ui.GomuluOrtamDegiskeni+"=1")
+		if _, err := u.term.baslat("ornek", "Örnek", cmd, 120, 34, nil); err != nil {
+			t.Fatal(err)
+		}
+		defer u.term.hepsiniDurdur()
 	}
 	if os.Getenv("ONIZLEME_ASAMA") == "" {
 		u.giris.mu.Lock()

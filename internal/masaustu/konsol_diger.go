@@ -10,9 +10,9 @@ import (
 	"github.com/lucian95511/and/dil"
 )
 
-// terminaller, Linux'ta denenecek terminal öykünücüleridir ve programı
+// oykunuculer, Linux'ta denenecek terminal öykünücüleridir ve programı
 // çalıştırmak için bekledikleri bayraktır.
-var terminaller = [][2]string{
+var oykunuculer = [][2]string{
 	{"x-terminal-emulator", "-e"},
 	{"gnome-terminal", "--"},
 	{"konsole", "-e"},
@@ -27,7 +27,7 @@ var terminaller = [][2]string{
 // terminal arayüzünden (and) açılır.
 func konsoldaBaslat(cmd *exec.Cmd) (func() error, error) {
 	if runtime.GOOS == "linux" || runtime.GOOS == "freebsd" {
-		for _, t := range terminaller {
+		for _, t := range oykunuculer {
 			yol, err := exec.LookPath(t[0])
 			if err != nil {
 				continue

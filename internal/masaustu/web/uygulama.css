@@ -464,6 +464,23 @@ kbd {
 .sohbet-yaz .girdi { flex: 1; min-height: 40px; }
 .sohbet-yaz .sayac { font-size: 12px; color: var(--yazi-3); min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
 
+/* ── Eklenti ekranı ──────────────────────────────────────────────────── */
+/* Eklentinin terminal arayüzü uygulamanın zemininde, aynı yazı ailesinin
+   eş aralıklı yüzüyle çizilir; durum katmanı (açılıyor, kapandı…) onun
+   üstünde durur. */
+.eklenti-ekrani { flex: 1; min-height: 0; position: relative; display: flex; background: var(--zemin); }
+.terminal-kutusu { flex: 1; min-width: 0; min-height: 0; }
+/* Eklenti kendi kenar boşluğunu bırakır (bkz. ui.Gomulu); burada yalnızca
+   kaydırma çubuğuna yer açılır. */
+.terminal-kutusu .xterm { height: 100%; padding: 4px 4px 4px 8px; }
+.terminal-kutusu .xterm:focus, .terminal-kutusu .xterm-helper-textarea:focus { outline: none; box-shadow: none; }
+.terminal-kutusu .xterm .xterm-viewport { scrollbar-width: thin; }
+.eklenti-durum { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; background: color-mix(in srgb, var(--zemin) 90%, transparent); }
+.eklenti-durum:empty { display: none; }
+.eklenti-durum .bos-durum { margin: 0; padding-bottom: 0; }
+.durum-dugmeleri { display: flex; justify-content: center; gap: 8px; margin-top: 16px; }
+.nav .calisiyor { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--iyi); box-shadow: 0 0 0 3px color-mix(in srgb, var(--iyi) 18%, transparent); }
+
 /* ── Ayarlar ve Hakkında ─────────────────────────────────────────────── */
 /* Sekmeler: araç çubuğunun altında, seçili olanın altında vurgu çizgisi.
    İlk sekmenin yazısı başlıkla aynı hizadadır. */

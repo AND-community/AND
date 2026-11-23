@@ -51,6 +51,9 @@ type Uygulama struct {
 	giris *giris
 	cek   atomic.Pointer[cekirdek]
 
+	// term, AND'ın penceresinin içinde çalışan eklentilerdir.
+	term *terminaller
+
 	// guncelleme, indirilen yeni sürümün bildirimidir (boşsa yok).
 	guncelleme atomic.Pointer[string]
 }
@@ -96,6 +99,7 @@ func yeniUygulama(dir, kimlikDosyasi string) (*Uygulama, error) {
 		yayin: yeniYayin(),
 		bitti: make(chan struct{}),
 		giris: yeniGiris(kimlikDosyasi),
+		term:  yeniTerminaller(),
 	}
 	u.rotalar()
 	return u, nil
@@ -130,9 +134,11 @@ func (u *Uygulama) Calistir(ctx context.Context, c Cekirdek) error {
 	return nil
 }
 
-// Kapat, pencereyi ve sunucuyu kapatır.
+// Kapat, pencereyi ve sunucuyu kapatır; AND'ın içinde çalışan eklentiler de
+// kapanır (ekranları bu pencereydi). Ayrı pencerede açılanlar sürer.
 func (u *Uygulama) Kapat() {
 	u.bitir()
+	u.term.hepsiniDurdur()
 	if u.pen != nil {
 		u.pen.kapat()
 	}

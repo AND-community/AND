@@ -89,6 +89,7 @@
     muhur: "M12 3l2.2 1.6 2.7-.2.9 2.6 2.2 1.6-.9 2.6.9 2.6-2.2 1.6-.9 2.6-2.7-.2L12 21l-2.2-1.6-2.7.2-.9-2.6-2.2-1.6.9-2.6-.9-2.6 2.2-1.6.9-2.6 2.7.2zM9 12l2 2 4-4",
     kod: "M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14",
     yanitla: "M9 7l-5 5 5 5M4 12h10a6 6 0 0 1 6 6v1",
+    yenile: "M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5",
   };
 
   function svgEl(etiket, ozellik, ...cocuklar) {
@@ -309,6 +310,7 @@
     sohbet: { iletiler: [], sinir: 500, yeniVar: false },
     ayarSekmesi: "profil",
     hakkindaSekmesi: "genel",
+    eklentiAd: "",
     kurallarGerekli: false,
   };
   const kok = () => document.getElementById("kok");
@@ -322,6 +324,7 @@
     r.setProperty("--isim", tema.isim);
     r.setProperty("--rozet", tema.rozet);
     r.setProperty("--vurgu-yazi", tema.vurguYazi || "#ffffff");
+    terminalTemalariniGuncelle();
   }
 
   function metinleriUygula(veri) {
@@ -377,6 +380,7 @@
     D.asama = "uygulama";
     D.kurallarGerekli = !D.oturum.kurallarOnayli;
     adrestenOku();
+    await terminalleriYukle();
     ciz();
   }
 
@@ -785,8 +789,12 @@
       (o.menu && o.menu.length)
         ? bolumle(o.menu).map((g) => [
           el("div", { class: "grup-basligi" }, g.kategori),
-          g.ogeler.map((e) => el("button", { class: "nav", title: tf("%s kendi penceresinde açılır", e.etiket), on: { click: () => eklentiAc(e.ad) } },
-            ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket), ikon("dis", "dis")))])
+          g.ogeler.map((e) => {
+            const etkin = D.gorunum === "eklenti" && D.eklentiAd === e.ad;
+            return el("button", { class: "nav" + (etkin ? " etkin" : ""), "aria-current": etkin ? "page" : undefined, title: e.etiket, on: { click: () => eklentiGoster(e.ad) } },
+              ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket),
+              calisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
+          })])
         : [el("div", { class: "grup-basligi" }, t("Eklentiler")), el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok"))],
       el("div", { class: "gezinme-alt" },
         nav("ayarlar", "ayarlar", t("Ayarlar")),
@@ -825,15 +833,18 @@
 
   // Açık ekran adreste tutulur (#sohbet, #ayarlar/ag): pencere yenilenince
   // aynı ekran açılır.
-  const GORUNUMLER = ["forum", "sohbet", "ayarlar", "hakkinda"];
+  const GORUNUMLER = ["forum", "sohbet", "ayarlar", "hakkinda", "eklenti"];
   function adresiYaz() {
-    const alt = D.gorunum === "forum" ? (D.forum.secili ? "/" + D.forum.secili : "") : D.gorunum === "ayarlar" ? "/" + D.ayarSekmesi : D.gorunum === "hakkinda" ? "/" + D.hakkindaSekmesi : "";
+    const alt = D.gorunum === "forum" ? (D.forum.secili ? "/" + D.forum.secili : "") : D.gorunum === "ayarlar" ? "/" + D.ayarSekmesi
+      : D.gorunum === "hakkinda" ? "/" + D.hakkindaSekmesi : D.gorunum === "eklenti" ? "/" + encodeURIComponent(D.eklentiAd) : "";
     history.replaceState(null, "", "#" + D.gorunum + alt);
   }
   function adrestenOku() {
     const [g, alt] = decodeURIComponent(location.hash.slice(1)).split("/");
     if (!GORUNUMLER.includes(g)) return;
+    if (g === "eklenti" && !alt) return;
     D.gorunum = g;
+    if (g === "eklenti") D.eklentiAd = alt;
     if (g === "ayarlar" && AYAR_SEKMELERI.some((s) => s[0] === alt)) D.ayarSekmesi = alt;
     if (g === "hakkinda" && HAKKINDA_SEKMELERI.some((s) => s[0] === alt)) D.hakkindaSekmesi = alt;
     if (g === "forum" && alt) D.forum.secili = alt;
@@ -848,6 +859,7 @@
       case "sohbet": return sohbetCiz();
       case "ayarlar": return ayarlarCiz();
       case "hakkinda": return hakkindaCiz();
+      case "eklenti": return eklentiCiz();
       default: return forumCiz();
     }
   }
@@ -1547,6 +1559,9 @@
       anahtar.addEventListener("change", async () => {
         try {
           const s = await api("/api/eklenti/etkin", { ad: e.ad, etkin: anahtar.checked });
+          // Kapatılan eklenti AND'ın içinde çalışıyorsa o da durur: menüden
+          // kalkınca ekranına ulaşılamaz.
+          if (!anahtar.checked) await terminaliAt(e.ad);
           D.oturum.menu = s.menu;
           D.oturum.konuAcabilir = s.konuAcabilir;
           gezinmeCiz();
@@ -1565,10 +1580,10 @@
           e.izinler && e.izinler.length ? el("div", { class: "izinler" }, e.izinler.map((iz) => el("span", { class: "rozet kategori", title: iz.aciklama }, iz.baslik))) : null),
         el("div", { class: "islemler" },
           el("label", { class: "anahtar" }, anahtar, el("span")),
-          e.etkin && !e.tema ? el("button", { class: "dugme kucuk", on: { click: () => eklentiAc(e.ad) } }, ikon("dis"), tb("aç")) : null));
+          e.etkin && !e.tema ? el("button", { class: "dugme kucuk", on: { click: () => eklentiGoster(e.ad) } }, ikon(kategoriIkonu(e.kategoriKodu)), tb("aç")) : null));
     };
     bosalt(ic, el("div", { class: "bolum" }, el("h3", null, t("Kurulu eklentiler")),
-      el("p", { class: "paragraf soluk" }, t("Eklentiler kendi terminal penceresinde açılır. Kapattığın eklenti menüde görünmez.")),
+      el("p", { class: "paragraf soluk" }, t("Eklentiler AND'ın içinde açılır. Kapattığın eklenti menüde görünmez.")),
       r.eklentiler.length
         ? bolumle(r.eklentiler).map((g) => el("div", { class: "eklenti-bolumu" },
           el("h4", null, ikon(kategoriIkonu(g.ogeler[0].kategoriKodu)), g.kategori, el("span", { class: "sayi" }, String(g.ogeler.length))),
@@ -1597,29 +1612,390 @@
 
   // ── Eklenti açma ──────────────────────────────────────────────────────
 
+  // izinSor, eklentinin istediği izinleri gösterir; kullanıcı izin verirse
+  // kabul, vazgeçerse vazgec çağrılır.
+  function izinSor(r, kabul, vazgec) {
+    let verildi = false;
+    const kapat = pencereAc({
+      baslik: r.baslik,
+      govde: [
+        r.uyari ? el("div", { class: "uyari-kutusu" }, ikon("uyari"), el("div", null, r.uyari)) : null,
+        el("div", { class: "izin-listesi" }, r.izinler.map((iz) => el("div", { class: "izin" }, ikon("kalkan"), el("div", null, el("b", null, iz.baslik), el("span", null, iz.aciklama))))),
+        el("p", { class: "paragraf cok-soluk" }, r.not),
+      ],
+      dugmeler: [
+        el("button", { class: "dugme", on: { click: () => kapat() } }, tb("vazgeç")),
+        el("button", { class: "dugme birincil", on: { click: () => { verildi = true; kapat(); } } }, tb("izin ver ve aç")),
+      ],
+      kapaninca: () => (verildi ? kabul() : vazgec && vazgec()),
+    });
+  }
+
+  // eklentiAc, eklentiyi kendi penceresinde açar (AND'ın içinde açılamadığında
+  // ya da kullanıcı "Ayrı pencerede aç" dediğinde).
   async function eklentiAc(ad, onay) {
     try {
       const r = await api("/api/eklenti/ac", { ad, onay: !!onay });
-      if (r.izinGerekli) {
-        const kapat = pencereAc({
-          baslik: r.baslik,
-          govde: [
-            r.uyari ? el("div", { class: "uyari-kutusu" }, ikon("uyari"), el("div", null, r.uyari)) : null,
-            el("div", { class: "izin-listesi" }, r.izinler.map((iz) => el("div", { class: "izin" }, ikon("kalkan"), el("div", null, el("b", null, iz.baslik), el("span", null, iz.aciklama))))),
-            el("p", { class: "paragraf cok-soluk" }, r.not),
-          ],
-          dugmeler: [
-            el("button", { class: "dugme", on: { click: () => kapat() } }, tb("vazgeç")),
-            el("button", { class: "dugme birincil", on: { click: () => { kapat(); eklentiAc(ad, true); } } }, tb("izin ver ve aç")),
-          ],
-        });
-        return;
-      }
-      const e = (D.oturum.menu || []).find((m) => m.ad === ad);
+      if (r.izinGerekli) { izinSor(r, () => eklentiAc(ad, true)); return; }
+      const e = eklentiBilgisi(ad);
       bildir(tf("%s kendi penceresinde açıldı.", e ? e.etiket : ad), "iyi");
     } catch (e) {
       bildir(e.message, "hata");
     }
+  }
+
+  // ── Eklentiler AND'ın içinde ──────────────────────────────────────────
+  //
+  // Eklentinin terminal arayüzü AND'ın penceresindeki bir terminalde
+  // (xterm.js) çalışır: ekranı /api/terminal/akis'ten gelir, tuşları
+  // /api/terminal/yaz ile gider. Başka ekrana geçince eklenti kapanmaz;
+  // dönünce kaldığı yerden görünür. xterm.js ilk eklenti açılırken yüklenir.
+
+  const T = {}; // eklenti adı → terminal durumu
+  let terminalAkisi = null;
+  let xtermSozu = null;
+
+  const eklentiBilgisi = (ad) => ((D.oturum && D.oturum.menu) || []).find((m) => m.ad === ad);
+  const calisiyor = (ad) => !!(T[ad] && T[ad].oturum && !T[ad].bitti);
+
+  function terminalDurumu(ad) {
+    if (!T[ad]) T[ad] = { ad, oturum: null, term: null, fit: null, kutu: null, acik: false, ofs: 0, kuyruk: "", gonderiliyor: false, senkron: false, bekleyen: [], bitti: false, kod: 0, ayri: false, vazgecildi: false, aciliyor: false };
+    return T[ad];
+  }
+
+  function xtermYukle() {
+    if (!xtermSozu) {
+      const betik = (src) => new Promise((tamam, hata) =>
+        document.head.append(el("script", { src, on: { load: tamam, error: () => hata(new Error(t("Bir şeyler ters gitti."))) } })));
+      document.head.append(el("link", { rel: "stylesheet", href: "xterm/xterm.css" }));
+      xtermSozu = betik("xterm/xterm.js").then(() => betik("xterm-fit/addon-fit.js"));
+      xtermSozu.catch(() => { xtermSozu = null; });
+    }
+    return xtermSozu;
+  }
+
+  // xterm.js, temasını ve hücre ölçülerini sayfaya <style> öğeleriyle ekler;
+  // içerik güvenlik politikası (style-src 'self') satır içi stil öğelerini
+  // uygulamaz. Bu öğelerin metni oluşturulabilir stil sayfalarına taşınır,
+  // öğe değiştikçe güncellenir, öğe kaldırılınca sayfa da kalkar.
+  const tasinanStiller = new Map();
+  function stilTasi(s) {
+    let sayfa = tasinanStiller.get(s);
+    if (!sayfa) {
+      sayfa = new CSSStyleSheet();
+      tasinanStiller.set(s, sayfa);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sayfa];
+    }
+    sayfa.replaceSync(s.textContent || "");
+  }
+  function stilBirak(s) {
+    const sayfa = tasinanStiller.get(s);
+    if (!sayfa) return;
+    tasinanStiller.delete(s);
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((x) => x !== sayfa);
+  }
+  function stilleriIzle(kok) {
+    const stiller = (d) => (d.nodeName === "STYLE" ? [d] : d.querySelectorAll ? [...d.querySelectorAll("style")] : []);
+    new MutationObserver((kayitlar) => {
+      for (const k of kayitlar) {
+        const hedef = k.type === "characterData" ? k.target.parentNode : k.target;
+        if (hedef && hedef.nodeName === "STYLE") stilTasi(hedef);
+        for (const d of k.addedNodes) stiller(d).forEach(stilTasi);
+        for (const d of k.removedNodes) stiller(d).forEach(stilBirak);
+      }
+    }).observe(kok, { childList: true, subtree: true, characterData: true });
+  }
+
+  // cozulmusRenk, bir CSS rengini (değişken, color-mix…) #rrggbb'ye çevirir:
+  // terminalin teması uygulamanın etkin temasından türetilir.
+  function cozulmusRenk(css) {
+    const olcer = el("span");
+    olcer.style.color = css;
+    document.body.append(olcer);
+    const c = getComputedStyle(olcer).color;
+    olcer.remove();
+    const k = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    k.fillStyle = c;
+    k.fillRect(0, 0, 1, 1);
+    const [r, g, b] = k.getImageData(0, 0, 1, 1).data;
+    return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+  }
+
+  function terminalTemasi() {
+    const zemin = cozulmusRenk("var(--zemin)");
+    const vurgu = cozulmusRenk("var(--vurgu)");
+    return {
+      background: zemin, foreground: cozulmusRenk("var(--yazi)"), cursor: vurgu, cursorAccent: zemin,
+      selectionBackground: vurgu + "66", selectionForeground: "#ffffff",
+      black: "#18181b", red: "#ff6b7d", green: "#3ecf8e", yellow: "#f2b94f", blue: "#6b8cff", magenta: "#c084fc", cyan: "#5fd7e6", white: "#d4d4d8",
+      brightBlack: "#52525b", brightRed: "#ff8a98", brightGreen: "#6ee7b0", brightYellow: "#ffd27a", brightBlue: "#93a8ff", brightMagenta: "#d8b4fe", brightCyan: "#8be9f5", brightWhite: "#fafafa",
+    };
+  }
+
+  function terminalTemalariniGuncelle() {
+    for (const s of Object.values(T)) if (s.term) s.term.options.theme = terminalTemasi();
+  }
+
+  function base64Cozul(veri) {
+    const s = atob(veri || "");
+    const b = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+    return b;
+  }
+
+  // Bütün terminallerin çıktısı tek bir olay akışından gelir; her parça
+  // akıştaki konumunu (ofs) taşır. Kaçırılan parça olursa (yavaş arayüz)
+  // eksik kalan geçmişten çekilir.
+  function terminalAkisiniAc() {
+    if (terminalAkisi) return;
+    terminalAkisi = new EventSource("/api/terminal/akis");
+    let koptu = false;
+    const bul = (id) => Object.values(T).find((s) => s.oturum === id);
+    terminalAkisi.addEventListener("error", () => { koptu = true; });
+    terminalAkisi.addEventListener("open", () => {
+      if (!koptu) return;
+      koptu = false;
+      for (const s of Object.values(T)) if (s.oturum && s.term) senkronla(s);
+    });
+    terminalAkisi.addEventListener("cikti", (e) => {
+      const o = JSON.parse(e.data);
+      const s = bul(o.id);
+      if (!s || !s.term) return; // ekranı henüz kurulmadı: gösterilince geçmişten okunur
+      if (s.senkron) s.bekleyen.push(o);
+      else parcaYaz(s, o);
+    });
+    terminalAkisi.addEventListener("bitti", (e) => {
+      const o = JSON.parse(e.data);
+      const s = bul(o.id);
+      if (!s) return;
+      s.bitti = true;
+      s.kod = o.kod;
+      if (s.term) s.term.write("\x1b[?25l"); // imleç gizlenir
+      gezinmeCiz();
+      eklentiDurumuCiz(s);
+    });
+  }
+
+  function parcaYaz(s, o) {
+    const veri = base64Cozul(o.veri);
+    const son = o.ofs + veri.length;
+    if (son <= s.ofs) return; // zaten yazıldı
+    if (o.ofs > s.ofs) { senkronla(s); return; } // bir parça kaçtı
+    s.term.write(veri.subarray(s.ofs - o.ofs));
+    s.ofs = son;
+  }
+
+  // senkronla, terminale s.ofs'tan sonraki çıktıyı geçmişten yazar. Geçmiş o
+  // kadar eskiye gitmiyorsa terminal sıfırlanır ve eklentinin ekranı sözde
+  // konsoldan yeniden boyanır.
+  async function senkronla(s) {
+    if (s.senkron || !s.oturum || !s.term) return;
+    s.senkron = true;
+    try {
+      const g = await api("/api/terminal/gecmis?id=" + encodeURIComponent(s.oturum) + "&ofs=" + s.ofs);
+      if (g.kesik) s.term.reset();
+      s.term.write(base64Cozul(g.veri));
+      s.ofs = g.son;
+      if (g.bitti && !s.bitti) { s.bitti = true; s.kod = g.kod; gezinmeCiz(); eklentiDurumuCiz(s); }
+      if (g.kesik && !g.bitti) api("/api/terminal/boyut", { id: s.oturum, sutun: s.term.cols, satir: s.term.rows, yenile: true }).catch(() => {});
+    } catch (e) {
+      if (e.durum === 404) { s.oturum = null; s.bitti = true; gezinmeCiz(); eklentiDurumuCiz(s); }
+    } finally {
+      s.senkron = false;
+      const bekleyen = s.bekleyen;
+      s.bekleyen = [];
+      for (const o of bekleyen) parcaYaz(s, o);
+    }
+  }
+
+  // Tuşlar sırayla gider: bir istek sürerken gelenler birikir ve bir sonraki
+  // istekte birlikte gönderilir.
+  async function terminaleYaz(s, veri) {
+    if (!s.oturum || s.bitti) return;
+    s.kuyruk += veri;
+    if (s.gonderiliyor) return;
+    s.gonderiliyor = true;
+    try {
+      while (s.kuyruk && s.oturum) {
+        const v = s.kuyruk;
+        s.kuyruk = "";
+        await api("/api/terminal/yaz", { id: s.oturum, veri: v });
+      }
+    } catch { s.kuyruk = ""; } finally { s.gonderiliyor = false; }
+  }
+
+  let boyutZamani = null;
+  function olcuGuncelle(s) {
+    if (!s.kutu || !s.kutu.isConnected || !s.kutu.clientWidth) return;
+    s.fit.fit();
+    clearTimeout(boyutZamani);
+    boyutZamani = setTimeout(() => {
+      if (s.oturum && !s.bitti) api("/api/terminal/boyut", { id: s.oturum, sutun: s.term.cols, satir: s.term.rows }).catch(() => {});
+    }, 80);
+  }
+
+  async function terminalKur(s) {
+    await xtermYukle();
+    if (s.term) return;
+    s.kutu = el("div", { class: "terminal-kutusu" });
+    stilleriIzle(s.kutu);
+    s.term = new window.Terminal({
+      fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace', fontSize: 13.5, lineHeight: 1.12,
+      cursorBlink: true, scrollback: 2000, theme: terminalTemasi(), windowsPty: { backend: "conpty" },
+    });
+    s.fit = new window.FitAddon.FitAddon();
+    s.term.loadAddon(s.fit);
+    s.term.onData((v) => terminaleYaz(s, v));
+  }
+
+  function eklentiGoster(ad) {
+    D.eklentiAd = ad;
+    git("eklenti");
+  }
+
+  async function eklentiCiz() {
+    const ad = D.eklentiAd;
+    const e = eklentiBilgisi(ad);
+    if (!e) { git("forum"); return; } // kapatılmış ya da kaldırılmış
+    const s = terminalDurumu(ad);
+    const ekran = el("div", { class: "eklenti-ekrani" });
+    D.eklentiDurumAlani = el("div", { class: "eklenti-durum" });
+    bosalt(gorunumAlani,
+      ustCubuk(kategoriIkonu(e.kategoriKodu), e.etiket, e.kategori,
+        el("button", { class: "dugme kucuk hayalet", on: { click: () => ayriPenceredeAc(s) } }, ikon("dis"), t("Ayrı pencerede aç")),
+        el("button", { class: "ikon-dugme", title: t("Eklentiyi kapat"), "aria-label": t("Eklentiyi kapat"), on: { click: () => eklentiyiKapat(s) } }, ikon("kapat"))),
+      ekran);
+    try {
+      await terminalKur(s);
+    } catch (err) {
+      bosalt(ekran, bosDurum("uyari", t("Yüklenemedi."), err.message));
+      return;
+    }
+    if (D.gorunum !== "eklenti" || D.eklentiAd !== ad) return;
+    ekran.append(s.kutu, D.eklentiDurumAlani);
+    if (!s.acik) {
+      s.term.open(s.kutu);
+      s.acik = true;
+      new ResizeObserver(() => olcuGuncelle(s)).observe(s.kutu);
+    }
+    s.fit.fit();
+    s.term.refresh(0, s.term.rows - 1);
+    eklentiDurumuCiz(s);
+    if (s.oturum) {
+      terminalAkisiniAc();
+      senkronla(s);
+    } else if (!s.bitti && !s.ayri && !s.vazgecildi) {
+      eklentiyiBaslat(s);
+    }
+    s.term.focus();
+  }
+
+  async function eklentiyiBaslat(s, onay) {
+    if (s.aciliyor) return;
+    s.aciliyor = true;
+    s.vazgecildi = false;
+    eklentiDurumuCiz(s);
+    try {
+      const boyut = (s.fit && s.fit.proposeDimensions()) || { cols: 100, rows: 30 };
+      const r = await api("/api/eklenti/ac", { ad: s.ad, onay: !!onay, gomulu: true, sutun: boyut.cols, satir: boyut.rows });
+      if (r.izinGerekli) {
+        s.aciliyor = false;
+        izinSor(r, () => eklentiyiBaslat(s, true), () => { s.vazgecildi = true; eklentiDurumuCiz(s); });
+        return;
+      }
+      if (!r.oturum) {
+        // Bu sistemde AND'ın içinde açılamıyor: kendi penceresinde açıldı.
+        s.ayri = true;
+        return;
+      }
+      terminalAkisiniAc();
+      if (s.oturum !== r.oturum) {
+        s.term.reset();
+        Object.assign(s, { oturum: r.oturum, ofs: 0, bitti: false, kod: 0, ayri: false });
+      }
+      await senkronla(s);
+      gezinmeCiz();
+      if (D.gorunum === "eklenti" && D.eklentiAd === s.ad) s.term.focus();
+    } catch (e) {
+      bildir(e.message, "hata");
+    } finally {
+      s.aciliyor = false;
+      eklentiDurumuCiz(s);
+    }
+  }
+
+  // eklentiDurumuCiz, terminalin üstündeki durum katmanıdır: açılırken,
+  // eklenti kapanınca, izin verilmeyince ya da kendi penceresinde açıkken.
+  function eklentiDurumuCiz(s) {
+    const alan = D.eklentiDurumAlani;
+    if (!alan || D.gorunum !== "eklenti" || D.eklentiAd !== s.ad) return;
+    const e = eklentiBilgisi(s.ad);
+    const etiket = e ? e.etiket : s.ad;
+    const simge = kategoriIkonu(e && e.kategoriKodu);
+    const dugmeler = (...d) => el("div", { class: "durum-dugmeleri" }, d);
+    const yeniden = () => {
+      if (s.oturum) api("/api/terminal/kapat", { id: s.oturum }).catch(() => {});
+      Object.assign(s, { oturum: null, bitti: false, ayri: false, ofs: 0 });
+      s.term.reset();
+      eklentiyiBaslat(s);
+    };
+    if (s.aciliyor) bosalt(alan, el("div", { class: "donen" }));
+    else if (s.bitti) {
+      bosalt(alan, bosDurum(simge, tf("%s kapandı.", etiket), s.kod ? tf("Çıkış kodu: %d", s.kod) : null),
+        dugmeler(el("button", { class: "dugme birincil", on: { click: yeniden } }, ikon("yenile"), t("Yeniden aç"))));
+    } else if (s.ayri) {
+      bosalt(alan, bosDurum(simge, tf("%s kendi penceresinde açıldı.", etiket)),
+        dugmeler(el("button", { class: "dugme", on: { click: () => eklentiAc(s.ad) } }, ikon("dis"), t("Ayrı pencerede aç"))));
+    } else if (s.vazgecildi) {
+      bosalt(alan, bosDurum("kalkan", t("Eklenti açılmadı")),
+        dugmeler(el("button", { class: "dugme birincil", on: { click: () => eklentiyiBaslat(s) } }, tb("aç"))));
+    } else bosalt(alan);
+  }
+
+  async function ayriPenceredeAc(s) {
+    if (calisiyor(s.ad)) {
+      const e = eklentiBilgisi(s.ad);
+      if (!(await onayla(t("Ayrı pencerede aç"), tf("%s burada kapanır ve kendi penceresinde yeniden açılır.", e ? e.etiket : s.ad), t("Ayrı pencerede aç")))) return;
+      await api("/api/terminal/kapat", { id: s.oturum }).catch(() => {});
+      Object.assign(s, { oturum: null, bitti: false });
+      s.term.reset();
+    }
+    s.ayri = true;
+    eklentiDurumuCiz(s);
+    gezinmeCiz();
+    eklentiAc(s.ad);
+  }
+
+  async function eklentiyiKapat(s) {
+    if (calisiyor(s.ad)) {
+      const e = eklentiBilgisi(s.ad);
+      if (!(await onayla(t("Eklentiyi kapat"), tf("%s hemen kapanır; kaydetmediğin işler kaybolabilir.", e ? e.etiket : s.ad), t("Eklentiyi kapat"), true))) return;
+    }
+    await terminaliAt(s.ad);
+    git("forum");
+  }
+
+  // terminaliAt, eklentiyi (AND'ın içinde çalışıyorsa) durdurur ve
+  // terminalini bırakır.
+  async function terminaliAt(ad) {
+    const s = T[ad];
+    if (!s) return;
+    delete T[ad];
+    if (s.oturum) await api("/api/terminal/kapat", { id: s.oturum }).catch(() => {});
+    if (s.term) s.term.dispose();
+  }
+
+  // terminalleriYukle, arayüz yenilenince (ya da dil değişince) AND'ın
+  // içinde hâlâ açık olan eklentileri yeniden bağlar.
+  async function terminalleriYukle() {
+    try {
+      const r = await api("/api/terminal/liste");
+      for (const x of r.terminaller) {
+        const s = terminalDurumu(x.ad);
+        if (!s.oturum) Object.assign(s, { oturum: x.id, bitti: x.bitti, kod: x.kod, ofs: 0 });
+      }
+      if (r.terminaller.length) gezinmeCiz();
+    } catch { /* terminal yoksa sorun değil */ }
   }
 
   // ── AND hakkında ──────────────────────────────────────────────────────
@@ -1692,7 +2068,7 @@
         ekle(t("Konular"), "sohbet", konu.baslik, () => { D.forum.secili = konu.id; git("forum"); }, konu.yazar);
       }
     }
-    for (const e of (D.oturum && D.oturum.menu) || []) ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiAc(e.ad));
+    for (const e of (D.oturum && D.oturum.menu) || []) ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiGoster(e.ad));
     return k;
   }
 
@@ -1758,6 +2134,8 @@
 
   document.addEventListener("keydown", (e) => {
     if (D.asama !== "uygulama") return;
+    // Eklentinin terminali odaktayken bütün tuşlar eklentinindir.
+    if (e.target && e.target.closest && e.target.closest(".terminal-kutusu")) return;
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
       e.preventDefault();
       hizliErisim();

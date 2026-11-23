@@ -19,35 +19,14 @@ import (
 // girdi/çıktısını her zaman (boşsa NUL'a) bağlar; tam ekran bir terminal
 // programı ise yeni konsolun kendi tutamaçlarını kullanmalıdır.
 func konsoldaBaslat(cmd *exec.Cmd) (func() error, error) {
-	if cmd.Path == "" {
-		return nil, errors.New("masaustu: boş program yolu")
-	}
-	parcalar := []string{syscall.EscapeArg(cmd.Path)}
-	for _, a := range cmd.Args[1:] {
-		parcalar = append(parcalar, syscall.EscapeArg(a))
-	}
-	uygulama, err := windows.UTF16PtrFromString(cmd.Path)
-	if err != nil {
-		return nil, err
-	}
-	satir, err := windows.UTF16PtrFromString(strings.Join(parcalar, " "))
-	if err != nil {
-		return nil, err
-	}
-	var dizin *uint16
-	if cmd.Dir != "" {
-		if dizin, err = windows.UTF16PtrFromString(cmd.Dir); err != nil {
-			return nil, err
-		}
-	}
-	ortam, err := ortamBlogu(cmd.Env)
+	s, err := surecHazirla(cmd)
 	if err != nil {
 		return nil, err
 	}
 	si := windows.StartupInfo{Cb: uint32(unsafe.Sizeof(windows.StartupInfo{}))}
 	var pi windows.ProcessInformation
-	err = windows.CreateProcess(uygulama, satir, nil, nil, false,
-		windows.CREATE_NEW_CONSOLE|windows.CREATE_UNICODE_ENVIRONMENT, &ortam[0], dizin, &si, &pi)
+	err = windows.CreateProcess(s.uygulama, s.satir, nil, nil, false,
+		windows.CREATE_NEW_CONSOLE|windows.CREATE_UNICODE_ENVIRONMENT, &s.ortam[0], s.dizin, &si, &pi)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +36,39 @@ func konsoldaBaslat(cmd *exec.Cmd) (func() error, error) {
 		_, err := windows.WaitForSingleObject(pi.Process, windows.INFINITE)
 		return err
 	}, nil
+}
+
+// surec, CreateProcess'e verilecek program yolu, komut satırı, çalışma
+// dizini ve ortam bloğudur.
+type surec struct {
+	uygulama, satir, dizin *uint16
+	ortam                  []uint16
+}
+
+// surecHazirla, cmd'yi CreateProcess'in beklediği biçime çevirir.
+func surecHazirla(cmd *exec.Cmd) (surec, error) {
+	var s surec
+	if cmd.Path == "" {
+		return s, errors.New("masaustu: boş program yolu")
+	}
+	parcalar := []string{syscall.EscapeArg(cmd.Path)}
+	for _, a := range cmd.Args[1:] {
+		parcalar = append(parcalar, syscall.EscapeArg(a))
+	}
+	var err error
+	if s.uygulama, err = windows.UTF16PtrFromString(cmd.Path); err != nil {
+		return s, err
+	}
+	if s.satir, err = windows.UTF16PtrFromString(strings.Join(parcalar, " ")); err != nil {
+		return s, err
+	}
+	if cmd.Dir != "" {
+		if s.dizin, err = windows.UTF16PtrFromString(cmd.Dir); err != nil {
+			return s, err
+		}
+	}
+	s.ortam, err = ortamBlogu(cmd.Env)
+	return s, err
 }
 
 // ortamBlogu, "AD=değer" listesini CreateProcess'in beklediği UTF-16 ortam

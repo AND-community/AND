@@ -294,3 +294,35 @@ func TestSpreadBlockVLine(t *testing.T) {
 		t.Fatalf("VLine 4 satır olmalı, got %d", n)
 	}
 }
+
+// AND'ın masaüstü penceresinin içinde (Gomulu) Page kenarlık ve rozet
+// çizmez; ama boyut ve içeriğin yeri aynıdır.
+func TestPage_GomuluCerceveCizmez(t *testing.T) {
+	Gomulu = true
+	t.Cleanup(func() { Gomulu = false })
+	w, h := 80, 24
+	out := Page(w, h, "Başlık\nikinci satır", "ipucu satırı")
+	lines := strings.Split(out, "\n")
+	if len(lines) != h {
+		t.Fatalf("%d satır, %d bekleniyordu", len(lines), h)
+	}
+	for i, l := range lines {
+		if lipgloss.Width(l) != w {
+			t.Fatalf("satır %d genişliği %d: %q", i, lipgloss.Width(l), ansi.Strip(l))
+		}
+		if s := ansi.Strip(l); strings.ContainsAny(s, "╭╮╰╯│") || strings.Contains(s, "AND") {
+			t.Fatalf("satır %d çerçeve çiziyor: %q", i, s)
+		}
+	}
+	// İçerik çerçeveli hâldekiyle aynı sütundan başlar.
+	if got := ansi.Strip(lines[2]); !strings.HasPrefix(got, strings.Repeat(" ", 1+framePadX)+"Başlık") {
+		t.Fatalf("içerik kaydı: %q", got)
+	}
+	if !strings.Contains(ansi.Strip(lines[h-3]), "ipucu satırı") {
+		t.Fatalf("alt bilgi en altta olmalı: %q", ansi.Strip(lines[h-3]))
+	}
+	// Boyut bilinmiyorsa da çerçeve yok.
+	if s := ansi.Strip(Page(0, 0, "x", "")); strings.ContainsAny(s, "╭╮╰╯│") {
+		t.Fatalf("boyutsuz sayfa çerçeve çiziyor: %q", s)
+	}
+}

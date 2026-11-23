@@ -131,8 +131,12 @@ izinler yok sayılır.
 
 ## Çalışma ortamı
 
-AND eklentiyi kendi klasöründe (`plugin.json`'ın yanında), aynı terminalde başlatır ve eklenti çıkana
-kadar ekranı ona bırakır. Ortam değişkenleri:
+AND eklentiyi kendi klasöründe (`plugin.json`'ın yanında) başlatır. Terminal arayüzünde (`and --terminal`)
+eklenti aynı terminalde açılır ve çıkana kadar ekran onundur. Masaüstü arayüzünde eklenti AND'ın
+penceresinin içinde, bir sözde terminalde (Windows'ta ConPTY) çalışır: sol menüde kendi bölümünde
+görünür, başka ekrana geçince kapanmaz, AND kapanınca kapanır. Sözde terminal yoksa (eski Windows,
+Linux, macOS) ya da kullanıcı "Ayrı pencerede aç" derse kendi konsol penceresinde açılır. Ortam
+değişkenleri:
 
 | Değişken | Anlamı | SDK |
 |---|---|---|
@@ -141,6 +145,7 @@ kadar ekranı ona bırakır. Ortam değişkenleri:
 | `AND_DATA_DIR` | AND'ın veri dizini | `pluginapi.DataDir()` |
 | `AND_DIL` | Arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
 | `AND_CATEGORY` | Yalnızca `konu_ac`: forumda seçili kategori | `pluginapi.Category()` |
+| `AND_GOMULU` | `1`: eklenti AND'ın masaüstü penceresinin içinde çalışıyor. Başlık ve kenar AND'ındır; `ui.Page` çerçevesini çizmez (içerik aynı yerde kalır) | `ui.Gomulu` |
 
 Veri dizinine yazacağın dosyaların adına eklentinin adını önek yap (`hava_ayarlar.json`); kimlik ya da
 anahtar saklama.

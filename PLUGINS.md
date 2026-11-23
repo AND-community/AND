@@ -134,8 +134,12 @@ permissions.
 
 ## Runtime environment
 
-AND starts the plugin in its own folder (next to `plugin.json`), in the same terminal, and leaves the
-screen to it until it exits. Environment variables:
+AND starts the plugin in its own folder (next to `plugin.json`). In the terminal interface
+(`and --terminal`) the plugin opens in the same terminal and owns the screen until it exits. In the
+desktop interface the plugin runs inside the AND window, in a pseudo terminal (ConPTY on Windows): it
+appears in its own section of the sidebar, keeps running when the user switches screens and closes
+when AND closes. Without a pseudo terminal (older Windows, Linux, macOS), or when the user picks
+"Open in a separate window", it opens in its own console window. Environment variables:
 
 | Variable | Meaning | SDK |
 |---|---|---|
@@ -144,6 +148,7 @@ screen to it until it exits. Environment variables:
 | `AND_DATA_DIR` | AND's data directory | `pluginapi.DataDir()` |
 | `AND_DIL` | The interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
 | `AND_CATEGORY` | `konu_ac` only: the category selected in the forum | `pluginapi.Category()` |
+| `AND_GOMULU` | `1`: the plugin runs inside the AND desktop window. The title bar and edges belong to AND; `ui.Page` does not draw its frame (the content stays where it was) | `ui.Gomulu` |
 
 Prefix the files you write into the data directory with the plugin's name (`weather_settings.json`), and
 do not store identities or keys there.

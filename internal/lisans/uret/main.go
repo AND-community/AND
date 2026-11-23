@@ -83,6 +83,15 @@ var altDizinLisanslari = map[string][]string{
 	"github.com/wailsapp/go-webview2": {"webviewloader"},
 }
 
+// webBilesenleri, masaüstü arayüzüne (internal/masaustu/web) gömülen Go dışı
+// bileşenlerdir: npm paketlerinden olduğu gibi kopyalanan dosyalar ve
+// yanlarındaki lisans dosyaları. Sürüm değişince dosyalar ve buradaki sürüm
+// birlikte güncellenir.
+var webBilesenleri = []struct{ yol, surum, dizin string }{
+	{"@xterm/xterm", "5.5.0", "internal/masaustu/web/xterm"},
+	{"@xterm/addon-fit", "0.10.0", "internal/masaustu/web/xterm-fit"},
+}
+
 func mitMetni(sahip string) string {
 	return `MIT License
 
@@ -269,7 +278,8 @@ LICENSE). The AND programs and the plugins built from this repository also
 contain the open source components listed below. Each component is
 distributed under its own license; the license texts follow the summary. The
 source code of every component is available at the listed version from its
-module path (for example through https://proxy.golang.org).
+module path (for example through https://proxy.golang.org); components marked
+"npm package" are available from the npm registry (https://www.npmjs.com).
 `
 
 var (
@@ -519,6 +529,16 @@ func calistir() error {
 		}
 		if m.lisans() == "" {
 			gozden = append(gozden, g.Yol+"@"+g.Surum)
+		}
+		moduller = append(moduller, m)
+	}
+	for _, w := range webBilesenleri {
+		m := modul{Yol: w.yol, Surum: w.surum, Aciklama: "npm package, desktop UI"}
+		if m.Dosyalar, err = lisansDosyalari(filepath.Join(kok, filepath.FromSlash(w.dizin))); err != nil {
+			return err
+		}
+		if m.lisans() == "" {
+			gozden = append(gozden, w.yol+"@"+w.surum)
 		}
 		moduller = append(moduller, m)
 	}

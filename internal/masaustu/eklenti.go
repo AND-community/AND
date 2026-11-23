@@ -8,6 +8,7 @@ package masaustu
 
 import (
 	"cmp"
+	"errors"
 	"log"
 	"net/http"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/pluginui"
+	"github.com/lucian95511/and/ui"
 )
 
 type izinOzeti struct {
@@ -154,10 +156,22 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 	var istek struct {
 		Ad   string `json:"ad"`
 		Onay bool   `json:"onay"`
+		// Gomulu, eklentinin AND'ın penceresinin içinde (sutun×satir
+		// boyutunda bir terminalde) açılmasıdır; yoksa kendi penceresinde.
+		Gomulu bool `json:"gomulu"`
+		Sutun  int  `json:"sutun"`
+		Satir  int  `json:"satir"`
 	}
 	if jsonOku(r, &istek) != nil {
 		hataYaz(w, http.StatusBadRequest, "")
 		return
+	}
+	// İçeride zaten çalışıyorsa yenisi başlatılmaz, o gösterilir.
+	if istek.Gomulu {
+		if t := u.term.calisan(istek.Ad); t != nil {
+			jsonYaz(w, map[string]any{"acildi": true, "oturum": t.id})
+			return
+		}
 	}
 	d.mu.Lock()
 	var pl *pluginmgr.Plugin
@@ -212,7 +226,24 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 			anahtar, geriAl = a, g
 		}
 	}
-	bekle, err := konsoldaBaslat(pl.Launch(d.APIAdresi, anahtar, u.dir))
+	cmd := pl.Launch(d.APIAdresi, anahtar, u.dir)
+	if istek.Gomulu {
+		// Eklenti, AND'ın penceresinin içinde çalıştığını bilir: kendi
+		// çerçevesini çizmez (bkz. ui.Gomulu).
+		gomulu := pl.Launch(d.APIAdresi, anahtar, u.dir, ui.GomuluOrtamDegiskeni+"=1")
+		t, err := u.term.baslat(pl.Name(), etiketi(*pl), gomulu, istek.Sutun, istek.Satir, geriAl)
+		if err == nil {
+			jsonYaz(w, map[string]any{"acildi": true, "oturum": t.id})
+			return
+		}
+		if !errors.Is(err, errPTYYok) {
+			geriAl()
+			hataYaz(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		// Sözde terminal yoksa (eski Windows, Linux) kendi penceresinde açılır.
+	}
+	bekle, err := konsoldaBaslat(cmd)
 	if err != nil {
 		geriAl()
 		hataYaz(w, http.StatusInternalServerError, err.Error())
