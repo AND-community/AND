@@ -74,7 +74,7 @@ func temaRenkleri(t ui.Theme) temaRenk {
 
 // zeminRengi, pencerenin sayfa yüklenmeden önceki zeminidir (arayüzün koyu
 // zeminiyle aynı; açılışta beyaz bir parlama olmasın).
-func zeminRengi(ui.Theme) [3]uint8 { return [3]uint8{0x0e, 0x10, 0x1a} }
+func zeminRengi(ui.Theme) [3]uint8 { return [3]uint8{0x09, 0x09, 0x0b} }
 
 func (u *Uygulama) temalar(w http.ResponseWriter, _ *http.Request) {
 	etkin := tui.TemaOku(u.dir)
