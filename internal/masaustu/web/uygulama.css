@@ -551,6 +551,11 @@ kbd {
 .liste-secenek.etkin .daire { border-color: var(--vurgu); background: radial-gradient(var(--vurgu) 0 3.5px, transparent 4.5px); }
 .liste-secenek .kod { margin-left: auto; font: 12px var(--kod); color: var(--yazi-3); }
 
+/* Ayarlar › Eklentiler: her kategori kendi bölümünde. */
+.eklenti-bolumu { margin-top: 20px; }
+.eklenti-bolumu h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: 600 14px/1.3 var(--baslik); color: var(--yazi-2); }
+.eklenti-bolumu h4 svg { width: 16px; height: 16px; color: var(--yazi-3); }
+.eklenti-bolumu h4 .sayi { font: 500 12px/1 var(--metin); color: var(--yazi-3); }
 .eklenti-karti { display: flex; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--cizgi); }
 .eklenti-karti:last-child { border-bottom: 0; }
 .eklenti-simgesi { display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--r); background: var(--yuzey-3); border: 1px solid var(--cizgi); color: var(--yazi-2); flex: none; }

@@ -112,6 +112,7 @@ whose hash differs from the installed copy's record.
   "version": "1.0.0",
   "description": "Weather for the forum",
   "author": "Jane Doe",
+  "category": "tools",
   "permissions": ["forum"],
   "min_api": 2
 }
@@ -124,6 +125,7 @@ whose hash differs from the installed copy's record.
 | `version` | No | Shown in the menu and in `and plugin list` |
 | `description` | No | The short description in the menu |
 | `author` | No | The author |
+| `category` | No | Its section in the menu: `communication`, `content`, `moderation`, `development`, `tools`, `theme`. Empty or unknown values go to "Other". `theme` plugins are not in the menu; they are picked in Settings › Theme |
 | `permissions` | No | Requested permissions ([Permissions](#permissions)); without it only public reads |
 | `min_api` | No | The lowest plugin API version it needs; an older AND neither installs nor starts it |
 

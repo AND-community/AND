@@ -465,3 +465,39 @@ func TestUzerindekiYazi(t *testing.T) {
 		}
 	}
 }
+
+// Kenar çubuğu ve Ayarlar › Eklentiler, eklentileri kategorilerine göre
+// bölümlere ayırır: liste bölüm sırasıyla (bkz. pluginapi.EklentiKategorileri),
+// bölüm içinde ada göre gelir; kategorisi olmayanlar "Diğer"e, temalar menüye
+// girmez.
+func TestEklentiler_KategoriyeGoreBolumlenir(t *testing.T) {
+	d, _ := cekirdekli(t,
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "hava", Label: "Hava"}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Category: pluginapi.KategoriGelistirme}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Category: pluginapi.KategoriIcerik}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Category: pluginapi.KategoriIletisim}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç", Category: pluginapi.KategoriIcerik}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Category: pluginapi.KategoriTema}, Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli", Category: pluginapi.KategoriYonetim}, Enabled: false},
+	)
+	ozetle := func(liste []any) []string {
+		var out []string
+		for _, o := range liste {
+			e := o.(map[string]any)
+			out = append(out, e["kategori"].(string)+"/"+e["etiket"].(string))
+		}
+		return out
+	}
+
+	menu := ozetle(jsonCoz(t, d.al("/api/oturum"))["menu"].([]any))
+	want := []string{"İletişim/Özel Chat", "İçerik/Konu Aç", "İçerik/Site", "Geliştirme/DeltaX", "Diğer/Hava"}
+	if strings.Join(menu, ", ") != strings.Join(want, ", ") {
+		t.Errorf("menü = %v\n  istenen %v", menu, want)
+	}
+
+	hepsi := ozetle(jsonCoz(t, d.al("/api/eklentiler"))["eklentiler"].([]any))
+	want = []string{"İletişim/Özel Chat", "İçerik/Konu Aç", "İçerik/Site", "Yönetim/Yönetici Paneli", "Geliştirme/DeltaX", "Görünüm/Pembiş", "Diğer/Hava"}
+	if strings.Join(hepsi, ", ") != strings.Join(want, ", ") {
+		t.Errorf("ayarlar = %v\n  istenen %v", hepsi, want)
+	}
+}

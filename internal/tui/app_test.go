@@ -287,14 +287,19 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 		t.Fatalf("GenerateIdentity: %v", err)
 	}
 	id.SetName("alice")
+	// Eklentiler kategorilerine göre ayrı dallarda, kategori sırasıyla
+	// (İletişim < Yönetim < Geliştirme < Diğer); tema eklentisi menüde yok.
 	plugins := []pluginmgr.Plugin{
-		{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli"}, Enabled: true},
-		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX"}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Category: pluginapi.KategoriGelistirme}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli", Category: pluginapi.KategoriYonetim}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "hava", Label: "Hava"}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Category: pluginapi.KategoriIletisim}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Category: pluginapi.KategoriTema}, Enabled: true},
 	}
 	m := newAppModel(context.Background(), id, nil, plugins, "", nil, nil, nil, "", nil, nil, nil)
 
-	wantItems := []string{"Forum", "Sohbet", "Yönetici Paneli", "DeltaX", "Ayarlar", "AND hakkında", "Çıkış"}
-	wantGroups := []string{"Topluluk", "Topluluk", "Eklentiler", "Eklentiler", "Sistem", "Sistem", "Sistem"}
+	wantItems := []string{"Forum", "Sohbet", "Özel Chat", "Yönetici Paneli", "DeltaX", "Hava", "Ayarlar", "AND hakkında", "Çıkış"}
+	wantGroups := []string{"Topluluk", "Topluluk", "İletişim", "Yönetim", "Geliştirme", "Diğer", "Sistem", "Sistem", "Sistem"}
 	if len(m.menuItems) != len(wantItems) {
 		t.Fatalf("menuItems = %v, want %v", m.menuItems, wantItems)
 	}
@@ -309,7 +314,12 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 
 	m.width, m.height = 100, 40
 	out := m.viewMenu()
-	for _, want := range []string{"▾ Topluluk", "▾ Eklentiler", "▾ Sistem", "├── ", "└── "} {
+	for i, item := range wantItems[2:6] {
+		if got := m.pluginByIdx[2+i]; got == nil || got.Label() != item {
+			t.Errorf("pluginByIdx[%d] = %v, want %q", 2+i, got, item)
+		}
+	}
+	for _, want := range []string{"▾ Topluluk", "▾ İletişim", "▾ Yönetim", "▾ Geliştirme", "▾ Diğer", "▾ Sistem", "├── ", "└── "} {
 		if !strings.Contains(out, want) {
 			t.Errorf("viewMenu() çıktısı %q içermiyor", want)
 		}

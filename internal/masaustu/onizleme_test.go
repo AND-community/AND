@@ -118,10 +118,11 @@ func TestOnizleme(t *testing.T) {
 		t.Fatal(err)
 	}
 	eklentiler := []pluginmgr.Plugin{
-		{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç", Version: "1.2.0", Author: "AND", Description: "Foruma yeni konu açar."}, Enabled: true},
-		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Version: "1.0.0", Author: "AND", Description: "Uçtan uca şifreli özel mesajlar.", Permissions: []string{pluginapi.IzinDM}}, Enabled: true},
-		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Version: "0.9.0", Author: "AND", Description: "Eşler arası sürüm denetimi."}, Enabled: true},
-		{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Version: "1.0.0", Author: "AND", Category: "theme", Description: "Tema paketi."}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç", Version: "1.2.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Foruma yeni konu açar."}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Forum konularını kişisel bir web sitesi olarak yayımlar."}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIletisim, Description: "Uçtan uca şifreli özel mesajlar.", Permissions: []string{pluginapi.IzinDM}}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Version: "0.9.0", Author: "AND", Category: pluginapi.KategoriGelistirme, Description: "Eşler arası sürüm denetimi."}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriTema, Description: "Tema paketi."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "hava", Label: "Hava durumu", Version: "0.1.0", Author: "Ayşe"}, Enabled: false, Harici: true},
 	}
 

@@ -87,6 +87,7 @@
     imza: "M4 17c3-1 4-6 6-6s1 5 3 5 3-3 4-3 1 2 3 2M4 21h16",
     yildiz: "M12 3l2.6 5.6L20.5 9l-4.4 4 1.2 6L12 16.2 6.7 19l1.2-6L3.5 9l5.9-.4z",
     muhur: "M12 3l2.2 1.6 2.7-.2.9 2.6 2.2 1.6-.9 2.6.9 2.6-2.2 1.6-.9 2.6-2.7-.2L12 21l-2.2-1.6-2.7.2-.9-2.6-2.2-1.6.9-2.6-.9-2.6 2.2-1.6.9-2.6 2.7.2zM9 12l2 2 4-4",
+    kod: "M8 8l-4 4 4 4M16 8l4 4-4 4M14 5l-4 14",
   };
 
   function svgEl(etiket, ozellik, ...cocuklar) {
@@ -744,6 +745,22 @@
     if (D.kurallarGerekli) kurallarCiz();
   }
 
+  // bolumle, kategorisine göre dizili eklentileri ardışık bölümlere ayırır.
+  function bolumle(liste) {
+    const gruplar = [];
+    for (const e of liste) {
+      const son = gruplar[gruplar.length - 1];
+      if (son && son.kategori === e.kategori) son.ogeler.push(e);
+      else gruplar.push({ kategori: e.kategori, ogeler: [e] });
+    }
+    return gruplar;
+  }
+
+  // kategoriIkonu, bir eklenti kategorisinin simgesidir.
+  function kategoriIkonu(kod) {
+    return { communication: "sohbet", content: "belge", moderation: "kalkan", development: "kod", tools: "ayarlar", theme: "palet" }[kod] || "eklenti";
+  }
+
   function gezinmeCiz() {
     const o = D.oturum;
     const nav = (ad, ikonAd, etiket, sayac) => el("button", {
@@ -762,11 +779,14 @@
         on: { click: () => kategoriAc(k.ad) },
       }, el("span", null, k.etiket), el("span", { class: "sayi" }, String(k.sayi))))) : null,
       nav("sohbet", "sohbet", t("Sohbet"), D.sohbet.yeniVar && D.gorunum !== "sohbet" ? "•" : null),
-      el("div", { class: "grup-basligi" }, t("Eklentiler")),
+      // Eklentiler tek bir başlık altında değil, kategorilerine göre ayrı
+      // bölümlerde (İletişim, İçerik, Yönetim…; sunucu bölüm sırasına dizer).
       (o.menu && o.menu.length)
-        ? o.menu.map((e) => el("button", { class: "nav", title: tf("%s kendi penceresinde açılır", e.etiket), on: { click: () => eklentiAc(e.ad) } },
-          ikon("eklenti"), el("span", null, e.etiket), ikon("dis", "dis")))
-        : el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok")),
+        ? bolumle(o.menu).map((g) => [
+          el("div", { class: "grup-basligi" }, g.kategori),
+          g.ogeler.map((e) => el("button", { class: "nav", title: tf("%s kendi penceresinde açılır", e.etiket), on: { click: () => eklentiAc(e.ad) } },
+            ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket), ikon("dis", "dis")))])
+        : [el("div", { class: "grup-basligi" }, t("Eklentiler")), el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok"))],
       el("div", { class: "gezinme-alt" },
         nav("ayarlar", "ayarlar", t("Ayarlar")),
         nav("hakkinda", "bilgi", t("AND hakkında"))));
@@ -1486,7 +1506,7 @@
         }
       });
       return el("div", { class: "eklenti-karti" },
-        el("div", { class: "eklenti-simgesi" }, ikon(e.tema ? "palet" : "eklenti")),
+        el("div", { class: "eklenti-simgesi" }, ikon(kategoriIkonu(e.kategoriKodu))),
         el("div", { class: "bilgi" },
           el("div", { class: "ad" }, e.etiket, e.harici ? el("span", { class: "rozet uyari" }, t("dışarıdan")) : null),
           el("div", { class: "ust-bilgi" }, [e.surum && "v" + e.surum, e.yazar].filter(Boolean).join(" · ")),
@@ -1498,7 +1518,11 @@
     };
     bosalt(ic, el("div", { class: "bolum" }, el("h3", null, t("Kurulu eklentiler")),
       el("p", { class: "paragraf soluk" }, t("Eklentiler kendi terminal penceresinde açılır. Kapattığın eklenti menüde görünmez.")),
-      r.eklentiler.length ? el("div", { class: "kutu" }, r.eklentiler.map(kart)) : bosDurum("eklenti", t("Eklenti yok"))));
+      r.eklentiler.length
+        ? bolumle(r.eklentiler).map((g) => el("div", { class: "eklenti-bolumu" },
+          el("h4", null, ikon(kategoriIkonu(g.ogeler[0].kategoriKodu)), g.kategori, el("span", { class: "sayi" }, String(g.ogeler.length))),
+          el("div", { class: "kutu" }, g.ogeler.map(kart))))
+        : bosDurum("eklenti", t("Eklenti yok"))));
   }
 
   function kvSatiri(s) {
@@ -1617,7 +1641,7 @@
         ekle(t("Konular"), "sohbet", konu.baslik, () => { D.forum.secili = konu.id; git("forum"); }, konu.yazar);
       }
     }
-    for (const e of (D.oturum && D.oturum.menu) || []) ekle(t("Eklentiler"), "eklenti", e.etiket, () => eklentiAc(e.ad));
+    for (const e of (D.oturum && D.oturum.menu) || []) ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiAc(e.ad));
     return k;
   }
 

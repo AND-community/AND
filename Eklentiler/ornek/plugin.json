@@ -5,5 +5,6 @@
   "description": "AND eklenti API'sinin tüm özelliklerini gösteren geliştirici örneği",
   "author":      "AND",
   "permissions": ["forum", "moderation", "dm"],
+  "category":    "development",
   "requires":    []
 }

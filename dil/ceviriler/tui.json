@@ -654,5 +654,10 @@
   "Özel renk": {"en": "Custom colour", "de": "Eigene Farbe", "es": "Color personalizado", "fr": "Couleur personnalisée", "ru": "Свой цвет"},
   "Kendi vurgu rengini seç; AND öteki renkleri okunur kalacak biçimde ondan türetir.": {"en": "Pick your own accent colour; AND derives the other colours from it so that everything stays readable.", "de": "Wähle deine eigene Akzentfarbe; AND leitet die übrigen Farben so davon ab, dass alles lesbar bleibt.", "es": "Elige tu propio color de acento; AND deriva de él los demás colores para que todo siga siendo legible.", "fr": "Choisis ta propre couleur d'accent ; AND en dérive les autres couleurs pour que tout reste lisible.", "ru": "Выбери свой акцентный цвет — AND подберёт остальные цвета так, чтобы всё оставалось читаемым."},
   "Profilin eşlere böyle görünür": {"en": "This is how peers see your profile", "de": "So sehen Peers dein Profil", "es": "Así ven tu perfil los pares", "fr": "Voici comment les pairs voient ton profil", "ru": "Так твой профиль видят другие узлы"},
-  "Kaydedilmemiş değişiklikler": {"en": "Unsaved changes", "de": "Ungespeicherte Änderungen", "es": "Cambios sin guardar", "fr": "Modifications non enregistrées", "ru": "Несохранённые изменения"}
+  "Kaydedilmemiş değişiklikler": {"en": "Unsaved changes", "de": "Ungespeicherte Änderungen", "es": "Cambios sin guardar", "fr": "Modifications non enregistrées", "ru": "Несохранённые изменения"},
+  "İletişim": {"en": "Communication", "de": "Kommunikation", "es": "Comunicación", "fr": "Communication", "ru": "Общение"},
+  "Yönetim": {"en": "Moderation", "de": "Moderation", "es": "Moderación", "fr": "Modération", "ru": "Модерация"},
+  "Geliştirme": {"en": "Development", "de": "Entwicklung", "es": "Desarrollo", "fr": "Développement", "ru": "Разработка"},
+  "Araçlar": {"en": "Tools", "de": "Werkzeuge", "es": "Herramientas", "fr": "Outils", "ru": "Инструменты"},
+  "Diğer": {"en": "Other", "de": "Sonstiges", "es": "Otros", "fr": "Autres", "ru": "Другое"}
 }

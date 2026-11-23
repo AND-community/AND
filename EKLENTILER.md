@@ -109,6 +109,7 @@ kopyanın özetiyle tutmayan bir programı başlatmaz.
   "version": "1.0.0",
   "description": "Forum için hava durumu",
   "author": "Ayşe Yılmaz",
+  "category": "tools",
   "permissions": ["forum"],
   "min_api": 2
 }
@@ -121,6 +122,7 @@ kopyanın özetiyle tutmayan bir programı başlatmaz.
 | `version` | Hayır | Sürüm; menüde ve `and eklenti liste`'de görünür |
 | `description` | Hayır | Menüdeki kısa açıklama |
 | `author` | Hayır | Yazar |
+| `category` | Hayır | Menüdeki bölümü: `communication` (İletişim), `content` (İçerik), `moderation` (Yönetim), `development` (Geliştirme), `tools` (Araçlar), `theme` (Görünüm). Boş ya da tanınmayan değer "Diğer" bölümüne düşer. `theme` eklentileri menüde görünmez, Ayarlar › Tema'da seçilir |
 | `permissions` | Hayır | İstenen izinler ([İzinler](#i̇zinler)); yoksa yalnızca herkese açık okumalar |
 | `min_api` | Hayır | Gereken en düşük eklenti API sürümü; AND daha eskiyse eklenti kurulmaz ve başlatılmaz |
 

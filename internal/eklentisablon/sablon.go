@@ -121,6 +121,7 @@ func Olustur(hedef string, s Secenekler) ([]string, error) {
 	}{
 		Manifest: pluginapi.Manifest{
 			Name: s.Ad, Label: s.Etiket, Version: "0.1.0", Author: s.Yazar, MinAPI: pluginapi.APIVersion,
+			Category:    pluginapi.KategoriArac,
 			Description: dil.T("Kimliğini, bağlı AND düğümlerini ve genel sohbeti gösteren bir AND eklentisi."),
 		},
 		Permissions: []string{},

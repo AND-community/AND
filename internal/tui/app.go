@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -346,8 +347,9 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		styleInput(in)
 	}
 
-	// Ana menü, ağaç görünümünde üç dala ayrılır: Topluluk (Forum/Sohbet),
-	// Eklentiler (etkin eklentiler, dinamik) ve Sistem (Ayarlar/Çıkış).
+	// Ana menü, ağaç görünümünde dallara ayrılır: Topluluk (Forum/Sohbet),
+	// eklentilerin kategorilerine göre birer dal (İletişim, İçerik, Yönetim…;
+	// bkz. pluginapi.EklentiKategorileri) ve Sistem (Ayarlar/Çıkış).
 	// menuGroups, menuItems ile paraleldir ve yalnızca viewMenu'nün dal
 	// başlıklarını nerede çizeceğini belirler — Enter/Space tuş işleyicileri
 	// (handleMenuKey) hâlâ etiket string'ine ya da pluginByIdx'e bakar,
@@ -355,14 +357,23 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	items := []string{dil.K("Forum"), dil.K("Sohbet")}
 	byIdx := []*pluginmgr.Plugin{nil, nil}
 	groups := []string{dil.K("Topluluk"), dil.K("Topluluk")}
+	var menudekiler []int
 	for i := range plugins {
-		if plugins[i].Label() == "" || plugins[i].Manifest.Category == "theme" {
+		if plugins[i].Label() == "" || plugins[i].Manifest.Category == pluginapi.KategoriTema {
 			continue
 		}
+		menudekiler = append(menudekiler, i)
+	}
+	sira := func(i int) int {
+		_, s := pluginapi.EklentiKategorisiBul(plugins[i].Manifest.Category)
+		return s
+	}
+	sort.SliceStable(menudekiler, func(a, b int) bool { return sira(menudekiler[a]) < sira(menudekiler[b]) })
+	for _, i := range menudekiler {
 		items = append(items, plugins[i].Label())
-		pl := &plugins[i]
-		byIdx = append(byIdx, pl)
-		groups = append(groups, dil.K("Eklentiler"))
+		byIdx = append(byIdx, &plugins[i])
+		k, _ := pluginapi.EklentiKategorisiBul(plugins[i].Manifest.Category)
+		groups = append(groups, k.Baslik)
 	}
 	// "AND hakkında", AGPL-3.0'ın istediği yasal bildirimleri (telif, garanti
 	// olmadığı, lisansın nasıl görüleceği) menüde belirgin bir öğe yapar.

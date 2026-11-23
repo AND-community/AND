@@ -7,8 +7,11 @@ package masaustu
 // (bkz. tui/izin.go).
 
 import (
+	"cmp"
 	"log"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginmgr"
@@ -31,6 +34,26 @@ type eklentiBilgisi struct {
 	Harici   bool        `json:"harici,omitempty"`
 	Tema     bool        `json:"tema,omitempty"`
 	Izinler  []izinOzeti `json:"izinler,omitempty"`
+	// Kategori, eklentinin bölümünün etkin dildeki başlığıdır (bkz.
+	// pluginapi.EklentiKategorileri); liste bölüm sırasına göre dizilir.
+	Kategori     string `json:"kategori"`
+	KategoriKodu string `json:"kategoriKodu"`
+	sira         int
+}
+
+// menuOgesi, kenar çubuğundaki bir eklentidir.
+type menuOgesi struct {
+	Ad           string `json:"ad"`
+	Etiket       string `json:"etiket"`
+	Kategori     string `json:"kategori"`
+	KategoriKodu string `json:"kategoriKodu"`
+	sira         int
+}
+
+// kategorisi, eklentinin bölüm başlığı (etkin dilde) ve bölümün sırasıdır.
+func kategorisi(p pluginmgr.Plugin) (string, int) {
+	k, sira := pluginapi.EklentiKategorisiBul(p.Manifest.Category)
+	return dil.T(k.Baslik), sira
 }
 
 // etiketi, eklentinin etkin dildeki görünen adıdır; manifest metinleri
@@ -54,17 +77,22 @@ func izinOzetleri(izinler []string) []izinOzeti {
 }
 
 // menuEklentileri, kenar çubuğunda gösterilen (etkin, arayüzü olan)
-// eklentilerdir; tema eklentileri ayrı bir arayüz açmaz.
-func (d *cekirdek) menuEklentileri() []map[string]string {
+// eklentilerdir; tema eklentileri ayrı bir arayüz açmaz. Liste bölüm
+// sırasına, bölüm içinde ada göre dizilidir.
+func (d *cekirdek) menuEklentileri() []menuOgesi {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var out []map[string]string
+	var out []menuOgesi
 	for _, p := range d.eklentiler {
-		if !p.Enabled || p.Label() == "" || p.Manifest.Category == "theme" {
+		if !p.Enabled || p.Label() == "" || p.Manifest.Category == pluginapi.KategoriTema {
 			continue
 		}
-		out = append(out, map[string]string{"ad": p.Name(), "etiket": etiketi(p)})
+		kat, sira := kategorisi(p)
+		out = append(out, menuOgesi{Ad: p.Name(), Etiket: etiketi(p), Kategori: kat, KategoriKodu: p.Manifest.Category, sira: sira})
 	}
+	slices.SortStableFunc(out, func(a, b menuOgesi) int {
+		return cmp.Or(cmp.Compare(a.sira, b.sira), strings.Compare(a.Etiket, b.Etiket))
+	})
 	return out
 }
 
@@ -72,14 +100,18 @@ func (u *Uygulama) eklentiListesi(w http.ResponseWriter, _ *http.Request, d *cek
 	d.mu.Lock()
 	liste := make([]eklentiBilgisi, 0, len(d.eklentiler))
 	for _, p := range d.eklentiler {
+		kat, sira := kategorisi(p)
 		liste = append(liste, eklentiBilgisi{
 			Ad: p.Name(), Etiket: etiketi(p), Aciklama: dil.T(pluginui.Safe(p.Manifest.Description)),
 			Surum: pluginui.Safe(p.Manifest.Version), Yazar: pluginui.Safe(p.Manifest.Author),
-			Etkin: p.Enabled, Harici: p.Harici, Tema: p.Manifest.Category == "theme",
-			Izinler: izinOzetleri(p.Manifest.Permissions),
+			Etkin: p.Enabled, Harici: p.Harici, Tema: p.Manifest.Category == pluginapi.KategoriTema,
+			Izinler: izinOzetleri(p.Manifest.Permissions), Kategori: kat, KategoriKodu: p.Manifest.Category, sira: sira,
 		})
 	}
 	d.mu.Unlock()
+	slices.SortStableFunc(liste, func(a, b eklentiBilgisi) int {
+		return cmp.Or(cmp.Compare(a.sira, b.sira), strings.Compare(a.Etiket, b.Etiket))
+	})
 	jsonYaz(w, map[string]any{"eklentiler": liste})
 }
 
