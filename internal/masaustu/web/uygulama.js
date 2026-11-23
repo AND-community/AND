@@ -1259,65 +1259,135 @@
     }
   }
 
+  // Profil sekmesi: solda düzenleme formu, sağda profilin eşlere nasıl
+  // göründüğünün canlı önizlemesi ve kimlik bilgileri; değişiklik varken
+  // altta yapışkan bir kaydetme çubuğu.
   async function profilSekmesi(ic) {
     const p = await api("/api/profil");
-    const bio = el("textarea", { class: "metin-alani", rows: "4", placeholder: t("kendinden kısaca bahset…"), value: p.bio || "" });
-    const durum = el("input", { class: "girdi", placeholder: t("şu an ne yapıyorsun?…"), value: p.durum || "" });
-    const baglanti = el("input", { class: "girdi", placeholder: t("github.com/kullanici-adi"), value: p.baglanti || "" });
-    const sayacli = (girdi, sinir) => {
+    ic.classList.add("genis");
+    const kayitli = { bio: p.bio || "", durum: p.durum || "", baglanti: p.baglanti || "", etiketler: [...(p.etiketler || [])] };
+    const bio = el("textarea", { class: "metin-alani", rows: "4", placeholder: t("kendinden kısaca bahset…"), value: kayitli.bio });
+    const durum = el("input", { class: "girdi", placeholder: t("şu an ne yapıyorsun?…"), value: kayitli.durum });
+    const baglanti = el("input", { class: "girdi", placeholder: t("github.com/kullanici-adi"), value: kayitli.baglanti });
+    const secili = new Set(kayitli.etiketler);
+    const etiketAdi = (ad) => (p.kategoriler.find((k) => k.ad === ad) || { etiket: ad }).etiket;
+
+    const sayac = (girdi, sinir) => {
       const s = el("span", { class: "alan-durum" });
       const g = () => {
         const n = new TextEncoder().encode(girdi.value).length;
         s.textContent = n + " / " + sinir;
-        s.style.setProperty("color", n > sinir ? "var(--hata)" : "");
+        s.classList.toggle("asim", n > sinir);
       };
       girdi.addEventListener("input", g);
       g();
       return s;
     };
-    const secili = new Set(p.etiketler || []);
+
+    // Canlı önizleme.
+    const onDurum = el("div", { class: "on-durum" });
+    const onBio = el("div", { class: "on-bio metin" });
+    const onBaglanti = el("div", { class: "on-baglanti" });
+    const onEtiketler = el("div", { class: "on-etiketler" });
+    const onizlemeGuncelle = () => {
+      bosalt(onDurum, durum.value.trim());
+      bosalt(onBio, bio.value.trim() ? metinDugumleri(bio.value.trim()) : null);
+      bosalt(onBaglanti, baglanti.value.trim() ? [ikon("dis"), baglanti.value.trim()] : null);
+      bosalt(onEtiketler, [...secili].map((ad) => el("span", { class: "rozet kategori" }, etiketAdi(ad))));
+      for (const e of [onDurum, onBio, onBaglanti, onEtiketler]) e.classList.toggle("gizli", !e.childNodes.length);
+    };
+
+    // İlgi alanları.
+    const etiketSayaci = el("span", { class: "alan-durum" });
     const cipler = el("div", { class: "cipler" });
-    const ciplerCiz = () => bosalt(cipler, p.kategoriler.map((k) => el("button", {
-      class: "cip" + (secili.has(k.ad) ? " secili" : ""), type: "button", "aria-pressed": secili.has(k.ad) ? "true" : "false",
-      disabled: !secili.has(k.ad) && secili.size >= p.sinir.etiket,
-      on: { click: () => { if (secili.has(k.ad)) secili.delete(k.ad); else secili.add(k.ad); ciplerCiz(); } },
-    }, k.etiket)));
-    ciplerCiz();
+    const ciplerCiz = () => {
+      const dolu = secili.size >= p.sinir.etiket;
+      etiketSayaci.textContent = secili.size + " / " + p.sinir.etiket;
+      bosalt(cipler, p.kategoriler.map((k) => {
+        const s = secili.has(k.ad);
+        return el("button", {
+          class: "cip" + (s ? " secili" : ""), type: "button", "aria-pressed": s ? "true" : "false",
+          disabled: !s && dolu, title: !s && dolu ? tf("en çok %d", p.sinir.etiket) : undefined,
+          on: { click: () => { if (s) secili.delete(k.ad); else secili.add(k.ad); ciplerCiz(); degisti(); } },
+        }, s ? ikon("tamam") : null, k.etiket);
+      }));
+    };
+
+    // Kaydetme çubuğu: yalnızca kaydedilmemiş değişiklik varken etkin.
+    const durumYazisi = el("span", { class: "kaydet-durumu" });
+    const vazgec = el("button", { class: "dugme hayalet" }, tb("vazgeç"));
     const kaydet = el("button", { class: "dugme birincil" }, ikon("tamam"), t("Profili yayınla"));
+    const cubuk = el("div", { class: "kaydet-cubugu" }, durumYazisi, el("span", { class: "bosluk" }), vazgec, kaydet);
+    const simdiki = () => ({ bio: bio.value, durum: durum.value, baglanti: baglanti.value, etiketler: [...secili] });
+    const kirli = () => {
+      const s = simdiki();
+      return s.bio !== kayitli.bio || s.durum !== kayitli.durum || s.baglanti !== kayitli.baglanti ||
+        s.etiketler.length !== kayitli.etiketler.length || s.etiketler.some((e) => !kayitli.etiketler.includes(e));
+    };
+    const degisti = () => {
+      const k = kirli();
+      cubuk.classList.toggle("kirli", k);
+      durumYazisi.textContent = k ? t("Kaydedilmemiş değişiklikler") : "";
+      kaydet.disabled = !k;
+      vazgec.disabled = !k;
+      onizlemeGuncelle();
+    };
+    for (const g of [bio, durum, baglanti]) g.addEventListener("input", degisti);
+    vazgec.addEventListener("click", () => {
+      bio.value = kayitli.bio;
+      durum.value = kayitli.durum;
+      baglanti.value = kayitli.baglanti;
+      secili.clear();
+      kayitli.etiketler.forEach((e) => secili.add(e));
+      for (const g of [bio, durum, baglanti]) g.dispatchEvent(new Event("input"));
+      ciplerCiz();
+      degisti();
+    });
     kaydet.addEventListener("click", async () => {
       kaydet.disabled = true;
       try {
-        await api("/api/profil", { bio: bio.value, durum: durum.value, baglanti: baglanti.value, etiketler: [...secili] });
+        const s = simdiki();
+        await api("/api/profil", s);
+        Object.assign(kayitli, { bio: s.bio, durum: s.durum, baglanti: s.baglanti, etiketler: [...s.etiketler] });
         bildir(t("Profilin yayınlandı."), "iyi");
       } catch (e) {
         bildir(e.message, "hata");
       } finally {
-        kaydet.disabled = false;
+        degisti();
       }
     });
-    bosalt(ic,
-      el("div", { class: "bolum" }, el("div", { class: "kutu" },
-        el("div", { class: "kimlik-karti" }, avatar(p.ad, p.anahtar, "buyuk"),
-          el("div", null,
-            el("div", { class: "ad" }, p.ad || t("adsız"), " ", p.rol ? el("span", { class: "rozet rol" }, p.rol) : null),
-            el("div", { class: "satir" }, el("span", null, t("Peer ID")), el("span", { class: "kopyalanabilir", title: p.peerID }, p.peerID || "—"),
-              el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(p.peerID) } }, ikon("kopyala"))),
-            el("div", { class: "satir" }, el("span", null, t("Genel anahtar")), el("span", { class: "kopyalanabilir", title: p.anahtar }, p.anahtar),
-              el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(p.anahtar) } }, ikon("kopyala"))))),
-        el("div", { class: "istatistikler" },
-          el("div", { class: "istatistik" }, el("b", null, String(p.konuSayisi || 0)), el("span", null, t("Konu"))),
-          el("div", { class: "istatistik" }, el("b", null, String(p.yanitSayisi || 0)), el("span", null, t("Yanıt"))),
-          el("div", { class: "istatistik" }, el("b", null, p.katilim ? new Date(p.katilim).toLocaleDateString(DIL) : "—"), el("span", null, t("İlk görülme")))))),
-      el("div", { class: "bolum" }, el("h3", null, t("Herkese açık profil")),
-        el("div", { class: "kutu" }, el("div", { class: "kutu-ic" },
+
+    const kimlikSatiri = (etiket, deger) => el("div", { class: "kimlik-satiri" },
+      el("div", { class: "kimlik-ust" }, el("span", null, etiket),
+        deger ? el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(deger) } }, ikon("kopyala")) : null),
+      el("code", null, deger || "—"));
+
+    ciplerCiz();
+    bosalt(ic, el("div", { class: "profil-duzen" },
+      el("div", { class: "profil-form" },
+        el("div", { class: "bolum" }, el("h3", null, t("Herkese açık profil")),
           el("p", { class: "paragraf soluk" }, t("Profilin eşlere yayılır ve herkes görebilir.")),
-          alan(t("Hakkında"), bio, sayacli(bio, p.sinir.bio)),
-          alan(t("Durum"), durum, sayacli(durum, p.sinir.durum)),
-          alan(t("Bağlantı"), baglanti, sayacli(baglanti, p.sinir.baglanti)),
-          el("div", { class: "alan" }, el("div", { class: "alan-ust" }, el("span", { class: "alan-etiket" }, t("İlgi alanları")),
-            el("span", { class: "alan-durum" }, tf("en çok %d", p.sinir.etiket))), cipler),
-          p.github ? el("div", { class: "alan-not" }, "GitHub: " + p.github) : null,
-          el("div", { class: "sag-hizali" }, kaydet)))));
+          el("div", { class: "kutu" }, el("div", { class: "kutu-ic" },
+            alan(t("Hakkında"), bio, sayac(bio, p.sinir.bio)),
+            alan(t("Durum"), durum, sayac(durum, p.sinir.durum)),
+            alan(t("Bağlantı"), baglanti, sayac(baglanti, p.sinir.baglanti)),
+            el("div", { class: "alan son" }, el("div", { class: "alan-ust" }, el("span", { class: "alan-etiket" }, t("İlgi alanları")), etiketSayaci), cipler)))),
+        cubuk),
+      el("aside", { class: "profil-yan" },
+        el("div", { class: "yan-baslik" }, t("Profilin eşlere böyle görünür")),
+        el("div", { class: "kutu on-kart" },
+          el("div", { class: "on-ust" }, avatar(p.ad, p.anahtar, "buyuk"),
+            el("div", null, el("div", { class: "on-ad" }, p.ad || t("adsız")),
+              el("div", { class: "on-rozetler" }, p.rol ? el("span", { class: "rozet rol" }, p.rol) : null,
+                p.github ? el("span", { class: "rozet kategori" }, "GitHub: " + p.github) : null))),
+          onDurum, onBio, onBaglanti, onEtiketler,
+          el("div", { class: "istatistikler" },
+            el("div", { class: "istatistik" }, el("b", null, String(p.konuSayisi || 0)), el("span", null, t("Konu"))),
+            el("div", { class: "istatistik" }, el("b", null, String(p.yanitSayisi || 0)), el("span", null, t("Yanıt"))),
+            el("div", { class: "istatistik" }, el("b", null, p.katilim ? new Date(p.katilim).toLocaleDateString(DIL) : "—"), el("span", null, t("İlk görülme"))))),
+        el("div", { class: "yan-baslik" }, t("Kimlik")),
+        el("div", { class: "kutu kimlik-kutusu" }, kimlikSatiri(t("Peer ID"), p.peerID), kimlikSatiri(t("Genel anahtar"), p.anahtar)))));
+    degisti();
   }
 
   // temaOnizleme, giriş ekranındaki ağ haritasının bir temanın renkleriyle
