@@ -51,6 +51,9 @@ var (
 	pSetProcessDpiAwarenessContext = user32.NewProc("SetProcessDpiAwarenessContext")
 	pGetDpiForSystem               = user32.NewProc("GetDpiForSystem")
 	pGetDpiForWindow               = user32.NewProc("GetDpiForWindow")
+	pIsIconic                      = user32.NewProc("IsIconic")
+	pGetClientRect                 = user32.NewProc("GetClientRect")
+	pGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
 	pDwmSetWindowAttribute         = dwmapi.NewProc("DwmSetWindowAttribute")
 	pShellExecuteW                 = shell.NewProc("ShellExecuteW")
 )
@@ -63,6 +66,7 @@ const (
 	wmClose         = 0x0010
 	wmGetMinMaxInfo = 0x0024
 	wmDpiChanged    = 0x02E0
+	sizeMinimized   = 1 // WM_SIZE wParam: SIZE_MINIMIZED
 
 	wsOverlappedWindow = 0x00CF0000
 	swShow             = 5
@@ -212,7 +216,7 @@ func (p *winPencere) calistir(adres, veriDizini string, zemin [3]uint8, hazir ch
 	}
 	ch.SetBackgroundColour(zemin[0], zemin[1], zemin[2], 255)
 	p.hazir.Store(true)
-	ch.Resize()
+	p.boyutla(hwnd)
 	if err := ch.Show(); err != nil {
 		log.Printf("masaüstü: WebView2 gösterilemedi: %v", err)
 	}
@@ -233,6 +237,42 @@ func (p *winPencere) calistir(adres, veriDizini string, zemin [3]uint8, hazir ch
 		pDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
 	p.hwnd.Store(0)
+}
+
+// Kütüphanenin Chromium.Resize ve Chromium.Focus işlevleri bir hata
+// aldıklarında süreci sonlandırır (os.Exit). Pencere açıldıktan sonra
+// onların yerine bu ikisi kullanılır: hata yalnızca günlüğe yazılır ve
+// küçültülmüş pencerede (boyutu sıfırken) WebView2'ye hiç dokunulmaz.
+
+func kucuk(hwnd uintptr) bool {
+	r, _, _ := pIsIconic.Call(hwnd)
+	return r != 0
+}
+
+// boyutla, WebView'ı pencerenin istemci alanına yerleştirir.
+func (p *winPencere) boyutla(hwnd uintptr) {
+	ctrl := p.chromium.GetController()
+	if ctrl == nil || kucuk(hwnd) {
+		return
+	}
+	var r edge.Rect
+	if ok, _, _ := pGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ok == 0 {
+		return
+	}
+	if err := ctrl.PutBounds(r); err != nil {
+		log.Printf("masaüstü: WebView2 boyutlandırılamadı: %v", err)
+	}
+}
+
+// odakla, klavye odağını WebView'a verir.
+func (p *winPencere) odakla(hwnd uintptr) {
+	ctrl := p.chromium.GetController()
+	if ctrl == nil || kucuk(hwnd) {
+		return
+	}
+	if err := ctrl.MoveFocus(edge.COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC); err != nil {
+		log.Printf("masaüstü: WebView2 odaklanamadı: %v", err)
+	}
 }
 
 func olcekle(deger int32, dpi uintptr) int32 {
@@ -300,15 +340,24 @@ func wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 	switch msg {
 	case wmSize:
 		if p != nil && p.hazir.Load() {
-			p.chromium.Resize()
+			p.boyutla(hwnd)
+			// Görev çubuğundan geri açılırken odak, pencere küçükken
+			// verilemedi (bkz. wmActivate); pencere büyüyünce verilir.
+			if wp != sizeMinimized {
+				if on, _, _ := pGetForegroundWindow.Call(); on == hwnd {
+					p.odakla(hwnd)
+				}
+			}
 		}
 	case wmMove:
 		if p != nil && p.hazir.Load() {
 			_ = p.chromium.NotifyParentWindowPositionChanged()
 		}
 	case wmActivate:
-		if p != nil && p.hazir.Load() && wp&0xFFFF != 0 {
-			p.chromium.Focus()
+		// Yüksek kelime, pencerenin küçültülmüş olduğunu söyler: görev
+		// çubuğundan tıklanınca Windows pencereyi küçükken etkinleştirir.
+		if p != nil && p.hazir.Load() && wp&0xFFFF != 0 && wp>>16&0xFFFF == 0 {
+			p.odakla(hwnd)
 		}
 	case wmGetMinMaxInfo:
 		var dpi uintptr = 96
