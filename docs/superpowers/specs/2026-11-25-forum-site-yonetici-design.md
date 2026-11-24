@@ -148,8 +148,10 @@ görünmüyorken de liste güncel tutulur, konu yalnızca görünürken yenileni
 
 ### Geçiş
 
-- İlk açılışta AND'ın `yanit_taslaklari.json`'u ve konu_ac'ın `taslaklar_<kategori>.json` dosyaları
-  eklentinin veri dizinine kopyalanır (asılları silinmez; bir işaret dosyası tekrarını önler).
+- Eklentiler AND'ın veri dizinini paylaşır (`AND_DATA_DIR`). Forum eklentisi AND'ın
+  `yanit_taslaklari.json`'unu ve konu_ac'ın `taslaklar_<kategori>.json` dosyalarını aynı adlarla ve
+  aynı biçimde kullanmayı sürdürür; kopyalama gerekmez. Çekirdek TUI forumu ve konu_ac kalktığı için
+  bu dosyalara başka yazan kalmaz.
 - Masaüstü yanıt taslakları bugün yalnızca bellekte (`D.forum.taslaklar`) tutulur, pencere kapanınca
   kaybolur; aktarılacak bir şey yoktur. Eklentiyle birlikte masaüstü taslakları da diske yazılır.
 - konu_ac AND'la gelen eklentilerden çıkar (`yerlesikAdlar`, sürüm iş akışı, belgeler). Ayrı deposuna
