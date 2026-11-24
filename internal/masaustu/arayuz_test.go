@@ -373,3 +373,35 @@ func TestSinirliGunluk(t *testing.T) {
 		t.Errorf("ilk satır önek ya da kısaltma yanlış (%d bayt)", len(satirlar[0]))
 	}
 }
+
+// Final inceleme: girdisini okumayan eklentiye büyük olaylar gönderilirken
+// AND kapanmaya çalışınca kilitlenmez; olay istekleri de askıda kalmaz.
+func TestArayuz_OkumayanEklentiKilitlemez(t *testing.T) {
+	d := yeniDeneme(t)
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(), sahteArayuzDegiskeni+"=sagir")
+	o, err := d.u.arayuz.baslat("sagir", "Sağır", cmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ekranBekle(t, d, o.id, baslikOlsun("sagir"))
+	buyuk := map[string]any{"id": o.id, "olay": "gonder", "oid": "f", "degerler": map[string]string{"icerik": strings.Repeat("x", 1<<20)}}
+	istekler := make(chan int, 4)
+	for range 4 {
+		go func() { istekler <- d.gonder("/api/arayuz/olay", buyuk).Code }()
+	}
+	for range 4 {
+		select {
+		case <-istekler:
+		case <-time.After(5 * time.Second):
+			t.Fatal("girdisini okumayan eklentiye olay isteği askıda kaldı")
+		}
+	}
+	bitti := make(chan struct{})
+	go func() { d.u.arayuz.hepsiniDurdur(); close(bitti) }()
+	select {
+	case <-bitti:
+	case <-time.After(durdurmaSuresi + 5*time.Second):
+		t.Fatal("hepsiniDurdur kilitlendi")
+	}
+}

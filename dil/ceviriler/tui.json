@@ -674,5 +674,7 @@
   "Eklentinin ekranı gösterilemedi.": {"en": "The plugin's screen couldn't be shown.", "de": "Der Bildschirm des Plugins konnte nicht angezeigt werden.", "es": "No se pudo mostrar la pantalla del plugin.", "fr": "L'écran du plugin n'a pas pu être affiché.", "ru": "Не удалось показать экран плагина."},
   "Ekran bekleniyor…": {"en": "Waiting for the screen…", "de": "Warte auf den Bildschirm…", "es": "Esperando la pantalla…", "fr": "En attente de l'écran…", "ru": "Ожидание экрана…"},
   "Emin misin?": {"en": "Are you sure?", "de": "Bist du sicher?", "es": "¿Seguro?", "fr": "Tu es sûr ?", "ru": "Ты уверен?"},
-  "Süz…": {"en": "Filter…", "de": "Filtern…", "es": "Filtrar…", "fr": "Filtrer…", "ru": "Фильтр…"}
+  "Süz…": {"en": "Filter…", "de": "Filtern…", "es": "Filtrar…", "fr": "Filtrer…", "ru": "Фильтр…"},
+
+  "Eklenti yanıt vermiyor.": {"en": "The plugin is not responding.", "de": "Das Plugin reagiert nicht.", "es": "El plugin no responde.", "fr": "Le plugin ne répond pas.", "ru": "Плагин не отвечает."}
 }

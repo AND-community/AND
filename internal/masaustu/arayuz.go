@@ -34,7 +34,14 @@ const (
 	// durdurmaSuresi, standart girdisi kapatılan eklentinin kendiliğinden
 	// çıkması için beklenen süredir; sonra süreç öldürülür.
 	durdurmaSuresi = 2 * time.Second
+	// kuyrukBoyu, eklentiye yazılmayı bekleyen en çok satırdır. Eklenti
+	// girdisini okumazsa (takıldıysa) yeni olaylar beklemeden reddedilir.
+	kuyrukBoyu = 256
 )
+
+// errEklentiYanitVermiyor, eklentinin girdisini okumadığı için olayın
+// kuyruğa sığmadığında döner.
+var errEklentiYanitVermiyor = errors.New("masaustu: eklenti girdisini okumuyor")
 
 type arayuzOturumu struct {
 	id, ad, etiket string
@@ -42,8 +49,13 @@ type arayuzOturumu struct {
 	geriAl         func()
 	bittiC         chan struct{}
 
-	yazMu sync.Mutex
-	giris io.WriteCloser
+	// Eklentiye giden satırlar kuyruktan tek bir yazıcı goroutine'iyle
+	// yazılır (bkz. yazici): eklenti girdisini okumasa da gönderen hiçbir
+	// zaman bloklanmaz. yazMu yalnızca kuyruğun kapatılmasını korur.
+	yazMu   sync.Mutex
+	giris   io.WriteCloser
+	kuyruk  chan []byte
+	kapandi bool
 
 	mu          sync.Mutex
 	ekran       json.RawMessage
@@ -83,7 +95,8 @@ func (y *arayuzler) baslat(ad, etiket string, cmd *exec.Cmd, geriAl func()) (*ar
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	o := &arayuzOturumu{id: hex.EncodeToString(b[:]), ad: ad, etiket: etiket, cmd: cmd, geriAl: geriAl,
-		giris: giris, bittiC: make(chan struct{})}
+		giris: giris, bittiC: make(chan struct{}), kuyruk: make(chan []byte, kuyrukBoyu)}
+	go o.yazici()
 	y.mu.Lock()
 	y.liste[o.id] = o
 	y.mu.Unlock()
@@ -201,7 +214,8 @@ func (y *arayuzler) ekraniYayinla(o *arayuzOturumu) {
 	y.yayin.gonder("ekran", veri)
 }
 
-// gonder, eklentinin standart girdisine bir satır yazar.
+// gonder, eklentinin standart girdisine yazılmak üzere bir satırı kuyruğa
+// koyar; hiç beklemez. Eklenti kapandıysa ya da kuyruk doluysa hata döner.
 func (o *arayuzOturumu) gonder(m arayuz.AndMesaji) error {
 	b, err := json.Marshal(m)
 	if err != nil {
@@ -209,14 +223,39 @@ func (o *arayuzOturumu) gonder(m arayuz.AndMesaji) error {
 	}
 	o.yazMu.Lock()
 	defer o.yazMu.Unlock()
-	_, err = o.giris.Write(append(b, '\n'))
-	return err
+	if o.kapandi {
+		return io.ErrClosedPipe
+	}
+	select {
+	case o.kuyruk <- append(b, '\n'):
+		return nil
+	default:
+		return errEklentiYanitVermiyor
+	}
 }
 
+// yazici, kuyruktaki satırları eklentinin girdisine yazar; kuyruk
+// kapanınca (ya da yazma başarısız olunca) girdiyi kapatır: eklenti bunu
+// AND'ın kapanması sayar.
+func (o *arayuzOturumu) yazici() {
+	for b := range o.kuyruk {
+		if _, err := o.giris.Write(b); err != nil {
+			break
+		}
+	}
+	_ = o.giris.Close()
+}
+
+// girisiKapat, kuyruğu kapatır; yazıcı kalan satırları yazıp girdiyi
+// kapatır. Eklenti girdisini okumuyorsa yazıcı takılı kalır; süreç
+// durdurmaSuresi sonunda öldürülünce o da biter.
 func (o *arayuzOturumu) girisiKapat() {
 	o.yazMu.Lock()
-	_ = o.giris.Close()
-	o.yazMu.Unlock()
+	defer o.yazMu.Unlock()
+	if !o.kapandi {
+		o.kapandi = true
+		close(o.kuyruk)
+	}
 }
 
 func (o *arayuzOturumu) bittiMi() bool {
@@ -364,7 +403,11 @@ func (u *Uygulama) arayuzOlayi(w http.ResponseWriter, r *http.Request) {
 	}
 	deger, _ := json.Marshal(istek.Deger)
 	err := o.gonder(arayuz.AndMesaji{Tur: "olay", Olay: istek.Olay, ID: istek.OID, Deger: deger, Degerler: istek.Degerler})
-	if err != nil || o.bittiMi() {
+	switch {
+	case errors.Is(err, errEklentiYanitVermiyor) && !o.bittiMi():
+		hataYaz(w, http.StatusServiceUnavailable, dil.T("Eklenti yanıt vermiyor."))
+		return
+	case err != nil || o.bittiMi():
 		hataYaz(w, http.StatusConflict, dil.T("Eklenti kapandı."))
 		return
 	}
