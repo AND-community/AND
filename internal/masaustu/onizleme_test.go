@@ -141,12 +141,20 @@ func TestOnizleme(t *testing.T) {
 		t.Fatal(err)
 	}
 	if terminalProgrami != "" {
-		cmd := exec.Command(terminalProgrami, "--deneme")
-		cmd.Dir = filepath.Dir(terminalProgrami)
-		cmd.Env = append(os.Environ(), dil.OrtamDegiskeni+"="+dil.Etkin(), ui.GomuluOrtamDegiskeni+"=1")
-		if _, err := u.term.baslat("ornek", "Örnek", cmd, 120, 34, nil); err != nil {
-			t.Fatal(err)
-		}
+		// Gerçek AND'daki gibi (bkz. eklentileriBaslat) eklenti açılışta,
+		// arayüz yüklendikten biraz sonra arka planda başlar ve arayüze
+		// "terminaller" olayı gider.
+		go func() {
+			time.Sleep(4 * time.Second)
+			cmd := exec.Command(terminalProgrami, "--deneme")
+			cmd.Dir = filepath.Dir(terminalProgrami)
+			cmd.Env = append(os.Environ(), dil.OrtamDegiskeni+"="+dil.Etkin(), ui.GomuluOrtamDegiskeni+"=1")
+			if _, err := u.term.baslat("ornek", "Örnek", cmd, kendiligindenSutun, kendiligindenSatir, nil); err != nil {
+				t.Error(err)
+				return
+			}
+			u.yayin.gonder("terminaller", true)
+		}()
 		defer u.term.hepsiniDurdur()
 	}
 	if os.Getenv("ONIZLEME_ASAMA") == "" {

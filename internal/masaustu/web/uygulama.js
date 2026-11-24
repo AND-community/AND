@@ -367,6 +367,8 @@
     k.addEventListener("sohbet", (e) => iletiGeldi(JSON.parse(e.data)));
     k.addEventListener("sohbet-gecmis", () => { if (D.gorunum === "sohbet") sohbetYukle(); });
     k.addEventListener("forum", (e) => forumOlayi(JSON.parse(e.data)));
+    // Açılışta arka planda başlayan eklentiler (kenar çubuğunda yeşil nokta).
+    k.addEventListener("terminaller", () => { if (D.asama === "uygulama") terminalleriYukle(); });
   }
 
   async function uygulamayaGec() {
@@ -1753,9 +1755,20 @@
     const bul = (id) => Object.values(T).find((s) => s.oturum === id);
     terminalAkisi.addEventListener("error", () => { koptu = true; });
     terminalAkisi.addEventListener("open", () => {
-      if (!koptu) return;
-      koptu = false;
-      for (const s of Object.values(T)) if (s.oturum && s.term) senkronla(s);
+      if (koptu) {
+        koptu = false;
+        for (const s of Object.values(T)) if (s.oturum && s.term) senkronla(s);
+      }
+      // Akış kurulmadan önce arka planda kapanan eklentinin "bitti" olayı
+      // kaçmış olabilir (ekranı açık olanları senkronla zaten günceller).
+      api("/api/terminal/liste").then((r) => {
+        let degisti = false;
+        for (const x of r.terminaller) {
+          const s = T[x.ad];
+          if (s && s.oturum === x.id && x.bitti && !s.bitti) { Object.assign(s, { bitti: true, kod: x.kod }); degisti = true; }
+        }
+        if (degisti) gezinmeCiz();
+      }).catch(() => {});
     });
     terminalAkisi.addEventListener("cikti", (e) => {
       const o = JSON.parse(e.data);
@@ -1985,8 +1998,10 @@
     if (s.term) s.term.dispose();
   }
 
-  // terminalleriYukle, arayüz yenilenince (ya da dil değişince) AND'ın
-  // içinde hâlâ açık olan eklentileri yeniden bağlar.
+  // terminalleriYukle, AND'ın içinde açık olan eklentileri bağlar: açılışta
+  // arka planda başlayanları, arayüz yenilenince (ya da dil değişince) hâlâ
+  // çalışanları. Çalışan varsa terminal akışı açılır; eklenti arka planda
+  // kapanırsa kenar çubuğundaki nokta da kalkar.
   async function terminalleriYukle() {
     try {
       const r = await api("/api/terminal/liste");
@@ -1994,6 +2009,7 @@
         const s = terminalDurumu(x.ad);
         if (!s.oturum) Object.assign(s, { oturum: x.id, bitti: x.bitti, kod: x.kod, ofs: 0 });
       }
+      if (r.terminaller.some((x) => !x.bitti)) terminalAkisiniAc();
       if (r.terminaller.length) gezinmeCiz();
     } catch { /* terminal yoksa sorun değil */ }
   }

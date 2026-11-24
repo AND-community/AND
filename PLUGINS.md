@@ -138,8 +138,13 @@ AND starts the plugin in its own folder (next to `plugin.json`). In the terminal
 (`and --terminal`) the plugin opens in the same terminal and owns the screen until it exits. In the
 desktop interface the plugin runs inside the AND window, in a pseudo terminal (ConPTY on Windows): it
 appears in its own section of the sidebar, keeps running when the user switches screens and closes
-when AND closes. Without a pseudo terminal (older Windows, Linux, macOS), or when the user picks
-"Open in a separate window", it opens in its own console window. Environment variables:
+when AND closes. Once the user has approved a plugin's permissions, the desktop also starts it in the
+background when AND opens (a green dot in the sidebar) — so your plugin may run for a while before
+anyone looks at it: don't treat startup as "the user is here" (e.g. don't mark messages as read until
+the user opens them). A plugin that requests no permissions, or whose permissions have not been
+approved yet, only starts when the user opens it. Without a pseudo terminal (older Windows, Linux,
+macOS), or when the user picks "Open in a separate window", it opens in its own console window.
+Environment variables:
 
 | Variable | Meaning | SDK |
 |---|---|---|

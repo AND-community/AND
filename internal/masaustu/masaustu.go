@@ -53,6 +53,9 @@ type Uygulama struct {
 
 	// term, AND'ın penceresinin içinde çalışan eklentilerdir.
 	term *terminaller
+	// baslatmaMu, bir eklentinin içeride iki kez başlatılmasını önler (bkz.
+	// icerideBaslat).
+	baslatmaMu sync.Mutex
 
 	// guncelleme, indirilen yeni sürümün bildirimidir (boşsa yok).
 	guncelleme atomic.Pointer[string]
@@ -126,6 +129,9 @@ func (u *Uygulama) Calistir(ctx context.Context, c Cekirdek) error {
 	u.cek.Store(d)
 	u.yayin.gonder("hazir", true)
 	go u.olaylariIlet(ctx, d)
+	// İzinleri onaylı eklentiler AND açılınca arka planda başlar (bkz.
+	// eklentileriBaslat).
+	go u.eklentileriBaslat(d)
 
 	select {
 	case <-ctx.Done():

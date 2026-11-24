@@ -13,6 +13,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/lucian95511/and/internal/pluginmgr"
+	"github.com/lucian95511/and/pluginapi"
 )
 
 // TestPTYCocuk, sözde terminal testlerinin çocuk sürecidir: "hazır" yazar,
@@ -190,4 +193,57 @@ func TestTerminal_Uclar(t *testing.T) {
 	if l := jsonCoz(t, d.al("/api/terminal/liste"))["terminaller"].([]any); len(l) != 0 {
 		t.Errorf("kapatılan terminal listede: %v", l)
 	}
+}
+
+// Uçtan uca: AND açılınca izinleri onaylı eklenti içeride (AND_GOMULU=1 ile)
+// kendiliğinden başlar, onaylanmayan başlamaz; ikinci çağrı yeni oturum
+// açmaz; Ayarlar'dan kapatılan eklenti durur.
+func TestEklentiler_AcilistaKendiligindenBaslar(t *testing.T) {
+	t.Setenv(sahteEklentiDegiskeni, "1")
+	d, _ := cekirdekli(t,
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Permissions: []string{"dm"}}, ExePath: os.Args[0], Enabled: true},
+		pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Permissions: []string{"site"}}, ExePath: os.Args[0], Enabled: true},
+	)
+	t.Cleanup(d.u.term.hepsiniDurdur)
+	if err := pluginmgr.IzinOnayla(d.u.dir, "ozel_chat", []string{"dm"}); err != nil {
+		t.Fatal(err)
+	}
+	cek := d.u.cek.Load()
+	cek.APIAdresi = "127.0.0.1:9"
+	d.u.eklentileriBaslat(cek)
+	d.u.eklentileriBaslat(cek)
+
+	liste := func() []any { return jsonCoz(t, d.al("/api/terminal/liste"))["terminaller"].([]any) }
+	l := liste()
+	if len(l) != 1 {
+		t.Fatalf("1 terminal bekleniyordu: %v", l)
+	}
+	o := l[0].(map[string]any)
+	if o["ad"] != "ozel_chat" || o["bitti"] != false {
+		t.Fatalf("terminal = %v", o)
+	}
+	id := o["id"].(string)
+	bekle := func(ne string, kosul func(map[string]any) bool) {
+		t.Helper()
+		son := time.Now().Add(15 * time.Second)
+		for {
+			g := jsonCoz(t, d.al("/api/terminal/gecmis?id="+id+"&ofs=0"))
+			if kosul(g) {
+				return
+			}
+			if time.Now().After(son) {
+				t.Fatalf("%s gelmedi: %v", ne, g)
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+	}
+	bekle("eklentinin çıktısı", func(g map[string]any) bool {
+		b, _ := base64.StdEncoding.DecodeString(g["veri"].(string))
+		return strings.Contains(string(b), "sahte eklenti gomulu=1")
+	})
+
+	if w := d.gonder("/api/eklenti/etkin", map[string]any{"ad": "ozel_chat", "etkin": false}); w.Code != http.StatusOK {
+		t.Fatalf("eklentiyi kapatma = %d", w.Code)
+	}
+	bekle("kapatılan eklentinin durması", func(g map[string]any) bool { return g["bitti"] == true })
 }

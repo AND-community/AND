@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/ui"
 )
 
 // deneme, sunucunun işleyicisini ağ açmadan çağıran bir test istemcisidir.
@@ -499,5 +501,67 @@ func TestEklentiler_KategoriyeGoreBolumlenir(t *testing.T) {
 	want = []string{"İletişim/Özel Chat", "İçerik/Konu Aç", "İçerik/Site", "Yönetim/Yönetici Paneli", "Geliştirme/DeltaX", "Görünüm/Pembiş", "Diğer/Hava"}
 	if strings.Join(hepsi, ", ") != strings.Join(want, ", ") {
 		t.Errorf("ayarlar = %v\n  istenen %v", hepsi, want)
+	}
+}
+
+// sahteEklentiDegiskeni verilince test ikilisi bir eklenti gibi davranır
+// (bkz. TestMain): AND'ın içinde çalışıp çalışmadığını yazar ve durdurulana
+// dek bekler.
+const sahteEklentiDegiskeni = "AND_SAHTE_EKLENTI"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(sahteEklentiDegiskeni) != "" {
+		fmt.Printf("sahte eklenti gomulu=%s\n", os.Getenv(ui.GomuluOrtamDegiskeni))
+		time.Sleep(time.Hour)
+		return
+	}
+	os.Exit(m.Run())
+}
+
+// AND açılınca yalnızca etkin, menüde görünen, uyumlu, doğrulanmış ve
+// izinleri önceden onaylanmış eklentiler kendiliğinden başlar.
+func TestEklentiler_KendiligindenBaslayacaklar(t *testing.T) {
+	eklenti := func(ad, etiket string, izinler ...string) pluginmgr.Plugin {
+		return pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: ad, Label: etiket, Permissions: izinler}, Enabled: true}
+	}
+	kapali := eklenti("admin", "Yönetici Paneli", "moderation")
+	kapali.Enabled = false
+	tema := eklenti("pembis", "Pembiş", "theme")
+	tema.Manifest.Category = pluginapi.KategoriTema
+	yeni := eklenti("yeni", "Yeni", "dm")
+	yeni.Manifest.MinAPI = pluginapi.APIVersion + 1
+	disari := eklenti("disari", "Dışarıdan", "dm")
+	disari.Harici = true // kurulum kaydı yok: Dogrula reddeder
+	d, _ := cekirdekli(t,
+		eklenti("ozel_chat", "Özel Chat", "dm", "file"),
+		eklenti("site", "Site", "site"), // izni onaylanmadı
+		kapali,
+		eklenti("konu_ac", "", "forum"), // menüde görünmez
+		tema,
+		yeni,
+		disari,
+		eklenti("izinsiz", "İzinsiz"), // onay kaydı olmaz
+		eklenti("eksik", "Eksik", "dm", "file"),
+	)
+	for ad, izinler := range map[string][]string{
+		"ozel_chat": {"dm", "file"}, "admin": {"moderation"}, "konu_ac": {"forum"}, "pembis": {"theme"},
+		"yeni": {"dm"}, "disari": {"dm"}, "eksik": {"dm"}, // "file" onaylanmadı
+	} {
+		if err := pluginmgr.IzinOnayla(d.u.dir, ad, izinler); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var adlar []string
+	for _, p := range d.u.cek.Load().kendiligindenBaslayacaklar(d.u.dir) {
+		adlar = append(adlar, p.Name())
+	}
+	if strings.Join(adlar, ",") != "ozel_chat" {
+		t.Errorf("kendiliğinden başlayacaklar = %v, istenen [ozel_chat]", adlar)
+	}
+
+	// Eklenti API'si yoksa (ya da sözde terminal yoksa) hiçbiri başlamaz.
+	d.u.eklentileriBaslat(d.u.cek.Load())
+	if l := jsonCoz(t, d.al("/api/terminal/liste"))["terminaller"].([]any); len(l) != 0 {
+		t.Errorf("API adresi yokken başlayan eklentiler: %v", l)
 	}
 }

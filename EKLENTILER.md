@@ -134,8 +134,12 @@ izinler yok sayılır.
 AND eklentiyi kendi klasöründe (`plugin.json`'ın yanında) başlatır. Terminal arayüzünde (`and --terminal`)
 eklenti aynı terminalde açılır ve çıkana kadar ekran onundur. Masaüstü arayüzünde eklenti AND'ın
 penceresinin içinde, bir sözde terminalde (Windows'ta ConPTY) çalışır: sol menüde kendi bölümünde
-görünür, başka ekrana geçince kapanmaz, AND kapanınca kapanır. Sözde terminal yoksa (eski Windows,
-Linux, macOS) ya da kullanıcı "Ayrı pencerede aç" derse kendi konsol penceresinde açılır. Ortam
+görünür, başka ekrana geçince kapanmaz, AND kapanınca kapanır. Kullanıcı eklentinin izinlerini bir kez
+onayladıysa masaüstü arayüzü onu AND açılınca arka planda da başlatır (sol menüde yeşil nokta); yani
+eklentin kimse ona bakmadan bir süre çalışabilir: açılışı "kullanıcı ekranda" diye yorumlama (ör.
+kullanıcı açmadan mesajları okundu sayma). Hiç izin istemeyen ya da izinleri henüz onaylanmamış bir
+eklenti yalnızca kullanıcı açınca başlar. Sözde terminal yoksa (eski Windows, Linux, macOS) ya da
+kullanıcı "Ayrı pencerede aç" derse kendi konsol penceresinde açılır. Ortam
 değişkenleri:
 
 | Değişken | Anlamı | SDK |

@@ -2,9 +2,11 @@ package masaustu
 
 // eklenti.go — eklentilerin listelenmesi, açılıp kapatılması ve
 // başlatılması. Eklentiler terminal programlarıdır; masaüstü arayüzü onları
-// kendi terminal penceresinde başlatır (bkz. konsol_*.go). İzin onayı,
-// uyumluluk ve bütünlük denetimleri terminal arayüzündekilerin aynısıdır
-// (bkz. tui/izin.go).
+// kendi penceresinin içinde, bir sözde terminalde çalıştırır (bkz.
+// terminal.go). İzinleri onaylı eklentiler AND açılınca arka planda başlar.
+// Sözde terminal yoksa ya da kullanıcı isterse eklenti kendi konsol
+// penceresinde açılır (bkz. konsol_*.go). İzin onayı, uyumluluk ve bütünlük
+// denetimleri terminal arayüzündekilerin aynısıdır (bkz. tui/izin.go).
 
 import (
 	"cmp"
@@ -139,6 +141,13 @@ func (u *Uygulama) eklentiEtkin(w http.ResponseWriter, r *http.Request, d *cekir
 		err = pluginmgr.SaveState(d.eklentiler, u.dir)
 	}
 	d.mu.Unlock()
+	if bulundu && !istek.Etkin {
+		// Kapatılan eklenti menüden kalkar; içeride (ör. açılışta
+		// kendiliğinden başlayıp) çalışıyorsa o da durur.
+		if t := u.term.calisan(istek.Ad); t != nil {
+			_ = t.p.Durdur()
+		}
+	}
 	switch {
 	case !bulundu:
 		hataYaz(w, http.StatusNotFound, "")
@@ -149,9 +158,10 @@ func (u *Uygulama) eklentiEtkin(w http.ResponseWriter, r *http.Request, d *cekir
 	}
 }
 
-// eklentiAc, eklentiyi kendi terminal penceresinde başlatır. İstenen izinler
-// henüz onaylanmadıysa önce onları (açıklamalarıyla) döner; arayüz kullanıcıya
-// sorar ve onayla birlikte yeniden çağırır.
+// eklentiAc, eklentiyi AND'ın penceresinin içinde (gomulu) ya da kendi konsol
+// penceresinde başlatır. İstenen izinler henüz onaylanmadıysa önce onları
+// (açıklamalarıyla) döner; arayüz kullanıcıya sorar ve onayla birlikte
+// yeniden çağırır.
 func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek) {
 	var istek struct {
 		Ad   string `json:"ad"`
@@ -220,29 +230,20 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 		}
 	}
 
-	anahtar, geriAl := "", func() {}
-	if d.EklentiAnahtari != nil {
-		if a, g, err := d.EklentiAnahtari(pl.Name(), istenen); err == nil {
-			anahtar, geriAl = a, g
-		}
-	}
-	cmd := pl.Launch(d.APIAdresi, anahtar, u.dir)
 	if istek.Gomulu {
-		// Eklenti, AND'ın penceresinin içinde çalıştığını bilir: kendi
-		// çerçevesini çizmez (bkz. ui.Gomulu).
-		gomulu := pl.Launch(d.APIAdresi, anahtar, u.dir, ui.GomuluOrtamDegiskeni+"=1")
-		t, err := u.term.baslat(pl.Name(), etiketi(*pl), gomulu, istek.Sutun, istek.Satir, geriAl)
+		t, err := u.icerideBaslat(d, *pl, istek.Sutun, istek.Satir)
 		if err == nil {
 			jsonYaz(w, map[string]any{"acildi": true, "oturum": t.id})
 			return
 		}
 		if !errors.Is(err, errPTYYok) {
-			geriAl()
 			hataYaz(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		// Sözde terminal yoksa (eski Windows, Linux) kendi penceresinde açılır.
 	}
+	anahtar, geriAl := d.eklentiAnahtari(*pl)
+	cmd := pl.Launch(d.APIAdresi, anahtar, u.dir)
 	bekle, err := konsoldaBaslat(cmd)
 	if err != nil {
 		geriAl()
@@ -257,4 +258,103 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 		geriAl()
 	}()
 	jsonYaz(w, map[string]bool{"acildi": true})
+}
+
+// eklentiAnahtari, eklentiye yalnızca onaylanan izinlerini taşıyan bir API
+// anahtarı ve eklenti kapanınca onu geçersiz kılan işlevi döner.
+func (d *cekirdek) eklentiAnahtari(pl pluginmgr.Plugin) (string, func()) {
+	if d.EklentiAnahtari != nil {
+		if a, g, err := d.EklentiAnahtari(pl.Name(), pl.Manifest.Permissions); err == nil {
+			return a, g
+		}
+	}
+	return "", func() {}
+}
+
+// icerideBaslat, (izinleri onaylanmış) eklentiyi AND'ın penceresinin içinde,
+// sutun×satir boyutunda bir sözde terminalde başlatır. Eklenti zaten içeride
+// çalışıyorsa yenisi başlatılmaz, o döner. Eklenti içeride çalıştığını bilir:
+// kendi çerçevesini çizmez (bkz. ui.Gomulu). Sözde terminal yoksa errPTYYok
+// döner.
+func (u *Uygulama) icerideBaslat(d *cekirdek, pl pluginmgr.Plugin, sutun, satir int) (*terminal, error) {
+	// Arayüzden açma ile açılıştaki kendiliğinden başlatma aynı anda aynı
+	// eklentiyi iki kez başlatmasın.
+	u.baslatmaMu.Lock()
+	defer u.baslatmaMu.Unlock()
+	if t := u.term.calisan(pl.Name()); t != nil {
+		return t, nil
+	}
+	anahtar, geriAl := d.eklentiAnahtari(pl)
+	cmd := pl.Launch(d.APIAdresi, anahtar, u.dir, ui.GomuluOrtamDegiskeni+"=1")
+	t, err := u.term.baslat(pl.Name(), etiketi(pl), cmd, sutun, satir, geriAl)
+	if err != nil {
+		geriAl()
+		return nil, err
+	}
+	return t, nil
+}
+
+// Açılışta kendiliğinden başlatılan eklentilerin terminal boyutu. Arayüz
+// eklentiyi ilk gösterdiğinde terminali kendi ölçüsüne getirir; eklenti
+// ekranını o boyuta göre yeniden çizer.
+const (
+	kendiligindenSutun = 120
+	kendiligindenSatir = 36
+)
+
+// kendiligindenBaslayacaklar, AND açılınca arka planda başlatılacak
+// eklentilerdir: etkin, kenar çubuğunda görünen (tema eklentisi değil),
+// bu AND'la uyumlu, bütünlüğü doğrulanmış ve istediği izinleri kullanıcının
+// daha önce onayladığı eklentiler. İzni hiç onaylanmamış bir eklenti
+// kendiliğinden başlamaz: onay ilk açılışta sorulur. Hiç izin istemeyen bir
+// eklentinin onay kaydı olmaz; o da yalnızca kullanıcı açınca başlar (böylece
+// dışarıdan kurulup hiç açılmamış bir eklenti arka planda çalışmaz).
+func (d *cekirdek) kendiligindenBaslayacaklar(dir string) []pluginmgr.Plugin {
+	d.mu.Lock()
+	adaylar := append([]pluginmgr.Plugin(nil), d.eklentiler...)
+	d.mu.Unlock()
+	var out []pluginmgr.Plugin
+	for _, p := range adaylar {
+		if !p.Enabled || p.Label() == "" || p.Manifest.Category == pluginapi.KategoriTema {
+			continue
+		}
+		if pluginmgr.Uyumlu(p) != nil || pluginmgr.Dogrula(p) != nil {
+			continue
+		}
+		if len(p.Manifest.Permissions) == 0 || !pluginmgr.IzinOnayli(dir, p.Name(), p.Manifest.Permissions) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// eklentileriBaslat, AND açılınca kendiligindenBaslayacaklar'ı arka planda,
+// AND'ın penceresinin içinde başlatır: kenar çubuğunda baştan çalışıyor
+// görünürler ve tıklanınca beklemeden açılırlar. Sözde terminal yoksa
+// hiçbiri başlatılmaz (ayrı konsol pencereleri açılmaz). Başlayan olursa
+// arayüze "terminaller" olayı gider.
+func (u *Uygulama) eklentileriBaslat(d *cekirdek) {
+	if d.APIAdresi == "" {
+		return
+	}
+	basladi := 0
+	for _, pl := range d.kendiligindenBaslayacaklar(u.dir) {
+		select {
+		case <-u.bitti:
+			return
+		default:
+		}
+		if _, err := u.icerideBaslat(d, pl, kendiligindenSutun, kendiligindenSatir); err != nil {
+			if errors.Is(err, errPTYYok) {
+				return
+			}
+			log.Printf("masaüstü: eklenti %s kendiliğinden başlatılamadı: %v", pl.Name(), err)
+			continue
+		}
+		basladi++
+	}
+	if basladi > 0 {
+		u.yayin.gonder("terminaller", true)
+	}
 }
