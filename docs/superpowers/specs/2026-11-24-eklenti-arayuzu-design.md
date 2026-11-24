@@ -167,11 +167,11 @@ ayrıca verir), `ayrac`.
 
 İçerik: `metin` (`metin` ya da zengin satır `parcalar: [{metin, stil}]`; `stil`: normal, soluk,
 kalin, kod, iyi, uyari, hata, vurgu; `boyut`: kucuk/normal/buyuk), `baslik` (`duzey` 2–3), `rozet`
-(`metin`, `renk`: notr/vurgu/iyi/uyari/hata), `anahtarDeger` (`satirlar: [{anahtar, deger, kod,
+(`metin`, `renk`: notr/vurgu/iyi/uyari/hata), `anahtarDeger` (`ciftler: [{anahtar, deger, kod,
 kopyala}]`), `bos` (boş durum: `ikon`, `baslik`, `metin`, isteğe bağlı `dugme`; AND'ın ağ haritalı
 boş durumu), `kod` (eş aralıklı blok, `satirNo`), `fark` (`dosyalar: [{yol, durum (A/M/D), eklenen,
 silinen, satirlar: [{tur: "+"|"-"|" "|"@", metin, eski, yeni}]}]`; dosya başına katlanır),
-`ilerleme` (`deger` 0–1 ya da belirsiz), `baglanti` (`id` → `tikla`, ya da `url`: yalnızca http/https,
+`ilerleme` (`oran` 0–1; yoksa belirsiz), `baglanti` (`id` → `tikla`, ya da `url`: yalnızca http/https,
 AND adresi göstererek onay sorar ve varsayılan tarayıcıda açar).
 
 Etkileşimli:
@@ -180,12 +180,12 @@ Etkileşimli:
 |---|---|---|
 | `dugme` | `id`, `metin`, `ikon`, `varyant` (normal/birincil/hayalet/tehlikeli), `devreDisi`, `gonder` (içinde bulunduğu formu gönderir; olay `gonder` olur), `kisayol`, `onay: {baslik, metin, dugme}` (AND önce sorar), `kopyala` (tıklayınca bu metni panoya kopyalar; olay gitmez) | `tikla` |
 | `liste` | `id`, `ogeler: [{id, baslik, alt, ikon, rozetler: [{metin, renk}], sag, soluk, dugmeler}]`, `secili`, `bos`, `arama` (AND'ın içinde süzme kutusu) | `sec`, `ac`, satır düğmesi `tikla` (`deger` = satır `id`) |
-| `tablo` | `id`, `sutunlar: [{baslik, hizala}]`, `satirlar: [{id, hucreler, dugmeler}]` (hücre: metin ya da `parcalar`) | `sec`, satır düğmesi `tikla` (`deger` = satır `id`) |
+| `tablo` | `id`, `sutunlar: [{baslik, hizala}]`, `satirlar: [{id, hucreler, dugmeler}]` (her hücre bir `parcalar` listesi; düz metin tek parçadır) | `sec`, satır düğmesi `tikla` (`deger` = satır `id`) |
 | `form` | `id`, içerik (alanlar ve düğmeler); `gonder: true` olan `dugme` formu gönderir; tek satırlı girdide Enter da gönderir, `metinAlani`'nda Ctrl+Enter | `gonder` |
 | `girdi` | `id`, `etiket`, `deger`, `yerTutucu`, `tip` (metin/sifre), `enUzun`, `zorunlu`, `aciklama`, `hata`, `oneriler: [{deger, etiket, alt}]`, `canli`, `odak` | `degisti` (`canli` ise) |
 | `metinAlani` | `id`, `etiket`, `deger`, `satir`, `kod` (eş aralıklı, Tab girinti ekler), `enUzun` | — (form ile) |
 | `secim` | `id`, `etiket`, `secenekler: [{deger, etiket}]`, `deger`, `aninda` (seçince `degisti` gönderir; dal seçimi gibi) | `degisti` (`aninda` ise) |
-| `onayKutusu` | `id`, `etiket`, `deger` | — (form ile) |
+| `onayKutusu` | `id`, `etiket`, `isaretli` | — (form ile) |
 | `mesajAkisi` | `id`, `mesajlar: [{id, kimden, metin, zaman, giden, durum}]` (Özel Chat için; 2. aşama) | — |
 
 **Kullanıcının yazdığı metin korunur:** AND bir girdinin değerini yalnızca eklenti `deger`'i bir önceki
@@ -251,9 +251,12 @@ ağaçtaki yolu).
 
 ### DeltaX'in taşınması (1. aşamanın hedefi)
 
-İlke: **DeltaX'in `ekran` durumu iki arayüzün ortak kaynağıdır.** `keys.go`'daki tuş işleyicilerinin
-yaptığı işler eylem yöntemlerine ayrılır (ör. `grupOlustur(ad)`, `commitAt(mesaj)`, `dalaGec(ad)`,
-`gonder(hedef)`); tuşlar ve arayüz olayları aynı yöntemleri çağırır. Yeni `arayuz.go` `Arayuz()`'ü
+İlke: **DeltaX'in `ekran` durumu iki arayüzün ortak kaynağıdır.** Arayüz olayları `keys.go`'daki
+tuş işleyicilerini aynı durumla çağırır: olay önce seçimi ya da form değerini modele yazar (ör.
+`m.grupIdx`, `m.grupAdIn.SetValue`), sonra işleyiciyi ilgili tuşla (`enter`, `esc`, `y`…) çalıştırır.
+Böylece doğrulamalar ve yan etkiler tektir, TUI koduna dokunulmaz; çıkış tuşları (`q`, `ctrl+c`, ana
+menüde `esc`) arayüzden hiçbir zaman gönderilmez. (Plan sırasında eylem yöntemlerine ayırmak yerine
+seçildi: aynı ilke, TUI için sıfır risk.) Yeni `arayuz.go` `Arayuz()`'ü
 mevcut durumdan çizer; yeni `olaylar.go` olayları eylemlere çevirir. `main.go`:
 `if arayuz.Etkin() { return arayuz.Calistir(m) }`. `plugin.json`'a `"ui": 1`; sürüm 1.8.0.
 
