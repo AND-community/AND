@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/ui"
@@ -53,6 +54,22 @@ type model struct {
 	grantKeyInput    textinput.Model
 	grantDurIdx      int
 	revokeConfirming bool
+
+	// Yasak formu (bkz. yasakla.go).
+	banning        bool
+	banByKey       bool
+	banStep        int
+	banKeyInput    textinput.Model
+	banReasonInput textinput.Model
+	banDurIdx      int
+	banTarget      string
+	banTargetName  string
+
+	// yetkisiz: kurucu ya da moderatör değil. Terminalde eklenti hiç açılmaz
+	// (main); masaüstünde bunu söyleyen bir ekran gösterilir.
+	yetkisiz bool
+	// arayuzKipi: AND masaüstünde arayüz kipinde çalışıyor (bkz. arayuz.go).
+	arayuzKipi bool
 }
 
 func newModel(c *pluginapi.Client, role pluginapi.RoleInfo) model {
@@ -61,7 +78,10 @@ func newModel(c *pluginapi.Client, role pluginapi.RoleInfo) model {
 	ti.CharLimit = 64
 	ti.Width = 40
 	ui.StyleInput(&ti)
-	return model{client: c, role: role, loading: true, grantKeyInput: ti}
+	return model{client: c, role: role, loading: true, grantKeyInput: ti,
+		banKeyInput:    yeniGirdi(dil.T("hedef public key (hex, 64 karakter)…"), 64),
+		banReasonInput: yeniGirdi(dil.T("sebep…"), 200),
+		yetkisiz:       !role.IsFounder && !role.IsModerator}
 }
 
 func (m model) tabCount() int {
@@ -85,7 +105,12 @@ func (m model) tabLabel(t tab) string {
 	return ""
 }
 
-func (m model) Init() tea.Cmd { return allPostsCmd(m.client) }
+func (m model) Init() tea.Cmd {
+	if m.yetkisiz {
+		return nil
+	}
+	return allPostsCmd(m.client)
+}
 
 func (m model) switchTab(t tab) (tea.Model, tea.Cmd) {
 	m.tab = t
@@ -125,7 +150,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.postIdx >= len(m.allPosts) {
 				m.postIdx = maxInt(0, len(m.allPosts)-1)
 			}
-			m.notice, m.isErr = "", false
+			// Bildirim (ör. "Konu silindi.", sertifika yolu) kalır: sekme değişince ya da yeni bir işlemde temizlenir.
 		}
 		return m, nil
 	case deleteMsg:
@@ -146,7 +171,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.bansIdx >= len(m.bans) {
 				m.bansIdx = maxInt(0, len(m.bans)-1)
 			}
-			m.notice, m.isErr = "", false
+			// Bildirim (ör. "Konu silindi.", sertifika yolu) kalır: sekme değişince ya da yeni bir işlemde temizlenir.
 		}
 		return m, nil
 	case unbanMsg:
@@ -164,7 +189,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notice, m.isErr = dil.T("Yükleme hatası: ")+msg.err.Error(), true
 		} else {
 			m.history = msg.history
-			m.notice, m.isErr = "", false
+			// Bildirim (ör. "Konu silindi.", sertifika yolu) kalır: sekme değişince ya da yeni bir işlemde temizlenir.
 		}
 		return m, nil
 
@@ -177,7 +202,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.grantsIdx >= len(m.grants) {
 				m.grantsIdx = maxInt(0, len(m.grants)-1)
 			}
-			m.notice, m.isErr = "", false
+			// Bildirim (ör. "Konu silindi.", sertifika yolu) kalır: sekme değişince ya da yeni bir işlemde temizlenir.
 		}
 		return m, nil
 	case grantMsg:
@@ -202,13 +227,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notice, m.isErr = dil.T("Moderatör yetkisi iptal edildi."), false
 		return m, grantsCmd(m.client)
 
+	case banMsg:
+		m.pending = false
+		if msg.err != nil {
+			m.notice, m.isErr = dil.T("Yasaklama hatası: ")+msg.err.Error(), true
+			return m, nil
+		}
+		m.notice, m.isErr = dil.F("%s yasaklandı.", msg.ad), false
+		if m.tab == tabBanlar {
+			return m, bansCmd(m.client)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case arayuz.Merhaba:
+		m.arayuzKipi = true
+		return m, nil
+	case arayuz.Olay:
+		return m.olayIsle(msg)
 	}
 	return m, nil
 }
 
 func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.banning {
+		return m.handleBanKey(msg)
+	}
 	// Alt-durumlar (onay/form) önce kendi tab'ının işleyicisine gider —
 	// böylece "h"/"l" gibi genel sekme tuşları onay ekranındaki
 	// "hayır"/"evet" kısayollarıyla çakışmaz.
@@ -271,14 +317,16 @@ func (m model) View() string {
 	}
 
 	var govde string
-	switch m.tab {
-	case tabKonular:
+	switch {
+	case m.banning:
+		govde = m.viewYasak()
+	case m.tab == tabKonular:
 		govde = m.viewKonular()
-	case tabBanlar:
+	case m.tab == tabBanlar:
 		govde = m.viewBanlar()
-	case tabGecmis:
+	case m.tab == tabGecmis:
 		govde = m.viewGecmis()
-	case tabModeratorler:
+	case m.tab == tabModeratorler:
 		govde = m.viewModeratorler()
 	}
 	// Sekme görünümleri genişliği kendileri sınırlamaz — çerçeve terminalden
@@ -310,17 +358,23 @@ func (m model) tabBar() string {
 
 func (m model) helpText() string {
 	nav := dil.T("tab/←→ sekme")
+	if m.banning {
+		if m.banStep == 0 {
+			return dil.T("enter devam   esc vazgeç")
+		}
+		return dil.T("↑/↓ süre seç   enter yasakla   esc vazgeç")
+	}
 	switch m.tab {
 	case tabKonular:
 		if m.confirming {
 			return dil.T("e onayla   esc vazgeç")
 		}
-		return dil.T("↑/↓ seç   x sil   r yenile   ") + nav + dil.T("   q çıkış")
+		return dil.T("↑/↓ seç   x sil   b yazarı yasakla   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabBanlar:
 		if m.unbanConfirming {
 			return dil.T("e onayla   esc vazgeç")
 		}
-		return dil.T("↑/↓ seç   u banı kaldır   r yenile   ") + nav + dil.T("   q çıkış")
+		return dil.T("↑/↓ seç   n yasakla   u banı kaldır   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabGecmis:
 		return dil.T("↑/↓ kaydır   r yenile   ") + nav + dil.T("   q çıkış")
 	case tabModeratorler:

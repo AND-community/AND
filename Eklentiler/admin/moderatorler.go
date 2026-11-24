@@ -43,16 +43,17 @@ func revokeCmd(c *pluginapi.Client, targetKeyHex string) tea.Cmd {
 }
 
 type durPreset struct {
+	id        string // masaüstü seçimindeki değer
 	label     string
 	duration  time.Duration
 	permanent bool
 }
 
 var grantDurationPresets = []durPreset{
-	{label: dil.K("1 gün"), duration: 24 * time.Hour},
-	{label: dil.K("3 gün"), duration: 3 * 24 * time.Hour},
-	{label: dil.K("7 gün"), duration: 7 * 24 * time.Hour},
-	{label: dil.K("Ömür boyu"), permanent: true},
+	{id: "1g", label: dil.K("1 gün"), duration: 24 * time.Hour},
+	{id: "3g", label: dil.K("3 gün"), duration: 3 * 24 * time.Hour},
+	{id: "7g", label: dil.K("7 gün"), duration: 7 * 24 * time.Hour},
+	{id: "kalici", label: dil.K("Ömür boyu"), permanent: true},
 }
 
 func (m model) handleModeratorlerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

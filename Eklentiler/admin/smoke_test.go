@@ -281,3 +281,15 @@ func TestShortKey(t *testing.T) {
 		t.Fatalf("kısaltılmış anahtar '…' içermeli: %q", got)
 	}
 }
+
+// Atamadan sonra liste yeniden yüklenince sertifika yolunu gösteren
+// bildirim kaybolmamalı (kurucu dosyayı hedefe göndermek için ona bakar).
+func TestGrant_ListeYuklenincBildirimKalir(t *testing.T) {
+	m := newModel(&pluginapi.Client{}, pluginapi.RoleInfo{IsFounder: true})
+	m.tab = tabModeratorler
+	next, _ := m.Update(grantMsg{certPath: `C:\veri\bans\mod_ab.json`})
+	next, _ = next.(model).Update(grantsMsg{grants: []pluginapi.GrantedModInfo{{Key: "ab"}}})
+	if m = next.(model); !strings.Contains(m.notice, `mod_ab.json`) || m.isErr {
+		t.Fatalf("bildirim kayboldu: %q", m.notice)
+	}
+}

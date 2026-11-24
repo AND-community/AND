@@ -42,6 +42,16 @@ func (m model) handleKonularKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r", "R":
 		m.loading = true
 		return m, allPostsCmd(m.client)
+	case "b", "B":
+		if m.pending || m.postIdx >= len(m.allPosts) {
+			return m, nil
+		}
+		p := m.allPosts[m.postIdx]
+		if p.AuthorKey == "" {
+			m.notice, m.isErr = dil.T("Bu konunun yazar anahtarı yok."), true
+			return m, nil
+		}
+		return m.yasakBaslat(p.AuthorKey, p.AuthorName)
 	case "x", "X":
 		if m.pending || len(m.allPosts) == 0 {
 			return m, nil

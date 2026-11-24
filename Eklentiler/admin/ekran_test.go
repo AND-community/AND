@@ -59,6 +59,11 @@ func TestEkranlar_HerDilde(t *testing.T) {
 			ekranlar["ata_anahtar"] = m
 			m.grantStep = 1
 			ekranlar["ata_sure"] = m
+			m = kur(sz[0], sz[1])
+			yeni, _ := m.yasakBaslat("", "")
+			ekranlar["yasak_anahtar"] = yeni.(model)
+			yeni, _ = m.yasakBaslat(anahtar, "alice")
+			ekranlar["yasak_sebep"] = yeni.(model)
 			for ad, m := range ekranlar {
 				ekran := m.View()
 				satirlar := strings.Split(ekran, "\n")

@@ -43,6 +43,11 @@ func (m model) handleBanlarKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r", "R":
 		m.loading = true
 		return m, bansCmd(m.client)
+	case "n", "N":
+		if m.pending {
+			return m, nil
+		}
+		return m.yasakBaslat("", "")
 	case "u", "U":
 		if m.pending || m.bansIdx >= len(m.bans) {
 			return m, nil

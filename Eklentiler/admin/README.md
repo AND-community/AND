@@ -11,14 +11,20 @@ yerde toplar. Dört sekme:
 
 | Sekme | Kimler görür | İşlev |
 |-------|--------------|-------|
-| **Konular** | kurucu + moderatör | Tüm forum konularını listele, gerekirse sil |
-| **Banlar** | kurucu + moderatör | Aktif banları listele, `u` ile kaldır |
+| **Konular** | kurucu + moderatör | Tüm forum konularını listele, gerekirse sil; `b` ile konunun yazarını yasakla |
+| **Banlar** | kurucu + moderatör | Aktif banları listele, `u` ile kaldır, `n` ile bir genel anahtarı yasakla |
 | **Geçmiş** | kurucu + moderatör | Salt okunur ban/unban denetim kaydı |
 | **Moderatörler** | yalnızca kurucu | Yeni moderatör ata, mevcut birinin sertifikasını iptal et |
 
 Panel yalnızca kurucu veya geçerli sertifikalı bir moderatör olarak
 çalıştırıldığında açılır; aksi halde AND ana menüsünde görünmez ve
 doğrudan çalıştırılırsa hata verip çıkar.
+
+AND masaüstünde panel terminal yerine AND'ın kendi arayüzüyle açılır: sekmeler,
+her sekmede bir tablo, yasaklama ve moderatör atama diyalog olarak (bkz.
+`arayuz.go`). Yetkisi olmayan biri masaüstünde bunu söyleyen bir ekran görür.
+Yasaklama, terminal forumunun yazar profilinden buraya taşındı
+(`POST /api/v1/mod/ban`).
 
 İmzalama her zaman AND ana sürecinde (`cmd/and`'in `modAdapter`'ında)
 gerçekleşir — bu eklenti hiçbir zaman özel anahtar (private key) görmez,
