@@ -143,7 +143,9 @@ background when AND opens (a green dot in the sidebar) — so your plugin may ru
 anyone looks at it: don't treat startup as "the user is here" (e.g. don't mark messages as read until
 the user opens them). A plugin that requests no permissions, or whose permissions have not been
 approved yet, only starts when the user opens it. Without a pseudo terminal (older Windows, Linux,
-macOS), or when the user picks "Open in a separate window", it opens in its own console window.
+macOS), or when the user picks "Open in a separate window", it opens in its own console window. A plugin that supports interface mode (`"ui": 1`) is drawn with AND's own components instead
+of a terminal on the desktop, works on every platform and never opens in a separate window (see
+[Interface](#interface-ands-own-components-instead-of-a-terminal-on-the-desktop)).
 Environment variables:
 
 | Variable | Meaning | SDK |
@@ -154,9 +156,91 @@ Environment variables:
 | `AND_DIL` | The interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
 | `AND_CATEGORY` | `konu_ac` only: the category selected in the forum | `pluginapi.Category()` |
 | `AND_GOMULU` | `1`: the plugin runs inside the AND desktop window. The title bar and edges belong to AND; `ui.Page` does not draw its frame (the content stays where it was) | `ui.Gomulu` |
+| `AND_ARAYUZ_PROTOKOLU` | The desktop started the plugin in interface mode (`"ui"` ≥ 1); the value is the highest protocol version AND speaks (see [Interface](#interface-ands-own-components-instead-of-a-terminal-on-the-desktop)) | `arayuz.Etkin()` |
 
 Prefix the files you write into the data directory with the plugin's name (`weather_settings.json`), and
 do not store identities or keys there.
+
+## Interface (AND's own components instead of a terminal on the desktop)
+
+In the desktop interface your plugin can appear with AND's own components (lists, forms, buttons, tabs,
+dialogs) instead of as a terminal screen. The plugin describes its screen as a component tree; AND draws it
+with its own design and the user's theme, and clicks and form submissions come back to the plugin as
+events. The plugin cannot choose colors, fonts or HTML, only semantic variants (primary, dangerous,
+muted…), so every plugin looks like the rest of AND.
+
+1. Add `"ui": 1` to `plugin.json` (and `UI: 1` to the `manifest` variable).
+2. Give your model an `Arayuz() arayuz.Ekran` method next to `View`; the same model, `Update` and commands
+   run in both modes.
+3. Pick the mode in `main`:
+
+```go
+if arayuz.Etkin() {
+	err = arayuz.Calistir(m) // desktop: AND's components
+} else {
+	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run() // terminal
+}
+```
+
+A small example:
+
+```go
+func (m model) Arayuz() arayuz.Ekran {
+	return arayuz.Ekran{
+		Baslik: "Counter",
+		Govde: new(arayuz.Yigin(
+			arayuz.Metin(strconv.Itoa(m.n)),
+			arayuz.Dugme("arti", dil.T("Arttır"), arayuz.Birincil, arayuz.IleKisayol("ctrl+enter")),
+		)),
+	}
+}
+
+// In Update:
+case arayuz.Olay:
+	if msg.Olay == arayuz.OlayTikla && msg.ID == "arti" {
+		m.n++
+	}
+```
+
+In this mode AND starts the plugin without a console, with standard input/output connected to AND through
+pipes; the protocol is UTF-8 JSON Lines and `arayuz.Calistir` speaks it for you. Standard output belongs to
+the protocol: `Calistir` redirects `os.Stdout` to standard error, and standard error goes to AND's log. The
+terminal interface (`and --terminal`) and older AND versions that don't know the `ui` field always open the
+plugin in terminal mode.
+
+**Events** (`arayuz.Olay`, delivered to the model as a `tea.Msg`): `tikla` (button, breadcrumb, link; for a
+button in a list or table row, `Deger` is the row's ID), `sec` and `ac` (list selection; double click or
+Enter), `gonder` (form; `Degerler` carries every field, checkboxes as `"1"`/`"0"`), `degisti` (a `Canli`
+input after 250 ms of quiet, an `Aninda` select), `sekme`, `diyalogKapat` (Esc or ×), `geri` (Esc or Alt+←
+when no dialog is open). `arayuz.Merhaba{Surum, Dil}` is the first message; `arayuz.Gorunurluk{Gorunur}`
+arrives when the user opens or leaves the plugin's screen (it starts as not visible).
+`arayuz.Bildir(text, status)` shows AND's corner notification.
+
+**Components** (constructors in the `arayuz` package): layout `Yigin` (stack), `SatirOge` (row),
+`Bolunmus` (narrow left and wide right pane), `Bolum` (section), `Kart`, `SekmeCubugu` (tab bar), `Ayrac`;
+content `Metin`, `Zengin`, `Baslik`, `RozetOge`, `AnahtarDeger` (key-value list), `Bos` (empty state),
+`Kod`, `Fark` (diff), `Ilerleme`, `Baglanti`; interaction `Dugme`, `Liste`, `Tablo`, `Form`, `Girdi`,
+`MetinAlani`, `Secim`, `OnayKutusu`, `MesajAkisi`. The root is `Ekran`: `Baslik`, `Yol` (breadcrumbs),
+`Araclar` (toolbar buttons and selects), `Govde`, `Diyalog`, `Durum` (status line), `Mesgul`. Icons are
+the names in `arayuz.Ikonlar`.
+
+AND keeps what the user typed into a field unless the plugin changes that field's value, so you can send
+screens as often as you like (an identical screen is not rewritten, and AND forwards at most one every
+50 ms).
+
+**Limits:** line ≤ 4 MiB, tree depth ≤ 24, ≤ 5000 items, ≤ 2000 list/table rows, plain text ≤ 64 KiB,
+`Kod`/`MetinAlani`/`Fark` contents ≤ 3 MiB in total, IDs ≤ 512 characters. A screen over a limit is not
+shown (the plugin's screen shows an error); paginate large lists and shorten large diffs. AND sanitizes
+all text (escape sequences, direction-changing characters).
+
+**Testing:** `arayuz/arayuztest` drives the model without AND:
+
+```go
+s := arayuztest.Yeni(newModel())
+s.Yurut(s.Tikla("arti"), 3)
+if s.Ekran().Govde.Cocuklar[0].Metin != "1" { t.Fatal("counter did not increase") }
+arayuztest.Denetle(t, s.Ekran()) // would AND accept this screen?
+```
 
 ## Permissions
 

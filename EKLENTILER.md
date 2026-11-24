@@ -139,7 +139,8 @@ onayladıysa masaüstü arayüzü onu AND açılınca arka planda da başlatır 
 eklentin kimse ona bakmadan bir süre çalışabilir: açılışı "kullanıcı ekranda" diye yorumlama (ör.
 kullanıcı açmadan mesajları okundu sayma). Hiç izin istemeyen ya da izinleri henüz onaylanmamış bir
 eklenti yalnızca kullanıcı açınca başlar. Sözde terminal yoksa (eski Windows, Linux, macOS) ya da
-kullanıcı "Ayrı pencerede aç" derse kendi konsol penceresinde açılır. Ortam
+kullanıcı "Ayrı pencerede aç" derse kendi konsol penceresinde açılır. Eklenti arayüz kipini destekliyorsa (`"ui": 1`) masaüstünde terminal yerine AND'ın kendi bileşenleriyle
+çizilir, her platformda çalışır ve ayrı pencerede açılmaz (bkz. [Arayüz](#arayüz-masaüstünde-terminal-yerine-andın-bileşenleri)). Ortam
 değişkenleri:
 
 | Değişken | Anlamı | SDK |
@@ -150,9 +151,89 @@ değişkenleri:
 | `AND_DIL` | Arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
 | `AND_CATEGORY` | Yalnızca `konu_ac`: forumda seçili kategori | `pluginapi.Category()` |
 | `AND_GOMULU` | `1`: eklenti AND'ın masaüstü penceresinin içinde çalışıyor. Başlık ve kenar AND'ındır; `ui.Page` çerçevesini çizmez (içerik aynı yerde kalır) | `ui.Gomulu` |
+| `AND_ARAYUZ_PROTOKOLU` | Masaüstü eklentiyi arayüz kipinde başlattı (`"ui"` ≥ 1); değeri AND'ın konuştuğu en yüksek protokol sürümü (bkz. [Arayüz](#arayüz-masaüstünde-terminal-yerine-andın-bileşenleri)) | `arayuz.Etkin()` |
 
 Veri dizinine yazacağın dosyaların adına eklentinin adını önek yap (`hava_ayarlar.json`); kimlik ya da
 anahtar saklama.
+
+## Arayüz (masaüstünde terminal yerine AND'ın bileşenleri)
+
+Masaüstü arayüzünde eklentin terminal ekranı olarak değil, AND'ın kendi bileşenleriyle (listeler,
+formlar, düğmeler, sekmeler, diyaloglar) görünebilir. Eklenti ekranını bir bileşen ağacı olarak anlatır,
+AND onu kendi tasarımıyla ve kullanıcının temasıyla çizer; tıklamalar ve form gönderimleri eklentiye
+olay olarak döner. Eklenti renk, yazı tipi ya da HTML seçemez; yalnızca anlamsal varyant seçer
+(birincil, tehlikeli, soluk…). Böylece her eklenti AND'ın geri kalanıyla aynı görünür.
+
+1. `plugin.json`'a `"ui": 1` yaz (ve `manifest` değişkenine `UI: 1`).
+2. Modeline `View`'in yanında `Arayuz() arayuz.Ekran` ekle; aynı model, aynı `Update` ve aynı komutlar iki
+   kipte de çalışır.
+3. `main`'de kipi seç:
+
+```go
+if arayuz.Etkin() {
+	err = arayuz.Calistir(m) // masaüstü: AND'ın bileşenleri
+} else {
+	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run() // terminal
+}
+```
+
+Küçük bir örnek:
+
+```go
+func (m model) Arayuz() arayuz.Ekran {
+	return arayuz.Ekran{
+		Baslik: "Sayaç",
+		Govde: new(arayuz.Yigin(
+			arayuz.Metin(strconv.Itoa(m.n)),
+			arayuz.Dugme("arti", dil.T("Arttır"), arayuz.Birincil, arayuz.IleKisayol("ctrl+enter")),
+		)),
+	}
+}
+
+// Update'te:
+case arayuz.Olay:
+	if msg.Olay == arayuz.OlayTikla && msg.ID == "arti" {
+		m.n++
+	}
+```
+
+AND eklentiyi bu kipte konsolsuz, standart girdi/çıktısı borularla AND'a bağlı başlatır; protokol UTF-8
+JSON Lines'tır ve `arayuz.Calistir` onu senin yerine konuşur. Standart çıktı protokole ayrılmıştır:
+`Calistir` `os.Stdout`'u standart hataya yönlendirir; standart hata AND'ın günlüğüne gider. Terminal
+arayüzü (`and --terminal`) ve `ui` alanını tanımayan eski AND sürümleri eklentiyi her zaman terminal
+kipinde açar.
+
+**Olaylar** (`arayuz.Olay`, modele `tea.Msg` olarak gelir): `tikla` (düğme, kırıntı, bağlantı; liste ya da
+tablo satırındaki düğmede `Deger` satırın kimliğidir), `sec` ve `ac` (listede seçim; çift tıklama ya da
+Enter), `gonder` (form; `Degerler` bütün alanları taşır, onay kutusu `"1"`/`"0"`), `degisti` (`Canli`
+girdi 250 ms susunca, `Aninda` seçim), `sekme`, `diyalogKapat` (Esc ya da ×), `geri` (diyalog yokken Esc
+ya da Alt+←). Ayrıca `arayuz.Merhaba{Surum, Dil}` ilk mesajdır; `arayuz.Gorunurluk{Gorunur}` kullanıcı
+ekranına geçince/ayrılınca gelir (başlangıçta görünmez sayılır). `arayuz.Bildir(metin, durum)` AND'ın
+köşe bildirimini gösterir.
+
+**Bileşenler** (`arayuz` paketindeki kurucular): yerleşim `Yigin`, `SatirOge`, `Bolunmus` (solda dar,
+sağda geniş bölme), `Bolum`, `Kart`, `SekmeCubugu`, `Ayrac`; içerik `Metin`, `Zengin`, `Baslik`,
+`RozetOge`, `AnahtarDeger`, `Bos`, `Kod`, `Fark`, `Ilerleme`, `Baglanti`; etkileşim `Dugme`, `Liste`,
+`Tablo`, `Form`, `Girdi`, `MetinAlani`, `Secim`, `OnayKutusu`, `MesajAkisi`. Ekranın kökü `Ekran`'dır:
+`Baslik`, `Yol` (kırıntılar), `Araclar` (araç çubuğundaki düğme ve seçimler), `Govde`, `Diyalog`,
+`Durum` (alt satır), `Mesgul`. İkonlar `arayuz.Ikonlar`'daki adlardır.
+
+AND, kullanıcının bir alana yazdığını eklenti o alanın değerini değiştirmedikçe korur; ekranı istediğin
+sıklıkta gönderebilirsin (aynı ekran yeniden yazılmaz, AND pencereye en çok 50 ms'de bir iletir).
+
+**Sınırlar:** satır ≤ 4 MiB, ağaç derinliği ≤ 24, öğe ≤ 5000, liste/tablo ≤ 2000 satır, düz metin
+≤ 64 KiB, `Kod`/`MetinAlani`/`Fark` içerikleri toplam ≤ 3 MiB, kimlik ≤ 512 karakter. Sınırı aşan ekran
+gösterilmez (eklentinin ekranında hata çıkar); büyük listeleri sayfala, büyük farkları kısalt. Metinler
+AND'da temizlenir (kaçış dizileri, yön değiştiren karakterler).
+
+**Test:** `arayuz/arayuztest` modeli AND olmadan sürer:
+
+```go
+s := arayuztest.Yeni(yeniModel())
+s.Yurut(s.Tikla("arti"), 3)
+if s.Ekran().Govde.Cocuklar[0].Metin != "1" { t.Fatal("sayaç artmadı") }
+arayuztest.Denetle(t, s.Ekran()) // AND'ın kabul edeceği bir ekran mı?
+```
 
 ## İzinler
 

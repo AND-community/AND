@@ -11,6 +11,8 @@
 //	github.com/lucian95511/and/pluginui                  ağdan gelen metni ekrana basmadan önce temizleme
 //	github.com/lucian95511/and/dil                       arayüzü AND'ın dilinde (6 dil) açma
 //	github.com/lucian95511/and/protokol                  forum kategorileri gibi ağ sabitleri
+//	github.com/lucian95511/and/arayuz                    masaüstünde terminal yerine AND'ın bileşenleriyle görünme
+//	github.com/lucian95511/and/arayuz/arayuztest         arayüz kipinin testleri
 //
 // Yeni bir eklenti iskeleti "and eklenti yeni <ad>" ile kurulur; derlenen
 // eklenti "and eklenti kur <klasör|arşiv>" ile AND'a eklenir. Ayrıntılar
