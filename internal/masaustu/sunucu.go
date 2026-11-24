@@ -31,6 +31,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/lucian95511/and/arayuz"
 )
 
 //go:embed web
@@ -155,7 +157,7 @@ func (s *sunucu) koru(h http.Handler) http.Handler {
 				http.Error(w, "", http.StatusForbidden)
 				return
 			}
-			r.Body = http.MaxBytesReader(w, r.Body, enBuyukGovde)
+			r.Body = http.MaxBytesReader(w, r.Body, govdeSiniri(r.URL.Path))
 		}
 		h.ServeHTTP(w, r)
 	})
@@ -201,3 +203,13 @@ func jsonOku(r *http.Request, v any) error {
 }
 
 func temiz(s string) string { return strings.TrimSpace(s) }
+
+// govdeSiniri, bir isteğin gövdesinin üst sınırıdır. Arayüz kipindeki
+// eklentilerin olayları (ör. bir dosya düzenleyicinin içeriği) protokolün satır
+// sınırına dek büyüyebilir; geri kalan her istek enBuyukGovde'yle sınırlıdır.
+func govdeSiniri(yol string) int64 {
+	if yol == "/api/arayuz/olay" {
+		return arayuz.SatirSiniri
+	}
+	return enBuyukGovde
+}

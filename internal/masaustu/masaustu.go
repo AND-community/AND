@@ -51,8 +51,10 @@ type Uygulama struct {
 	giris *giris
 	cek   atomic.Pointer[cekirdek]
 
-	// term, AND'ın penceresinin içinde çalışan eklentilerdir.
-	term *terminaller
+	// term, AND'ın penceresinin içinde terminalde çalışan eklentilerdir;
+	// arayuz, arayüz kipinde (AND'ın bileşenleriyle) çalışanlar.
+	term   *terminaller
+	arayuz *arayuzler
 	// baslatmaMu, bir eklentinin içeride iki kez başlatılmasını önler (bkz.
 	// icerideBaslat).
 	baslatmaMu sync.Mutex
@@ -97,12 +99,13 @@ func yeniUygulama(dir, kimlikDosyasi string) (*Uygulama, error) {
 		return nil, err
 	}
 	u := &Uygulama{
-		dir:   dir,
-		sv:    sv,
-		yayin: yeniYayin(),
-		bitti: make(chan struct{}),
-		giris: yeniGiris(kimlikDosyasi),
-		term:  yeniTerminaller(),
+		dir:    dir,
+		sv:     sv,
+		yayin:  yeniYayin(),
+		bitti:  make(chan struct{}),
+		giris:  yeniGiris(kimlikDosyasi),
+		term:   yeniTerminaller(),
+		arayuz: yeniArayuzler(),
 	}
 	u.rotalar()
 	return u, nil
@@ -145,6 +148,7 @@ func (u *Uygulama) Calistir(ctx context.Context, c Cekirdek) error {
 func (u *Uygulama) Kapat() {
 	u.bitir()
 	u.term.hepsiniDurdur()
+	u.arayuz.hepsiniDurdur()
 	if u.pen != nil {
 		u.pen.kapat()
 	}

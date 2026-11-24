@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/pluginapi"
 )
@@ -246,4 +248,14 @@ func TestEklentiler_AcilistaKendiligindenBaslar(t *testing.T) {
 		t.Fatalf("eklentiyi kapatma = %d", w.Code)
 	}
 	bekle("kapatılan eklentinin durması", func(g map[string]any) bool { return g["bitti"] == true })
+}
+
+// Arayüz kipindeki eklenti konsolsuz başlar: AND'ın kendisi konsolsuzken
+// Windows ona yeni bir konsol penceresi açmasın.
+func TestArayuz_SurecPencereAcmaz(t *testing.T) {
+	cmd := exec.Command("eklenti.exe")
+	penceresizHazirla(cmd)
+	if cmd.SysProcAttr == nil || cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
+		t.Errorf("CREATE_NO_WINDOW yok: %+v", cmd.SysProcAttr)
+	}
 }

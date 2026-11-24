@@ -510,6 +510,10 @@ func TestEklentiler_KategoriyeGoreBolumlenir(t *testing.T) {
 const sahteEklentiDegiskeni = "AND_SAHTE_EKLENTI"
 
 func TestMain(m *testing.M) {
+	if kip := os.Getenv(sahteArayuzDegiskeni); kip != "" {
+		sahteArayuzEklentisi(kip)
+		return
+	}
 	if os.Getenv(sahteEklentiDegiskeni) != "" {
 		fmt.Printf("sahte eklenti gomulu=%s\n", os.Getenv(ui.GomuluOrtamDegiskeni))
 		time.Sleep(time.Hour)

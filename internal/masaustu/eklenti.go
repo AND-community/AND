@@ -14,8 +14,10 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/pluginmgr"
 	"github.com/lucian95511/and/pluginapi"
@@ -51,7 +53,9 @@ type menuOgesi struct {
 	Etiket       string `json:"etiket"`
 	Kategori     string `json:"kategori"`
 	KategoriKodu string `json:"kategoriKodu"`
-	sira         int
+	// Arayuz, eklentinin AND'ın bileşenleriyle (terminal yerine) açılacağıdır.
+	Arayuz bool `json:"arayuz"`
+	sira   int
 }
 
 // kategorisi, eklentinin bölüm başlığı (etkin dilde) ve bölümün sırasıdır.
@@ -92,7 +96,8 @@ func (d *cekirdek) menuEklentileri() []menuOgesi {
 			continue
 		}
 		kat, sira := kategorisi(p)
-		out = append(out, menuOgesi{Ad: p.Name(), Etiket: etiketi(p), Kategori: kat, KategoriKodu: p.Manifest.Category, sira: sira})
+		out = append(out, menuOgesi{Ad: p.Name(), Etiket: etiketi(p), Kategori: kat, KategoriKodu: p.Manifest.Category,
+			Arayuz: arayuzKipinde(p), sira: sira})
 	}
 	slices.SortStableFunc(out, func(a, b menuOgesi) int {
 		return cmp.Or(cmp.Compare(a.sira, b.sira), strings.Compare(a.Etiket, b.Etiket))
@@ -147,6 +152,9 @@ func (u *Uygulama) eklentiEtkin(w http.ResponseWriter, r *http.Request, d *cekir
 		if t := u.term.calisan(istek.Ad); t != nil {
 			_ = t.p.Durdur()
 		}
+		if o := u.arayuz.calisan(istek.Ad); o != nil {
+			o.durdur()
+		}
 	}
 	switch {
 	case !bulundu:
@@ -177,11 +185,9 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 		return
 	}
 	// İçeride zaten çalışıyorsa yenisi başlatılmaz, o gösterilir.
-	if istek.Gomulu {
-		if t := u.term.calisan(istek.Ad); t != nil {
-			jsonYaz(w, map[string]any{"acildi": true, "oturum": t.id})
-			return
-		}
+	if oz, ok := u.calisanOturum(istek.Ad); ok && (istek.Gomulu || oz.Tur == oturumArayuz) {
+		jsonYaz(w, map[string]any{"acildi": true, "oturum": oz.ID, "tur": oz.Tur})
+		return
 	}
 	d.mu.Lock()
 	var pl *pluginmgr.Plugin
@@ -230,10 +236,12 @@ func (u *Uygulama) eklentiAc(w http.ResponseWriter, r *http.Request, d *cekirdek
 		}
 	}
 
-	if istek.Gomulu {
-		t, err := u.icerideBaslat(d, *pl, istek.Sutun, istek.Satir)
+	// Arayüz kipindeki eklenti her zaman AND'ın içinde açılır: masaüstünde
+	// terminal sürümüne geçiş yoktur.
+	if istek.Gomulu || arayuzKipinde(*pl) {
+		oz, err := u.icerideBaslat(d, *pl, istek.Sutun, istek.Satir)
 		if err == nil {
-			jsonYaz(w, map[string]any{"acildi": true, "oturum": t.id})
+			jsonYaz(w, map[string]any{"acildi": true, "oturum": oz.ID, "tur": oz.Tur})
 			return
 		}
 		if !errors.Is(err, errPTYYok) {
@@ -271,27 +279,68 @@ func (d *cekirdek) eklentiAnahtari(pl pluginmgr.Plugin) (string, func()) {
 	return "", func() {}
 }
 
-// icerideBaslat, (izinleri onaylanmış) eklentiyi AND'ın penceresinin içinde,
-// sutun×satir boyutunda bir sözde terminalde başlatır. Eklenti zaten içeride
+// Oturum türleri: eklenti AND'ın bileşenleriyle (arayüz kipi) ya da bir
+// sözde terminalde çalışır.
+const (
+	oturumArayuz   = "arayuz"
+	oturumTerminal = "terminal"
+)
+
+// oturumOzeti, AND'ın içinde açılmış bir eklentinin oturumudur.
+type oturumOzeti struct {
+	ID, Tur string
+}
+
+// arayuzKipinde, eklentinin bu AND'da arayüz kipinde (terminal yerine AND'ın
+// bileşenleriyle) açılıp açılmayacağıdır: manifest'teki sürüm 1 ile AND'ın
+// konuştuğu sürüm arasındaysa.
+func arayuzKipinde(pl pluginmgr.Plugin) bool {
+	return pl.Manifest.UI >= 1 && pl.Manifest.UI <= arayuz.Surum
+}
+
+// calisanOturum, ad adlı eklentinin içeride hâlâ çalışan oturumudur.
+func (u *Uygulama) calisanOturum(ad string) (oturumOzeti, bool) {
+	if o := u.arayuz.calisan(ad); o != nil {
+		return oturumOzeti{o.id, oturumArayuz}, true
+	}
+	if t := u.term.calisan(ad); t != nil {
+		return oturumOzeti{t.id, oturumTerminal}, true
+	}
+	return oturumOzeti{}, false
+}
+
+// icerideBaslat, (izinleri onaylanmış) eklentiyi AND'ın penceresinin içinde
+// başlatır: arayüz kipini destekliyorsa AND'ın bileşenleriyle, yoksa
+// sutun×satir boyutunda bir sözde terminalde. Eklenti zaten içeride
 // çalışıyorsa yenisi başlatılmaz, o döner. Eklenti içeride çalıştığını bilir:
-// kendi çerçevesini çizmez (bkz. ui.Gomulu). Sözde terminal yoksa errPTYYok
-// döner.
-func (u *Uygulama) icerideBaslat(d *cekirdek, pl pluginmgr.Plugin, sutun, satir int) (*terminal, error) {
+// kendi çerçevesini çizmez (bkz. ui.Gomulu). Terminal gerekirken sözde
+// terminal yoksa errPTYYok döner.
+func (u *Uygulama) icerideBaslat(d *cekirdek, pl pluginmgr.Plugin, sutun, satir int) (oturumOzeti, error) {
 	// Arayüzden açma ile açılıştaki kendiliğinden başlatma aynı anda aynı
 	// eklentiyi iki kez başlatmasın.
 	u.baslatmaMu.Lock()
 	defer u.baslatmaMu.Unlock()
-	if t := u.term.calisan(pl.Name()); t != nil {
-		return t, nil
+	if oz, ok := u.calisanOturum(pl.Name()); ok {
+		return oz, nil
 	}
 	anahtar, geriAl := d.eklentiAnahtari(pl)
+	if arayuzKipinde(pl) {
+		cmd := pl.Launch(d.APIAdresi, anahtar, u.dir, ui.GomuluOrtamDegiskeni+"=1",
+			arayuz.OrtamDegiskeni+"="+strconv.Itoa(arayuz.Surum))
+		o, err := u.arayuz.baslat(pl.Name(), etiketi(pl), cmd, geriAl)
+		if err != nil {
+			geriAl()
+			return oturumOzeti{}, err
+		}
+		return oturumOzeti{o.id, oturumArayuz}, nil
+	}
 	cmd := pl.Launch(d.APIAdresi, anahtar, u.dir, ui.GomuluOrtamDegiskeni+"=1")
 	t, err := u.term.baslat(pl.Name(), etiketi(pl), cmd, sutun, satir, geriAl)
 	if err != nil {
 		geriAl()
-		return nil, err
+		return oturumOzeti{}, err
 	}
-	return t, nil
+	return oturumOzeti{t.id, oturumTerminal}, nil
 }
 
 // Açılışta kendiliğinden başlatılan eklentilerin terminal boyutu. Arayüz
@@ -332,7 +381,7 @@ func (d *cekirdek) kendiligindenBaslayacaklar(dir string) []pluginmgr.Plugin {
 // eklentileriBaslat, AND açılınca kendiligindenBaslayacaklar'ı arka planda,
 // AND'ın penceresinin içinde başlatır: kenar çubuğunda baştan çalışıyor
 // görünürler ve tıklanınca beklemeden açılırlar. Sözde terminal yoksa
-// hiçbiri başlatılmaz (ayrı konsol pencereleri açılmaz). Başlayan olursa
+// terminal eklentileri başlatılmaz (ayrı konsol pencereleri açılmaz). Başlayan olursa
 // arayüze "terminaller" olayı gider.
 func (u *Uygulama) eklentileriBaslat(d *cekirdek) {
 	if d.APIAdresi == "" {
@@ -347,7 +396,7 @@ func (u *Uygulama) eklentileriBaslat(d *cekirdek) {
 		}
 		if _, err := u.icerideBaslat(d, pl, kendiligindenSutun, kendiligindenSatir); err != nil {
 			if errors.Is(err, errPTYYok) {
-				return
+				continue // terminal eklentisi; arayüz kipindekiler yine başlar
 			}
 			log.Printf("masaüstü: eklenti %s kendiliğinden başlatılamadı: %v", pl.Name(), err)
 			continue

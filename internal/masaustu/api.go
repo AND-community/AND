@@ -71,6 +71,13 @@ func (u *Uygulama) rotalar() {
 	m.HandleFunc("POST /api/terminal/yaz", u.terminaleYaz)
 	m.HandleFunc("POST /api/terminal/boyut", u.terminaliBoyutla)
 	m.HandleFunc("POST /api/terminal/kapat", u.terminaliKapat)
+	// Arayüz kipindeki eklentiler (bkz. arayuz.go).
+	m.HandleFunc("GET /api/arayuz/akis", u.arayuz.yayin.isle)
+	m.HandleFunc("GET /api/arayuz/ekran", u.arayuzEkrani)
+	m.HandleFunc("POST /api/arayuz/olay", u.arayuzOlayi)
+	m.HandleFunc("POST /api/arayuz/gorunur", u.arayuzGorunur)
+	m.HandleFunc("POST /api/arayuz/kapat", u.arayuzuKapat)
+	m.HandleFunc("GET /api/eklenti/oturumlar", u.eklentiOturumlari)
 	m.HandleFunc("GET /api/ag", u.cekirdekle(u.agDurumu))
 	m.HandleFunc("GET /api/hakkinda", u.hakkinda)
 }

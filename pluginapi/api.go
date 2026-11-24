@@ -43,6 +43,10 @@ type Manifest struct {
 	Permissions []string `json:"permissions,omitempty"`
 	// MinAPI, eklentinin çalışmak için gereken en düşük APIVersion'dır.
 	MinAPI int `json:"min_api,omitempty"`
+	// UI, eklentinin konuştuğu arayüz protokolü sürümüdür (bkz. paket
+	// arayuz). 1 ya da üstüyse masaüstü arayüzü eklentiyi terminal yerine
+	// AND'ın kendi bileşenleriyle çizer; yoksa eklenti terminalde açılır.
+	UI int `json:"ui,omitempty"`
 }
 
 type IdentityInfo struct {
