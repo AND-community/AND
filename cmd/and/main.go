@@ -177,9 +177,15 @@ func run() error {
 	// için seçilen arayüz korunur.
 	masaustuKipi := masaustuSecilsin(os.Args[1:], os.Getenv, runtime.GOOS)
 	if masaustuKipi {
-		// Çift tıklamayla açıldıysa boş konsol penceresi gizlenir; bir
-		// terminalden açıldıysa terminale dokunulmaz.
+		// Çift tıklamayla açıldıysa konsol penceresi yoktur (eski
+		// Windows'ta gizlenir); bir terminalden açıldıysa terminale
+		// dokunulmaz.
 		konsolGizlendi = konsoluGizle()
+	} else if kod, oldu := konsoldaYenidenBaslat(); oldu {
+		// Terminal arayüzü konsolsuz istendi (Windows'ta "--terminal"
+		// bayraklı bir kısayol): AND yeni bir konsolda yeniden başladı
+		// ve bitti.
+		os.Exit(kod)
 	}
 
 	dir, err := appDir()

@@ -76,7 +76,7 @@ func TestNesne_KaynakAgaciVeYenidenKonumlandirmalar(t *testing.T) {
 	buyuk := []byte("\x89PNG büyük resim")
 	ico := ornekIco([]uint8{16, 0}, [][]byte{kucuk, buyuk})
 
-	nesneler, err := uret(ico, []string{"amd64", "arm64", "386"})
+	nesneler, err := uret(ico, nil, []string{"amd64", "arm64", "386"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,26 +163,69 @@ func TestIcoOku_BozukDosya(t *testing.T) {
 	}
 }
 
-// TestNesnelerGuncel: depodaki .syso dosyaları winres/icon.ico'dan üretilenle
-// aynı olmalı; simge değişip go generate çalıştırılmazsa test kırılır.
+// Manifest verilince RT_MANIFEST 1 olarak, simgelerden sonra eklenir;
+// satır sonları LF'ye çevrilir.
+func TestNesne_Manifest(t *testing.T) {
+	ico := ornekIco([]uint8{16}, [][]byte{{1, 2, 3}})
+	nesneler, err := uret(ico, []byte("<?xml version=\"1.0\"?>\r\n<assembly/>\r\n"), []string{"amd64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := pe.NewFile(bytes.NewReader(nesneler["amd64"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	veri, err := f.Sections[0].Data()
+	if err != nil {
+		t.Fatal(err)
+	}
+	kaynaklar := agacOku(t, veri)
+	if len(kaynaklar) != 3 {
+		t.Fatalf("3 kaynak bekleniyordu (RT_ICON + RT_GROUP_ICON + RT_MANIFEST), %d var", len(kaynaklar))
+	}
+	m := kaynaklar[2]
+	if m.tur != rtManifest || m.ad != 1 || m.dil != manifestDili {
+		t.Errorf("RT_MANIFEST 1 bekleniyordu: tür %d, ad %d, dil %#x", m.tur, m.ad, m.dil)
+	}
+	if string(m.veri) != "<?xml version=\"1.0\"?>\n<assembly/>\n" {
+		t.Errorf("manifest verisi %q", m.veri)
+	}
+	if len(f.Sections[0].Relocs) != 3 {
+		t.Errorf("%d yeniden konumlandırma, beklenen 3", len(f.Sections[0].Relocs))
+	}
+	for _, bozuk := range [][]byte{[]byte("manifest değil"), {0xff, 0xfe, '<'}} {
+		if _, err := uret(ico, bozuk, []string{"amd64"}); err == nil {
+			t.Errorf("%q: hata bekleniyordu", bozuk)
+		}
+	}
+}
+
+// TestNesnelerGuncel: depodaki .syso dosyaları winres/icon.ico'dan (and.exe'de
+// winres/and.manifest ile) üretilenle aynı olmalı; simge ya da manifest
+// değişip go generate çalıştırılmazsa test kırılır.
 func TestNesnelerGuncel(t *testing.T) {
 	ico, err := os.ReadFile(filepath.Join("..", "icon.ico"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	nesneler, err := uret(ico, []string{"amd64", "arm64"})
+	manifest, err := os.ReadFile(filepath.Join("..", "and.manifest"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, dizin := range []string{filepath.Join("..", ".."), filepath.Join("..", "..", "..", "andmod")} {
-		for m, beklenen := range nesneler {
-			yol := filepath.Join(dizin, "rsrc_windows_"+m+".syso")
+	komutlar := filepath.Join("..", "..", "..")
+	for dizin, m := range map[string][]byte{"and": manifest, "andmod": nil, "and-masaustu": nil} {
+		nesneler, err := uret(ico, m, []string{"amd64", "arm64"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for mimari, beklenen := range nesneler {
+			yol := filepath.Join(komutlar, dizin, "rsrc_windows_"+mimari+".syso")
 			b, err := os.ReadFile(yol)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !bytes.Equal(b, beklenen) {
-				t.Errorf("%s eski; 'go generate ./cmd/and ./cmd/andmod' çalıştır", yol)
+				t.Errorf("%s eski; 'go generate ./cmd/and ./cmd/andmod ./cmd/and-masaustu' çalıştır", yol)
 			}
 		}
 	}

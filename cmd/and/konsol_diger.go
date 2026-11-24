@@ -7,4 +7,9 @@ package main
 // bırakır.
 func konsoluGizle() bool { return false }
 
+// konsoldaYenidenBaslat yalnızca Windows'ta gereklidir: orada and.exe
+// Explorer'dan konsolsuz açılır. Öteki sistemlerde terminal arayüzü AND'ı
+// açan terminalde çalışır.
+func konsoldaYenidenBaslat() (int, bool) { return 0, false }
+
 func hataKutusu(string) {}

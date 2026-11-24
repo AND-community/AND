@@ -1,21 +1,25 @@
-// Komut uret, bir .ico dosyasından Windows kaynak nesneleri
-// (<önek>_windows_<mimari>.syso) üretir. go build bu nesneleri yalnızca
-// adlarındaki işletim sistemi ve mimari için derlemeye kendiliğinden katar;
-// böylece and.exe ve andmod.exe, Explorer'da ve görev çubuğunda AND'ın
-// logosuyla görünür. cmd/and ve cmd/andmod'daki go:generate satırlarıyla
-// çalışır:
+// Komut uret, bir .ico dosyasından (ve istenirse bir uygulama
+// manifest'inden) Windows kaynak nesneleri (<önek>_windows_<mimari>.syso)
+// üretir. go build bu nesneleri yalnızca adlarındaki işletim sistemi ve mimari
+// için derlemeye kendiliğinden katar; böylece and.exe ve andmod.exe,
+// Explorer'da ve görev çubuğunda AND'ın logosuyla görünür. cmd/and,
+// cmd/andmod ve cmd/and-masaustu'daki go:generate satırlarıyla çalışır:
 //
-//	go generate ./cmd/and ./cmd/andmod
+//	go generate ./cmd/and ./cmd/andmod ./cmd/and-masaustu
 //
 // Nesne, tek bir .rsrc bölümü olan bir COFF dosyasıdır. .ico'daki her resim
 // olduğu gibi (PNG ya da BMP) bir RT_ICON kaynağı olur; RT_GROUP_ICON 1 bu
-// resimlerin dizinidir ve Explorer'ın gösterdiği simge odur. Kaynak
-// ağacındaki veri girdileri bölüm içindeki konumlarını taşır; bağlayıcı
-// bunlara IMAGE_REL_*_ADDR32NB yeniden konumlandırmalarıyla .rsrc bölümünün
-// adresini ekler. Dış araç gerekmez; çıktı her çalıştırmada bayt bayt aynıdır.
+// resimlerin dizinidir ve Explorer'ın gösterdiği simge odur. -manifest
+// verilirse dosya RT_MANIFEST 1 olur: Windows programı başlatırken okur
+// (and.exe'de: çift tıklamada konsol penceresi açılmasın, bkz.
+// cmd/and/winres/and.manifest). Kaynak ağacındaki veri girdileri bölüm
+// içindeki konumlarını taşır; bağlayıcı bunlara IMAGE_REL_*_ADDR32NB yeniden
+// konumlandırmalarıyla .rsrc bölümünün adresini ekler. Dış araç gerekmez;
+// çıktı her çalıştırmada bayt bayt aynıdır.
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -23,15 +27,20 @@ import (
 	"log"
 	"os"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
 	rtIcon      = 3
 	rtGroupIcon = 14
-	altDizin    = 0x80000000 // kaynak dizini girdisi başka bir dizini gösteriyor
-	dizinBoyu   = 16         // IMAGE_RESOURCE_DIRECTORY
-	girdiBoyu   = 8          // IMAGE_RESOURCE_DIRECTORY_ENTRY
-	veriBoyu    = 16         // IMAGE_RESOURCE_DATA_ENTRY
+	rtManifest  = 24
+	// manifestDili, manifest kaynağının dilidir (en-US); Windows
+	// manifest'i dilinden bağımsız olarak bulur, yaygın araçlar bunu yazar.
+	manifestDili = 0x0409
+	altDizin     = 0x80000000 // kaynak dizini girdisi başka bir dizini gösteriyor
+	dizinBoyu    = 16         // IMAGE_RESOURCE_DIRECTORY
+	girdiBoyu    = 8          // IMAGE_RESOURCE_DIRECTORY_ENTRY
+	veriBoyu     = 16         // IMAGE_RESOURCE_DATA_ENTRY
 )
 
 var le = binary.LittleEndian
@@ -90,28 +99,63 @@ func grupDizini(resimler []resim) []byte {
 
 func hizala(n int) int { return (n + 7) &^ 7 }
 
-// kaynakBolumu, .rsrc bölümünün içeriğini ve bağlayıcının adres ekleyeceği
-// alanların bölüm içindeki konumlarını döndürür. Sıra: tür dizini, ad
-// dizinleri, dil dizinleri, veri girdileri, sonra veriler (8 bayta hizalı).
-// Dizin girdileri kimliğe göre artan sıradadır (RT_ICON 3, RT_GROUP_ICON 14).
-func kaynakBolumu(resimler []resim) ([]byte, []uint32) {
-	n := len(resimler)
-	adIkon := dizinBoyu + 2*girdiBoyu
-	adGrup := adIkon + dizinBoyu + n*girdiBoyu
-	dil := adGrup + dizinBoyu + girdiBoyu
-	dilDizini := func(i int) int { return dil + i*(dizinBoyu+girdiBoyu) }
-	veriGirdisi := func(i int) int { return dilDizini(n+1) + i*veriBoyu }
+// kaynakOgesi, .rsrc bölümüne girecek bir kaynaktır: türü, kimliği (adı),
+// dili ve verisi.
+type kaynakOgesi struct {
+	tur, ad, dil uint32
+	veri         []byte
+}
 
-	veriler := make([][]byte, 0, n+1)
-	for _, r := range resimler {
-		veriler = append(veriler, r.veri)
+// kaynaklar, bölüme girecek kaynakların tür ve kimlik sırasındaki listesidir:
+// .ico'nun resimleri (RT_ICON 1…n), onların dizini (RT_GROUP_ICON 1) ve
+// verildiyse manifest (RT_MANIFEST 1).
+func kaynaklar(resimler []resim, manifest []byte) []kaynakOgesi {
+	var out []kaynakOgesi
+	for i, r := range resimler {
+		out = append(out, kaynakOgesi{rtIcon, uint32(i + 1), 0, r.veri}) // dilden bağımsız
 	}
-	veriler = append(veriler, grupDizini(resimler))
-	konumlar := make([]int, n+1)
-	son := hizala(veriGirdisi(n + 1))
-	for i, v := range veriler {
+	out = append(out, kaynakOgesi{rtGroupIcon, 1, 0, grupDizini(resimler)})
+	if manifest != nil {
+		out = append(out, kaynakOgesi{rtManifest, 1, manifestDili, manifest})
+	}
+	return out
+}
+
+// kaynakBolumu, .rsrc bölümünün içeriğini ve bağlayıcının adres ekleyeceği
+// alanların bölüm içindeki konumlarını döndürür. Ağacın üç katı vardır: tür,
+// kimlik, dil; her kaynağın tek bir dili olur. Sıra: tür dizini, kimlik
+// dizinleri, dil dizinleri, veri girdileri, sonra veriler (8 bayta hizalı).
+// ogeler tür ve kimliğe göre artan sırada olmalıdır; dizin girdileri de o
+// sıradadır (RT_ICON 3, RT_GROUP_ICON 14, RT_MANIFEST 24).
+func kaynakBolumu(ogeler []kaynakOgesi) ([]byte, []uint32) {
+	type tur struct {
+		kimlik   uint32
+		ilk, son int // ogeler[ilk:son]
+		adDizini int
+	}
+	var turler []tur
+	for i, o := range ogeler {
+		if n := len(turler); n > 0 && turler[n-1].kimlik == o.tur {
+			turler[n-1].son = i + 1
+		} else {
+			turler = append(turler, tur{kimlik: o.tur, ilk: i, son: i + 1})
+		}
+	}
+	konum := dizinBoyu + len(turler)*girdiBoyu
+	for i := range turler {
+		turler[i].adDizini = konum
+		konum += dizinBoyu + (turler[i].son-turler[i].ilk)*girdiBoyu
+	}
+	n := len(ogeler)
+	dilBasi := konum
+	dilDizini := func(i int) int { return dilBasi + i*(dizinBoyu+girdiBoyu) }
+	veriGirdisi := func(i int) int { return dilDizini(n) + i*veriBoyu }
+
+	konumlar := make([]int, n)
+	son := hizala(veriGirdisi(n))
+	for i, o := range ogeler {
 		konumlar[i] = son
-		son = hizala(son + len(v))
+		son = hizala(son + len(o.veri))
 	}
 
 	b := make([]byte, son)
@@ -125,25 +169,24 @@ func kaynakBolumu(resimler []resim) ([]byte, []uint32) {
 		le.PutUint32(b[at+4:], h)
 	}
 
-	dizin(0, 2)
-	girdi(dizinBoyu, rtIcon, adIkon, true)
-	girdi(dizinBoyu+girdiBoyu, rtGroupIcon, adGrup, true)
-	dizin(adIkon, n)
-	for i := 0; i < n; i++ {
-		girdi(adIkon+dizinBoyu+i*girdiBoyu, uint32(i+1), dilDizini(i), true)
+	dizin(0, len(turler))
+	for i, t := range turler {
+		girdi(dizinBoyu+i*girdiBoyu, t.kimlik, t.adDizini, true)
+		dizin(t.adDizini, t.son-t.ilk)
+		for j := t.ilk; j < t.son; j++ {
+			girdi(t.adDizini+dizinBoyu+(j-t.ilk)*girdiBoyu, ogeler[j].ad, dilDizini(j), true)
+		}
 	}
-	dizin(adGrup, 1)
-	girdi(adGrup+dizinBoyu, 1, dilDizini(n), true)
 
-	adresler := make([]uint32, n+1)
-	for i := 0; i <= n; i++ {
+	adresler := make([]uint32, n)
+	for i, o := range ogeler {
 		dizin(dilDizini(i), 1)
-		girdi(dilDizini(i)+dizinBoyu, 0, veriGirdisi(i), false) // dilden bağımsız
+		girdi(dilDizini(i)+dizinBoyu, o.dil, veriGirdisi(i), false)
 		g := veriGirdisi(i)
 		le.PutUint32(b[g:], uint32(konumlar[i]))
-		le.PutUint32(b[g+4:], uint32(len(veriler[i])))
+		le.PutUint32(b[g+4:], uint32(len(o.veri)))
 		adresler[i] = uint32(g)
-		copy(b[konumlar[i]:], veriler[i])
+		copy(b[konumlar[i]:], o.veri)
 	}
 	return b, adresler
 }
@@ -190,13 +233,30 @@ func nesne(mimari string, bolum []byte, adresler []uint32) ([]byte, error) {
 	return b, nil
 }
 
-// uret, .ico baytlarından her mimari için nesne dosyasının baytlarını üretir.
-func uret(ico []byte, mimariListesi []string) (map[string][]byte, error) {
+// manifestHazirla, manifest dosyasını kaynağa girecek biçime getirir: satır
+// sonları LF olur (Windows'ta depo CRLF ile çekilse de nesne bayt bayt aynı
+// kalsın) ve dosyanın UTF-8 bir XML belgesi olduğu denetlenir.
+func manifestHazirla(b []byte) ([]byte, error) {
+	b = bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
+	if !utf8.Valid(b) || !bytes.HasPrefix(bytes.TrimSpace(b), []byte("<?xml")) {
+		return nil, errors.New("manifest UTF-8 bir XML belgesi değil")
+	}
+	return b, nil
+}
+
+// uret, .ico baytlarından (ve nil değilse manifest'ten) her mimari için nesne
+// dosyasının baytlarını üretir.
+func uret(ico, manifest []byte, mimariListesi []string) (map[string][]byte, error) {
 	resimler, err := icoOku(ico)
 	if err != nil {
 		return nil, err
 	}
-	bolum, adresler := kaynakBolumu(resimler)
+	if manifest != nil {
+		if manifest, err = manifestHazirla(manifest); err != nil {
+			return nil, err
+		}
+	}
+	bolum, adresler := kaynakBolumu(kaynaklar(resimler, manifest))
 	cikti := make(map[string][]byte, len(mimariListesi))
 	for _, m := range mimariListesi {
 		if cikti[m], err = nesne(m, bolum, adresler); err != nil {
@@ -210,6 +270,7 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("uret: ")
 	icoYolu := flag.String("ico", "winres/icon.ico", "simge dosyası")
+	manifestYolu := flag.String("manifest", "", "uygulama manifest'i (isteğe bağlı)")
 	onek := flag.String("cikti", "rsrc", "nesne dosyalarının ad öneki")
 	mimari := flag.String("mimari", "amd64,arm64", "virgülle ayrılmış Windows mimarileri")
 	flag.Parse()
@@ -218,8 +279,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	var manifest []byte
+	if *manifestYolu != "" {
+		if manifest, err = os.ReadFile(*manifestYolu); err != nil {
+			log.Fatal(err)
+		}
+	}
 	liste := strings.Split(*mimari, ",")
-	nesneler, err := uret(ico, liste)
+	nesneler, err := uret(ico, manifest, liste)
 	if err != nil {
 		log.Fatal(err)
 	}
