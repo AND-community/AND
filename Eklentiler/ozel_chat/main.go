@@ -19,6 +19,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/ui"
@@ -27,10 +28,13 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "ozel_chat",
 	Label:       "Özel Chat",
-	Version:     "2.1.1",
+	Version:     "2.2.0",
 	Description: "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinDM, pluginapi.IzinDosya},
+	// UI: AND masaüstünde terminal yerine AND'ın bileşenleriyle açılır (bkz.
+	// arayuz.go).
+	UI: arayuz.Surum,
 }
 
 func main() {
@@ -58,6 +62,14 @@ func main() {
 	}
 
 	m := yeniModel(client, ben, pluginapi.DataDir())
+	if arayuz.Etkin() {
+		// AND masaüstü: ekran AND'ın bileşenleriyle çizilir (bkz. arayuz.go).
+		if err := arayuz.Calistir(m); err != nil {
+			fmt.Fprintln(os.Stderr, "ozel_chat:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "ozel_chat:", err)
 		os.Exit(1)

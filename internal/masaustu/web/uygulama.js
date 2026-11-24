@@ -2196,7 +2196,9 @@
   // konumları korunur (anahtar: öğe kimliği, yoksa ağaçtaki yolu).
   function durumuYakala(kok) {
     const d = { kaydir: {}, odak: null };
-    for (const k of kok.querySelectorAll("[data-kaydir]")) d.kaydir[k.getAttribute("data-kaydir")] = [k.scrollTop, k.scrollLeft];
+    for (const k of kok.querySelectorAll("[data-kaydir]")) {
+      d.kaydir[k.getAttribute("data-kaydir")] = [k.scrollTop, k.scrollLeft, k.scrollHeight - k.scrollTop - k.clientHeight < 24];
+    }
     const a = document.activeElement;
     if (a && kok.contains(a) && a.hasAttribute("data-anahtar")) {
       d.odak = { anahtar: a.getAttribute("data-anahtar") };
@@ -2208,7 +2210,9 @@
   function durumuGeriYukle(kok, d) {
     for (const k of kok.querySelectorAll("[data-kaydir]")) {
       const v = d.kaydir[k.getAttribute("data-kaydir")];
-      if (v) { k.scrollTop = v[0]; k.scrollLeft = v[1]; }
+      // Mesaj akışı ilk çizimde ve en alttayken yeni mesajla en altta kalır.
+      if (k.classList.contains("a-mesajlar") && (!v || v[2])) k.scrollTop = k.scrollHeight;
+      else if (v) { k.scrollTop = v[0]; k.scrollLeft = v[1]; }
     }
     if (!d.odak) return;
     const a = [...kok.querySelectorAll("[data-anahtar]")].find((x) => x.getAttribute("data-anahtar") === d.odak.anahtar);
@@ -2327,9 +2331,16 @@
     }, o.ikon ? ikon(o.ikon) : null, o.metin);
   }
 
+  // formGonder, formun bütün alanlarını gönderir. Gönderilen alanların
+  // değerini artık eklenti belirler (ör. mesaj gönderilince kutuyu boşaltır;
+  // hata olursa değeri geri verir): kullanıcının yazdığı olarak tutulmazlar.
   function formGonder(s, form) {
     const degerler = {};
-    for (const a of form.querySelectorAll("[data-alan]")) degerler[a.getAttribute("data-alan")] = a.type === "checkbox" ? (a.checked ? "1" : "0") : a.value;
+    for (const a of form.querySelectorAll("[data-alan]")) {
+      const id = a.getAttribute("data-alan");
+      degerler[id] = a.type === "checkbox" ? (a.checked ? "1" : "0") : a.value;
+      delete s.yazilan[id];
+    }
     arayuzOlayi(s, "gonder", form.getAttribute("data-form"), "", degerler);
   }
 

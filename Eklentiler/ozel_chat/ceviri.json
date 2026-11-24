@@ -48,5 +48,25 @@
   "başlat": {"en": "start", "de": "starten", "es": "iniciar", "fr": "démarrer", "ru": "начать"},
   "%d dk": {"en": "%d min", "de": "%d Min.", "es": "%d min", "fr": "%d min", "ru": "%d мин"},
   "Peer ID (12D3KooW…)": {"en": "Peer ID (12D3KooW…)", "de": "Peer-ID (12D3KooW…)", "es": "Peer ID (12D3KooW…)", "fr": "Peer ID (12D3KooW…)", "ru": "Peer ID (12D3KooW…)"},
-  "%d sa": {"en": "%dh", "de": "%d Std.", "es": "%d h", "fr": "%d h", "ru": "%d ч"}
+  "%d sa": {"en": "%dh", "de": "%d Std.", "es": "%d h", "fr": "%d h", "ru": "%d ч"},
+
+  "Gelen dosya": {"en": "Incoming file", "de": "Eingehende Datei", "es": "Archivo entrante", "fr": "Fichier entrant", "ru": "Входящий файл"},
+  "Bağlı AND düğümleri": {"en": "Connected AND nodes", "de": "Verbundene AND-Knoten", "es": "Nodos AND conectados", "fr": "Nœuds AND connectés", "ru": "Подключённые узлы AND"},
+  "Dosya yolu": {"en": "File path", "de": "Dateipfad", "es": "Ruta del archivo", "fr": "Chemin du fichier", "ru": "Путь к файлу"},
+  "Dosya gönder": {"en": "Send file", "de": "Datei senden", "es": "Enviar archivo", "fr": "Envoyer un fichier", "ru": "Отправить файл"},
+  "Henüz konuşma yok.": {"en": "No conversations yet.", "de": "Noch keine Unterhaltungen.", "es": "Aún no hay conversaciones.", "fr": "Aucune conversation pour l'instant.", "ru": "Бесед пока нет."},
+  "Bir konuşma seç": {"en": "Select a conversation", "de": "Wähle eine Unterhaltung", "es": "Elige una conversación", "fr": "Choisis une conversation", "ru": "Выберите беседу"},
+  "Yanıtlamazsan istek kısa süre sonra kendiliğinden reddedilir.": {"en": "If you don't answer, the request is declined automatically shortly.", "de": "Wenn du nicht antwortest, wird die Anfrage bald automatisch abgelehnt.", "es": "Si no respondes, la solicitud se rechazará automáticamente en breve.", "fr": "Sans réponse de ta part, la demande sera bientôt refusée automatiquement.", "ru": "Если вы не ответите, запрос скоро будет отклонён автоматически."},
+  "En fazla %s; karşı tarafın kabul etmesi gerekir.": {"en": "Up to %s; the other side has to accept it.", "de": "Höchstens %s; die Gegenseite muss annehmen.", "es": "Hasta %s; la otra parte debe aceptarlo.", "fr": "Jusqu'à %s ; l'autre partie doit l'accepter.", "ru": "До %s; получатель должен принять файл."},
+  "Henüz mesaj yok.": {"en": "No messages yet.", "de": "Noch keine Nachrichten.", "es": "Aún no hay mensajes.", "fr": "Aucun message pour l'instant.", "ru": "Сообщений пока нет."},
+  "Gönder": {"en": "Send", "de": "Senden", "es": "Enviar", "fr": "Envoyer", "ru": "Отправить"},
+  "Boyut": {"en": "Size", "de": "Größe", "es": "Tamaño", "fr": "Taille", "ru": "Размер"},
+  "Kabul et": {"en": "Accept", "de": "Annehmen", "es": "Aceptar", "fr": "Accepter", "ru": "Принять"},
+  "Dosya": {"en": "File", "de": "Datei", "es": "Archivo", "fr": "Fichier", "ru": "Файл"},
+  "Şu an bağlı AND düğümü yok.": {"en": "No AND nodes connected right now.", "de": "Derzeit sind keine AND-Knoten verbunden.", "es": "Ahora mismo no hay nodos AND conectados.", "fr": "Aucun nœud AND connecté pour le moment.", "ru": "Сейчас нет подключённых узлов AND."},
+  "Eşlerle doğrudan mesajlaş; mesajlar aradaki eşlere değil, yalnızca karşı tarafa gider.": {"en": "Message peers directly; messages go only to the other side, not to peers in between.", "de": "Schreibe Peers direkt; Nachrichten gehen nur an die Gegenseite, nicht an Peers dazwischen.", "es": "Escribe directamente a los pares; los mensajes solo llegan a la otra parte, no a los pares intermedios.", "fr": "Écris directement aux pairs ; les messages ne vont qu'à l'autre partie, pas aux pairs intermédiaires.", "ru": "Пишите узлам напрямую: сообщения получает только собеседник, а не промежуточные узлы."},
+  "Gönderen": {"en": "Sender", "de": "Absender", "es": "Remitente", "fr": "Expéditeur", "ru": "Отправитель"},
+  "Reddet": {"en": "Decline", "de": "Ablehnen", "es": "Rechazar", "fr": "Refuser", "ru": "Отклонить"},
+  "Başlat": {"en": "Start", "de": "Starten", "es": "Empezar", "fr": "Démarrer", "ru": "Начать"},
+  "Vazgeç": {"en": "Cancel", "de": "Abbrechen", "es": "Cancelar", "fr": "Annuler", "ru": "Отмена"}
 }

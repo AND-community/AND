@@ -16,6 +16,7 @@ package masaustu
 // başlatır.
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"fmt"
@@ -141,10 +142,15 @@ func TestOnizleme(t *testing.T) {
 			Category: pluginapi.KategoriArac, Description: "Eklenti arayüzünün bütün bileşenleri.", UI: arayuz.Surum}, Enabled: true})
 	}
 	arayuzProgrami := os.Getenv("ONIZLEME_ARAYUZ")
+	// ONIZLEME_ARAYUZ_AD, ONIZLEME_ARAYUZ'un hangi eklenti olarak açılacağıdır
+	// (varsayılan DeltaX; ör. ozel_chat).
+	arayuzAdi := cmp.Or(os.Getenv("ONIZLEME_ARAYUZ_AD"), "DeltaX")
+	arayuzEtiketi := arayuzAdi
 	if arayuzProgrami != "" {
 		for i := range eklentiler {
-			if eklentiler[i].Name() == "DeltaX" {
+			if eklentiler[i].Name() == arayuzAdi {
 				eklentiler[i].Manifest.UI = arayuz.Surum
+				arayuzEtiketi = eklentiler[i].Label()
 			}
 		}
 	}
@@ -194,7 +200,14 @@ func TestOnizleme(t *testing.T) {
 		arayuzBaslat("vitrin", "Vitrin", cmd)
 	}
 	if arayuzProgrami != "" {
-		sn, err := pluginapitest.Yeni().Ornek().Baslat(t.TempDir(), pluginapi.IzinDM, pluginapi.IzinDosya)
+		sahte := pluginapitest.Yeni().Ornek()
+		if arayuzAdi == "ozel_chat" {
+			for i := range 14 {
+				sahte.DMGelsin("12D3KooWAzizeAbCdEfGhJkLmNpQrStUvWxYz123456789abcde", "Azize", fmt.Sprintf("Merhaba, %d. mesaj", i+1))
+			}
+			sahte.DMGelsin("12D3KooWBerkAbCdEfGhJkLmNpQrStUvWxYz123456789abcdef", "Berk", "Yarın toplantı var mı?")
+		}
+		sn, err := sahte.Baslat(t.TempDir(), pluginapi.IzinDM, pluginapi.IzinDosya)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +216,7 @@ func TestOnizleme(t *testing.T) {
 		cmd.Dir = filepath.Dir(arayuzProgrami)
 		cmd.Env = append(append(os.Environ(), sn.Ortam()...), dil.OrtamDegiskeni+"="+dil.Etkin(),
 			ui.GomuluOrtamDegiskeni+"=1", arayuz.OrtamDegiskeni+"=1")
-		arayuzBaslat("DeltaX", "DeltaX", cmd)
+		arayuzBaslat(arayuzAdi, arayuzEtiketi, cmd)
 	}
 	if os.Getenv("ONIZLEME_ASAMA") == "" {
 		u.giris.mu.Lock()

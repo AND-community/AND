@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/pluginapi"
@@ -202,6 +203,11 @@ type model struct {
 	w, h  int
 	tikNo int
 	simdi func() time.Time
+
+	// arayuzKipi: AND masaüstünde arayüz kipinde çalışıyor (bkz. arayuz.go);
+	// gorunur: eklentinin ekranı kullanıcıya görünüyor. Arayüzde bir
+	// konuşma ancak görünürken okundu sayılır.
+	arayuzKipi, gorunur bool
 }
 
 func yeniModel(c istemci, ben pluginapi.IdentityInfo, dataDir string) model {
@@ -306,7 +312,7 @@ func (m model) adOf(peerID string) string {
 // bunu diske yazar — Özel Chat yeniden açıldığında yalnızca gerçekten
 // görülmemiş mesajlar "yeni" görünsün.
 func (m *model) okunduIsaretle() {
-	if m.odak != odakYazi || m.secili == "" {
+	if m.odak != odakYazi || m.secili == "" || (m.arayuzKipi && !m.gorunur) {
 		return
 	}
 	var son time.Time
@@ -340,6 +346,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.tus(msg)
+
+	case arayuz.Merhaba:
+		m.arayuzKipi = true
+		return m, nil
+	case arayuz.Gorunurluk:
+		m.gorunur = msg.Gorunur
+		m.okunduIsaretle()
+		return m, nil
+	case arayuz.Olay:
+		return m.olayIsle(msg)
 
 	case gecmisMsg:
 		if msg.err != nil {
