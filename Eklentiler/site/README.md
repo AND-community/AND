@@ -10,7 +10,9 @@ Kendi çok sayfalı kişisel sitenizi oluşturun, düzenleyin ve yayınlayın.
 [internal/site](../../internal/site/)) TUI katmanıdır — eskiden AND'ın
 çekirdek TUI'sinde ana menüdeki "Site" girişi olarak yer alan bu ekran,
 diğer içerik-oluşturma araçlarıyla (Yönetici Paneli, DeltaX vb.) aynı
-şekilde bağımsız bir eklentiye taşındı.
+şekilde bağımsız bir eklentiye taşındı. AND masaüstünde terminal yerine AND'ın
+kendi arayüzüyle açılır (sayfa listesi, şablon seçimi, düzenleme formu ve
+taslaklar; bkz. `arayuz.go`); terminalde aynı mantıkla bugünkü gibi çalışır.
 
 Her yazar, birbirinden bağımsız slug'larla (ör. `home`, `projeler`)
 adreslenen, Ed25519 imzalı, GossipSub üzerinden ağa yayılan düz metin

@@ -18,6 +18,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/pluginui"
@@ -27,10 +28,13 @@ import (
 var manifest = pluginapi.Manifest{
 	Name:        "site",
 	Label:       "Site",
-	Version:     "1.3.1",
+	Version:     "1.4.0",
 	Description: "Kendi çok sayfalı kişisel sitenizi oluşturun, düzenleyin ve yayınlayın",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinSite},
+	// UI: AND masaüstünde terminal yerine AND'ın arayüzüyle açılır (bkz.
+	// arayuz.go).
+	UI: arayuz.Surum,
 }
 
 func main() {
@@ -63,6 +67,14 @@ func main() {
 	}
 
 	m := newModel(client, displayName, pluginapi.DataDir())
+	if arayuz.Etkin() {
+		// AND masaüstü: ekran AND'ın bileşenleriyle çizilir (bkz. arayuz.go).
+		if err := arayuz.Calistir(m); err != nil {
+			fmt.Fprintln(os.Stderr, "site:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "site:", err)

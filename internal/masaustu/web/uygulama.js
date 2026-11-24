@@ -2315,14 +2315,19 @@
   function dugmeCiz(s, o, satir) {
     const varyant = { birincil: " birincil", tehlikeli: " tehlike", hayalet: " hayalet" }[o.varyant] || "";
     const tikla = async (ev) => {
+      // currentTarget olay bitince boşalır: onay beklenmeden önce alınır.
+      const dugme = ev.currentTarget;
       if (o.kopyala) { kopyala(o.kopyala); return; }
       if (o.onay && !(await onayla(o.onay.baslik || t("Emin misin?"), o.onay.metin || "", o.onay.dugme || o.metin, o.varyant === "tehlikeli"))) return;
       if (o.gonder) {
-        const kap = ev.currentTarget.closest(".pencere") || ev.currentTarget.closest(".eklenti-arayuzu");
-        const form = ev.currentTarget.closest("form") || (kap && kap.querySelector("form"));
+        const kap = dugme.closest(".pencere") || dugme.closest(".eklenti-arayuzu");
+        const form = dugme.closest("form") || (kap && kap.querySelector("form"));
         if (form) { formGonder(s, form); return; }
       }
-      arayuzOlayi(s, "tikla", o.id, satir);
+      // Formun içindeki başka bir düğme (ör. "Taslak olarak sakla") formun o
+      // anki değerlerini de taşır; alanlar kullanıcının yazdığı olarak kalır.
+      const icindeki = dugme.closest("form");
+      arayuzOlayi(s, "tikla", o.id, satir, icindeki ? formDegerleri(s, icindeki, false) : undefined);
     };
     return el("button", {
       class: "dugme" + varyant + (satir != null ? " kucuk" : ""), type: "button", disabled: o.devreDisi,
@@ -2331,17 +2336,24 @@
     }, o.ikon ? ikon(o.ikon) : null, o.metin);
   }
 
-  // formGonder, formun bütün alanlarını gönderir. Gönderilen alanların
-  // değerini artık eklenti belirler (ör. mesaj gönderilince kutuyu boşaltır;
-  // hata olursa değeri geri verir): kullanıcının yazdığı olarak tutulmazlar.
-  function formGonder(s, form) {
+  // formDegerleri, formun bütün alanlarının o anki değerleridir. birak
+  // doğruysa alanlar kullanıcının yazdığı olarak tutulmaz (gönderilen
+  // alanların değerini artık eklenti belirler).
+  function formDegerleri(s, form, birak) {
     const degerler = {};
     for (const a of form.querySelectorAll("[data-alan]")) {
       const id = a.getAttribute("data-alan");
       degerler[id] = a.type === "checkbox" ? (a.checked ? "1" : "0") : a.value;
-      delete s.yazilan[id];
+      if (birak) delete s.yazilan[id];
     }
-    arayuzOlayi(s, "gonder", form.getAttribute("data-form"), "", degerler);
+    return degerler;
+  }
+
+  // formGonder, formun bütün alanlarını gönderir. Gönderilen alanların
+  // değerini artık eklenti belirler (ör. mesaj gönderilince kutuyu boşaltır;
+  // hata olursa değeri geri verir): kullanıcının yazdığı olarak tutulmazlar.
+  function formGonder(s, form) {
+    arayuzOlayi(s, "gonder", form.getAttribute("data-form"), "", formDegerleri(s, form, true));
   }
 
   function alanCiz(s, o, anahtar, yol) {
@@ -2533,7 +2545,10 @@
     const yaziyor = ev.target && ev.target.matches && ev.target.matches("input, textarea, select");
     if (!kendiDiyalogu && (ad === "escape" || ad === "alt+left") && !(yaziyor && ad === "escape")) {
       ev.preventDefault();
-      arayuzOlayi(s, "geri");
+      // Geri, ekrandaki formun o anki değerlerini taşır: eklenti
+      // kaydedilmemiş bir değişiklik varsa çıkmadan önce sorabilir.
+      const form = D.arayuzAlani.querySelector("form");
+      arayuzOlayi(s, "geri", "", "", form ? formDegerleri(s, form, false) : undefined);
       return true;
     }
     if (yaziyor && !ev.ctrlKey && !ev.metaKey && !ev.altKey) return false;

@@ -19,6 +19,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/dosya"
 	"github.com/lucian95511/and/pluginapi"
@@ -307,6 +308,27 @@ type model struct {
 	gonderiliyor bool
 	errMsg       string
 	okMsg        string
+
+	// arayuzKipi: AND masaüstünde arayüz kipinde çalışıyor (bkz. arayuz.go).
+	// Orada gövde govdeMetni'nde tutulur: bubbles textarea sekmeleri boşluğa
+	// çevirir, masaüstünde yazılan metin olduğu gibi yayınlanmalı.
+	arayuzKipi bool
+	govdeMetni string
+}
+
+// govdeAyarla, düzenleme formunun gövdesini ayarlar (iki arayüz için de).
+func (m *model) govdeAyarla(s string) {
+	m.govdeAlan.SetValue(s)
+	m.govdeMetni = s
+}
+
+// govdeDegeri, düzenleme formundaki gövdedir: arayüz kipinde masaüstünden
+// gelen metin, terminalde yazı alanının değeri.
+func (m model) govdeDegeri() string {
+	if m.arayuzKipi {
+		return m.govdeMetni
+	}
+	return m.govdeAlan.Value()
 }
 
 // govdeDisiSatir, düzenleme ekranında içerik alanı DIŞINDA kalan satır
@@ -432,6 +454,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errMsg = ""
 		}
 		return m.tusIsle(msg)
+
+	case arayuz.Merhaba:
+		m.arayuzKipi = true
+		return m, nil
+	case arayuz.Olay:
+		return m.olayIsle(msg)
 	}
 	return m, nil
 }
@@ -471,7 +499,7 @@ func (m model) yeniSayfaBaslat(baslik, govde string) (tea.Model, tea.Cmd) {
 	m.slugAlan.SetValue("")
 	m.baslikAlan.SetValue(baslik)
 	m.baslikAlan.CursorEnd()
-	m.govdeAlan.SetValue(govde)
+	m.govdeAyarla(govde)
 	m.odak = alanSlug
 	m.slugAlan.Focus()
 	m.baslikAlan.Blur()
@@ -570,7 +598,7 @@ func (m model) tusListe(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.slugAlan.CursorEnd()
 			m.baslikAlan.SetValue(p.Title)
 			m.baslikAlan.CursorEnd()
-			m.govdeAlan.SetValue(p.Body)
+			m.govdeAyarla(p.Body)
 			m.odak = alanBaslik
 			m.baslikAlan.Focus()
 			m.govdeAlan.Blur()
@@ -635,7 +663,7 @@ func (m model) tusTaslaklar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.slugAlan.CursorEnd()
 			m.baslikAlan.SetValue(t.Baslik)
 			m.baslikAlan.CursorEnd()
-			m.govdeAlan.SetValue(t.Govde)
+			m.govdeAyarla(t.Govde)
 			if m.yeniMi {
 				m.odak = alanSlug
 				m.slugAlan.Focus()
@@ -708,7 +736,7 @@ func (m *model) alanOdakla(a alanOdak) {
 // karşılaştırmaya girmez).
 func (m model) formKirliMi() bool {
 	baslik := strings.TrimSpace(m.baslikAlan.Value())
-	govde := strings.TrimSpace(m.govdeAlan.Value())
+	govde := strings.TrimSpace(m.govdeDegeri())
 	if m.yeniMi {
 		slug := strings.TrimSpace(m.slugAlan.Value())
 		return slug != "" || baslik != "" || govde != ""
@@ -772,7 +800,7 @@ func (m model) tusDuzenle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.errMsg = dil.T("Taslak kaydetmek için önce bir slug yaz")
 			return m, bildirimTemizle()
 		}
-		taslakKaydet(m.dataDir, slug, strings.TrimSpace(m.baslikAlan.Value()), m.govdeAlan.Value())
+		taslakKaydet(m.dataDir, slug, strings.TrimSpace(m.baslikAlan.Value()), m.govdeDegeri())
 		m.okMsg = dil.T("Taslak yerel olarak kaydedildi (ağa yayınlanmadı).")
 		return m, bildirimTemizle()
 	}
@@ -805,7 +833,7 @@ func (m model) kaydet() (tea.Model, tea.Cmd) {
 		slug = strings.TrimSpace(m.slugAlan.Value())
 	}
 	baslik := strings.TrimSpace(m.baslikAlan.Value())
-	govde := strings.TrimSpace(m.govdeAlan.Value())
+	govde := strings.TrimSpace(m.govdeDegeri())
 
 	if slug == "" {
 		m.errMsg = dil.T("Slug boş olamaz")

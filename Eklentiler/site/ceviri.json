@@ -55,5 +55,22 @@
   "taslak kaydet": {"en": "save draft", "de": "Entwurf speichern", "es": "guardar borrador", "fr": "enregistrer le brouillon", "ru": "сохранить черновик"},
   "%q sayfası silinsin mi?": {"en": "Delete page %q?", "de": "Seite %q löschen?", "es": "¿Eliminar la página %q?", "fr": "Supprimer la page %q ?", "ru": "Удалить страницу %q?"},
   "Silme, ağa kalıcı bir silme kaydı yayınlar — bu slug bir daha kullanılamaz.": {"en": "Deleting publishes a permanent deletion record to the network — this slug can never be used again.", "de": "Löschen veröffentlicht einen dauerhaften Löscheintrag im Netzwerk — dieser Slug kann nie wieder verwendet werden.", "es": "Eliminar publica en la red un registro de borrado permanente — este slug no podrá volver a usarse.", "fr": "La suppression publie un enregistrement de suppression définitif sur le réseau — ce slug ne pourra plus jamais être utilisé.", "ru": "Удаление публикует в сети постоянную запись об удалении — этот slug больше нельзя будет использовать."},
-  "evet, sil": {"en": "yes, delete", "de": "ja, löschen", "es": "sí, eliminar", "fr": "oui, supprimer", "ru": "да, удалить"}
+  "evet, sil": {"en": "yes, delete", "de": "ja, löschen", "es": "sí, eliminar", "fr": "oui, supprimer", "ru": "да, удалить"},
+  "Aç": {"en": "Open", "de": "Öffnen", "es": "Abrir", "fr": "Ouvrir", "ru": "Открыть"},
+  "Bu sayfada kaydedilmemiş değişiklikler var; çıkarsan kaybolurlar.": {"en": "This page has unsaved changes; they will be lost if you leave.", "de": "Diese Seite hat ungespeicherte Änderungen; sie gehen verloren, wenn du sie verlässt.", "es": "Esta página tiene cambios sin guardar; se perderán si sales.", "fr": "Cette page contient des modifications non enregistrées ; elles seront perdues si tu quittes.", "ru": "На этой странице есть несохранённые изменения; они пропадут, если выйти."},
+  "Yukarı": {"en": "Up", "de": "Nach oben", "es": "Subir", "fr": "Monter", "ru": "Вверх"},
+  "Aşağı": {"en": "Down", "de": "Nach unten", "es": "Bajar", "fr": "Descendre", "ru": "Вниз"},
+  "Henüz kaydedilmiş taslağın yok.": {"en": "You have no saved drafts yet.", "de": "Du hast noch keine gespeicherten Entwürfe.", "es": "Aún no tienes borradores guardados.", "fr": "Tu n'as encore aucun brouillon enregistré.", "ru": "У тебя пока нет сохранённых черновиков."},
+  "Taslaklar (%d)": {"en": "Drafts (%d)", "de": "Entwürfe (%d)", "es": "Borradores (%d)", "fr": "Brouillons (%d)", "ru": "Черновики (%d)"},
+  "Taslak silinsin mi?": {"en": "Delete the draft?", "de": "Entwurf löschen?", "es": "¿Eliminar el borrador?", "fr": "Supprimer le brouillon ?", "ru": "Удалить черновик?"},
+  "Taslak olarak sakla": {"en": "Save as draft", "de": "Als Entwurf speichern", "es": "Guardar como borrador", "fr": "Enregistrer comme brouillon", "ru": "Сохранить как черновик"},
+  "Düzenlemeye dön": {"en": "Keep editing", "de": "Weiter bearbeiten", "es": "Seguir editando", "fr": "Continuer la modification", "ru": "Продолжить редактирование"},
+  "Değişiklikleri at": {"en": "Discard changes", "de": "Änderungen verwerfen", "es": "Descartar cambios", "fr": "Abandonner les modifications", "ru": "Отменить изменения"},
+  "Kaydedilmemiş değişiklikler": {"en": "Unsaved changes", "de": "Ungespeicherte Änderungen", "es": "Cambios sin guardar", "fr": "Modifications non enregistrées", "ru": "Несохранённые изменения"},
+  "Yenile": {"en": "Refresh", "de": "Aktualisieren", "es": "Actualizar", "fr": "Actualiser", "ru": "Обновить"},
+  "Bir şablonla başla; yayınladığın sayfaları ağdaki herkes görebilir.": {"en": "Start from a template; everyone on the network can see the pages you publish.", "de": "Beginne mit einer Vorlage; alle im Netzwerk können deine veröffentlichten Seiten sehen.", "es": "Empieza con una plantilla; todos en la red pueden ver las páginas que publiques.", "fr": "Commence avec un modèle ; tout le monde sur le réseau peut voir les pages que tu publies.", "ru": "Начни с шаблона; опубликованные страницы видны всем в сети."},
+  "Yayınla": {"en": "Publish", "de": "Veröffentlichen", "es": "Publicar", "fr": "Publier", "ru": "Опубликовать"},
+  "Henüz sayfan yok": {"en": "You have no pages yet", "de": "Du hast noch keine Seiten", "es": "Aún no tienes páginas", "fr": "Tu n'as encore aucune page", "ru": "У тебя пока нет страниц"},
+  "Vazgeç": {"en": "Cancel", "de": "Abbrechen", "es": "Cancelar", "fr": "Annuler", "ru": "Отмена"},
+  "Kopyala": {"en": "Copy", "de": "Kopieren", "es": "Copiar", "fr": "Copier", "ru": "Копировать"}
 }

@@ -207,11 +207,23 @@ func TestOnizleme(t *testing.T) {
 			}
 			sahte.DMGelsin("12D3KooWBerkAbCdEfGhJkLmNpQrStUvWxYz123456789abcdef", "Berk", "Yarın toplantı var mı?")
 		}
-		sn, err := sahte.Baslat(t.TempDir(), pluginapi.IzinDM, pluginapi.IzinDosya)
+		sn, err := sahte.Baslat(t.TempDir(), pluginapi.IzinDM, pluginapi.IzinDosya, pluginapi.IzinSite,
+			pluginapi.IzinForum, pluginapi.IzinModerasyon, pluginapi.IzinSohbet)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer sn.Kapat()
+		if arayuzAdi == "site" {
+			for _, p := range [][3]string{
+				{"home", "Ana Sayfa", "AND'da kendi sitem.\n\n## Neler var\n\n- Projeler\n- Yazılar"},
+				{"projeler", "Projelerim", "## DeltaX\n\nEşler arası sürüm denetimi."},
+				{"blog-ilk", "İlk yazım", "Merhaba dünya."},
+			} {
+				if err := sn.Istemci.PublishSitePage(p[0], p[1], p[2]); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 		cmd := exec.Command(arayuzProgrami)
 		cmd.Dir = filepath.Dir(arayuzProgrami)
 		cmd.Env = append(append(os.Environ(), sn.Ortam()...), dil.OrtamDegiskeni+"="+dil.Etkin(),
