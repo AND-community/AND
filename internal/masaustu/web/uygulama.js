@@ -2342,7 +2342,12 @@
     }
     let girdi;
     if (o.tur === "secim") {
-      girdi = el("select", { ...ortak, class: "secim", on: { change: (ev) => { kaydet(ev.target.value); if (o.aninda) arayuzOlayi(s, "degisti", o.id, ev.target.value); } } },
+      girdi = el("select", { ...ortak, class: "secim", on: { change: (ev) => {
+          // Anında seçimde (ör. dal) değeri eklenti belirler: işlem iptal
+          // edilirse yeni ekran eski değeri gösterir.
+          if (o.aninda) arayuzOlayi(s, "degisti", o.id, ev.target.value);
+          else kaydet(ev.target.value);
+        } } },
         (o.secenekler || []).map((c) => el("option", { value: c.deger }, c.etiket)));
       girdi.value = deger;
     } else if (o.tur === "metinAlani") {
