@@ -23,7 +23,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +72,9 @@ type Sahte struct {
 	gidenDosyalar []GidenDosya
 	onaylar       map[string]bool
 	temalar       []pluginapi.ThemeReq
+	yasaklar      []pluginapi.BanEntryInfo
+	gecmis        []pluginapi.HistoryEntryInfo
+	moderatorler  []pluginapi.GrantedModInfo
 	sayac         int
 	veriDizini    string
 
@@ -628,15 +633,95 @@ func (a sohbetArka) Unsubscribe(ch chan pluginapi.ChatMsg) {
 
 func (a sohbetArka) AllChat() []pluginapi.ChatMsg { return a.s.SohbetGecmisi() }
 
-// modArka, moderasyon uçlarının boş bir karşılığıdır: sahte AND'da yasak,
-// moderatör ya da geçmiş yoktur.
+// modArka, moderasyon uçlarının bellekteki karşılığıdır: yasaklar, geçmiş
+// ve moderatör atamaları tutulur (ağa bir şey yayınlanmaz). Kimin neye
+// yetkisi olduğunu gerçek AND gibi kimliğin Kurucu/Moderator alanları
+// belirler (sunucu denetler); kendini yasaklamak reddedilir.
 type modArka struct{ s *Sahte }
 
-func (modArka) AllBans() ([]pluginapi.BanEntryInfo, error)       { return nil, nil }
-func (modArka) Unban(context.Context, string) error              { return nil }
-func (modArka) History() ([]pluginapi.HistoryEntryInfo, error)   { return nil, nil }
-func (modArka) GrantedMods() ([]pluginapi.GrantedModInfo, error) { return nil, nil }
-func (modArka) Revoke(context.Context, string) error             { return nil }
-func (modArka) Grant(context.Context, string, time.Duration, bool) (string, error) {
-	return "", errors.New("sahte AND moderatör atayamaz")
+func (a modArka) AllBans() ([]pluginapi.BanEntryInfo, error) {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	return slices.Clone(a.s.yasaklar), nil
+}
+
+func (a modArka) Ban(_ context.Context, anahtar string, sure time.Duration, kalici bool, sebep string) error {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	if strings.EqualFold(anahtar, a.s.kimlik.PubKey) {
+		return fmt.Errorf("%w: kendini yasaklayamazsın", pluginapi.ErrYetkisiz)
+	}
+	y := pluginapi.BanEntryInfo{AuthorKey: anahtar, Permanent: kalici, Reason: sebep, ModeratorKey: a.s.kimlik.PubKey,
+		IsFounderMod: a.s.kimlik.Kurucu}
+	if !kalici {
+		y.ExpiresAt = time.Now().Add(sure)
+	}
+	a.s.yasaklar = append(slices.DeleteFunc(a.s.yasaklar, func(b pluginapi.BanEntryInfo) bool { return b.AuthorKey == anahtar }), y)
+	a.s.gecmis = append([]pluginapi.HistoryEntryInfo{{Action: "ban", PeerID: anahtar, Reason: sebep, ModeratorKey: y.ModeratorKey,
+		IsFounderMod: y.IsFounderMod, At: time.Now(), ExpiresAt: y.ExpiresAt, Permanent: kalici}}, a.s.gecmis...)
+	return nil
+}
+
+func (a modArka) Unban(_ context.Context, anahtar string) error {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	a.s.yasaklar = slices.DeleteFunc(a.s.yasaklar, func(b pluginapi.BanEntryInfo) bool { return b.AuthorKey == anahtar })
+	a.s.gecmis = append([]pluginapi.HistoryEntryInfo{{Action: "unban", PeerID: anahtar, ModeratorKey: a.s.kimlik.PubKey,
+		IsFounderMod: a.s.kimlik.Kurucu, At: time.Now()}}, a.s.gecmis...)
+	return nil
+}
+
+func (a modArka) History() ([]pluginapi.HistoryEntryInfo, error) {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	return slices.Clone(a.s.gecmis), nil
+}
+
+func (a modArka) GrantedMods() ([]pluginapi.GrantedModInfo, error) {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	return slices.Clone(a.s.moderatorler), nil
+}
+
+func (a modArka) Grant(_ context.Context, anahtar string, sure time.Duration, kalici bool) (string, error) {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	g := pluginapi.GrantedModInfo{Key: anahtar, GrantedAt: time.Now(), Permanent: kalici}
+	if !kalici {
+		g.ExpiresAt = g.GrantedAt.Add(sure)
+	}
+	a.s.moderatorler = append(slices.DeleteFunc(a.s.moderatorler, func(m pluginapi.GrantedModInfo) bool { return m.Key == anahtar }), g)
+	return "", nil
+}
+
+func (a modArka) Revoke(_ context.Context, anahtar string) error {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	for i := range a.s.moderatorler {
+		if a.s.moderatorler[i].Key == anahtar {
+			a.s.moderatorler[i].Revoked, a.s.moderatorler[i].RevokedAt = true, time.Now()
+		}
+	}
+	return nil
+}
+
+// YasakEkle, sahte AND'a hazır bir yasak ekler (ör. Yönetici Paneli testleri).
+func (s *Sahte) YasakEkle(y pluginapi.BanEntryInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.yasaklar = append(s.yasaklar, y)
+}
+
+// Yasaklar, şu anki yasaklardır.
+func (s *Sahte) Yasaklar() []pluginapi.BanEntryInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.yasaklar)
+}
+
+// Moderatorler, atanmış moderatörlerdir (geri alınanlar Revoked ile).
+func (s *Sahte) Moderatorler() []pluginapi.GrantedModInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.moderatorler)
 }

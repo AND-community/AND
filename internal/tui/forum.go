@@ -721,15 +721,7 @@ var banDurationPresets = []banDurationPreset{
 // FindModCert'in bulduğu dosya ayrıca mod.VerifyModeratorCert ile
 // doğrulanır — FindModCert kendisi iptal (revoke) durumundan habersizdir.
 func resolveBanAuthority(mod *moderation.Moderator, dataDir, myKey, targetAuthorKey string) (canBan, isFounder bool, cert *moderation.ModeratorCert) {
-	if targetAuthorKey == "" || targetAuthorKey == myKey || profile.IsFounder(targetAuthorKey) {
-		return false, false, nil
-	}
-	amFounder := profile.IsFounder(myKey)
-	canAct, c := moderation.ResolveAuthority(dataDir, mod, amFounder, myKey)
-	if !canAct {
-		return false, false, nil
-	}
-	return true, amFounder, c
+	return moderation.ResolveBanAuthority(dataDir, mod, myKey, targetAuthorKey)
 }
 
 // banExpiry converts a banDurationPreset into the (expiresAt, permanent)

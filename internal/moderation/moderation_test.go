@@ -584,3 +584,31 @@ func TestLoadFounderKey_ExistingKey_NotFounder(t *testing.T) {
 		t.Fatal("farklı anahtar isFounder=false döndürmeli")
 	}
 }
+
+func TestResolveBanAuthority_KendiniVeKurucuyuYasaklayamaz(t *testing.T) {
+	founderPub, _ := genKey(t)
+	mod := newTestMod(t, founderPub)
+	dir := t.TempDir()
+	kurucu := hex.EncodeToString(founderPub)
+	digerPub, _ := genKey(t)
+	diger := hex.EncodeToString(digerPub)
+	ucuncuPub, _ := genKey(t)
+	ucuncu := hex.EncodeToString(ucuncuPub)
+
+	for _, d := range []struct {
+		ad, ben, hedef string
+	}{
+		{"kendini", kurucu, kurucu},
+		{"boş hedef", kurucu, ""},
+		{"kurucuyu (büyük harfle)", diger, strings.ToUpper(kurucu)},
+		{"sertifikasız moderatör değil", diger, ucuncu},
+	} {
+		if can, _, _ := ResolveBanAuthority(dir, mod, d.ben, d.hedef); can {
+			t.Errorf("%s: yasaklayabilmemeliydi", d.ad)
+		}
+	}
+	can, isFounder, cert := ResolveBanAuthority(dir, mod, kurucu, diger)
+	if !can || !isFounder || cert != nil {
+		t.Fatalf("kurucu başkasını sertifikasız yasaklayabilmeli: %v %v %v", can, isFounder, cert)
+	}
+}

@@ -1765,6 +1765,23 @@ func ResolveAuthority(dataDir string, mod *Moderator, isFounder bool, myKeyHex s
 	return false, nil
 }
 
+// ResolveBanAuthority reports whether myKey may ban targetAuthorKey, and
+// with what credential: isFounder (signs directly, no cert needed) or cert
+// (a moderator's own verified certificate). Nobody may ban an empty key,
+// themselves or the founder. The terminal's profile screen and the plugin
+// API's mod/ban endpoint both use this, so the rule lives in one place.
+func ResolveBanAuthority(dataDir string, mod *Moderator, myKey, targetAuthorKey string) (canBan, isFounder bool, cert *ModeratorCert) {
+	if targetAuthorKey == "" || strings.EqualFold(targetAuthorKey, myKey) || strings.EqualFold(targetAuthorKey, FounderPubKeyHex) {
+		return false, false, nil
+	}
+	amFounder := strings.EqualFold(myKey, FounderPubKeyHex)
+	canAct, c := ResolveAuthority(dataDir, mod, amFounder, myKey)
+	if !canAct {
+		return false, false, nil
+	}
+	return true, amFounder, c
+}
+
 func FindModCert(dataDir, myPubHex string) *ModeratorCert {
 	dir := filepath.Join(dataDir, "bans")
 	entries, err := os.ReadDir(dir)

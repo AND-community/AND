@@ -2,6 +2,7 @@ package pluginapitest
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,5 +191,38 @@ func TestOrtamDegiskenleri(t *testing.T) {
 	}
 	if pluginapi.DataDir() == "" || os.Getenv("AND_API_TOKEN") == "" {
 		t.Fatal("AND_DATA_DIR / AND_API_TOKEN ayarlanmadı")
+	}
+}
+
+func TestYasakVeModerator(t *testing.T) {
+	s := Yeni()
+	k := VarsayilanKimlik
+	k.Kurucu = true
+	s.KimlikAyarla(k)
+	c := s.Test(t, pluginapi.IzinModerasyon)
+	hedef := strings.Repeat("ab", 32)
+	if err := c.Ban(hedef, time.Hour, false, "spam"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := c.AllBans(); len(b) != 1 || b[0].AuthorKey != hedef || b[0].Reason != "spam" || b[0].Permanent {
+		t.Fatalf("yasaklar: %+v", b)
+	}
+	if err := c.Ban(k.PubKey, time.Hour, false, "x"); !pluginapi.IsForbidden(err) {
+		t.Fatalf("kendini yasaklamak 403 olmalı: %v", err)
+	}
+	if err := c.Unban(hedef); err != nil || len(s.Yasaklar()) != 0 {
+		t.Fatalf("unban: %v %+v", err, s.Yasaklar())
+	}
+	if g, _ := c.ModHistory(); len(g) != 2 || g[0].Action != "unban" {
+		t.Fatalf("geçmiş: %+v", g)
+	}
+	if _, err := c.GrantModerator(hedef, 0, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RevokeModerator(hedef); err != nil {
+		t.Fatal(err)
+	}
+	if m := s.Moderatorler(); len(m) != 1 || !m[0].Revoked || !m[0].Permanent {
+		t.Fatalf("moderatörler: %+v", m)
 	}
 }

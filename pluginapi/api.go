@@ -305,6 +305,15 @@ type UnbanReq struct {
 	AuthorKey string `json:"author_key"`
 }
 
+// BanReq is the request body for POST /api/v1/mod/ban. A ban is either
+// Permanent or lasts DurationSeconds (> 0); Reason must not be empty.
+type BanReq struct {
+	AuthorKey       string `json:"author_key"`
+	DurationSeconds int64  `json:"duration_seconds,omitempty"`
+	Permanent       bool   `json:"permanent,omitempty"`
+	Reason          string `json:"reason"`
+}
+
 // HistoryEntryInfo is one row of GET /api/v1/mod/history — a past ban or
 // unban action, kept even after the ban itself expired/was lifted.
 type HistoryEntryInfo struct {
@@ -361,6 +370,20 @@ type ModerationBackend interface {
 	Grant(ctx context.Context, targetKeyHex string, duration time.Duration, permanent bool) (certPath string, err error)
 	Revoke(ctx context.Context, targetKeyHex string) error
 }
+
+// BanBackend is an optional extension of ModerationBackend (checked with a
+// type assertion, so older backends keep compiling): Ban issues a
+// network-wide ban of authorKey; duration is ignored when permanent. The
+// backend resolves the caller's own authority; an error wrapping
+// ErrYetkisiz means the caller may not ban that key (no authority, or the
+// key is their own or the founder's).
+type BanBackend interface {
+	Ban(ctx context.Context, authorKey string, duration time.Duration, permanent bool, reason string) error
+}
+
+// ErrYetkisiz, bir arka ucun "bu işlem için yetkin yok" hatasıdır; uç
+// noktalar onu 403 olarak döner.
+var ErrYetkisiz = errors.New("yetersiz yetki")
 
 type ForumBackend interface {
 	AllPosts() ([]PostSummary, error)
@@ -568,6 +591,7 @@ func (s *Server) routeTable() []route {
 		{pattern: "/api/v1/site/delete", handler: onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSiteDelete)), allowExternal: true, izin: IzinSite},
 		{pattern: "/api/v1/mod/bans", handler: onlyMethod(http.MethodGet, s.getModBans), allowExternal: true, izin: IzinModerasyon},
 		{pattern: "/api/v1/mod/unban", handler: onlyMethod(http.MethodPost, s.postModUnban), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/mod/ban", handler: onlyMethod(http.MethodPost, s.postModBan), allowExternal: true, izin: IzinModerasyon},
 		{pattern: "/api/v1/mod/history", handler: onlyMethod(http.MethodGet, s.getModHistory), allowExternal: true, izin: IzinModerasyon},
 		{pattern: "/api/v1/mod/grants", handler: onlyMethod(http.MethodGet, s.getModGrants), allowExternal: true, izin: IzinModerasyon},
 		{pattern: "/api/v1/mod/grant", handler: onlyMethod(http.MethodPost, s.postModGrant), allowExternal: true, izin: IzinModerasyon},
@@ -1002,6 +1026,53 @@ func (s *Server) postModUnban(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.mb.Unban(r.Context(), req.AuthorKey); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// postModBan yasaklar (bkz. BanBackend). Biçim burada denetlenir; kimin kimi
+// yasaklayabileceğine arka uç karar verir.
+func (s *Server) postModBan(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceModeratorRole(w) {
+		return
+	}
+	bb, ok := s.mb.(BanBackend)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(errResp{Error: "bu AND sürümü eklentiden yasaklamayı desteklemiyor"}) //nolint:errcheck
+		return
+	}
+	var req BanReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validAuthorKey(req.AuthorKey) {
+		writeBadRequest(w, "geçersiz author_key biçimi")
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		writeBadRequest(w, "sebep boş olamaz")
+		return
+	}
+	var d time.Duration
+	if !req.Permanent {
+		if req.DurationSeconds <= 0 {
+			writeBadRequest(w, "süre ya da kalıcı yasak gerekir")
+			return
+		}
+		d = time.Duration(req.DurationSeconds) * time.Second
+	}
+	if err := bb.Ban(r.Context(), req.AuthorKey, d, req.Permanent, reason); err != nil {
+		if errors.Is(err, ErrYetkisiz) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(errResp{Error: err.Error()}) //nolint:errcheck
+			return
+		}
 		writeErr(w, err)
 		return
 	}
@@ -1687,6 +1758,17 @@ func (c *Client) AllBans() ([]BanEntryInfo, error) {
 // Unban lifts an active ban on authorKey.
 func (c *Client) Unban(authorKey string) error {
 	return c.post("/api/v1/mod/unban", UnbanReq{AuthorKey: authorKey})
+}
+
+// Ban, authorKey'i ağ genelinde yasaklar: permanent değilse duration kadar
+// (saniyeye yuvarlanır). Yetkisi olmayan çağıranda IsForbidden(err) doğrudur;
+// bunu desteklemeyen eski bir AND 404 ya da 501 döner.
+func (c *Client) Ban(authorKey string, duration time.Duration, permanent bool, reason string) error {
+	req := BanReq{AuthorKey: authorKey, Permanent: permanent, Reason: reason}
+	if !permanent {
+		req.DurationSeconds = int64(duration / time.Second)
+	}
+	return c.post("/api/v1/mod/ban", req)
 }
 
 // ModHistory returns the local moderation audit log, newest first.

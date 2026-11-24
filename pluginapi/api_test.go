@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1568,5 +1569,117 @@ func TestDMHistoryFrom_KayittanItibarenKeser(t *testing.T) {
 		if err != nil || metin(got) != tc.beklenen {
 			t.Errorf("from=%q: %q (%v); %q beklenirdi", tc.from, metin(got), err, tc.beklenen)
 		}
+	}
+}
+
+// ─── Yasaklama (mod/ban) ───────────────────────────────────────────────────
+
+type yasakKaydi struct {
+	authorKey, reason string
+	duration          time.Duration
+	permanent         bool
+}
+
+// yasaklayanMod, mockModeration'a isteğe bağlı BanBackend'i ekler.
+type yasaklayanMod struct {
+	mockModeration
+	yasaklar []yasakKaydi
+	banErr   error
+}
+
+func (m *yasaklayanMod) Ban(_ context.Context, authorKey string, d time.Duration, permanent bool, reason string) error {
+	if m.banErr != nil {
+		return m.banErr
+	}
+	m.yasaklar = append(m.yasaklar, yasakKaydi{authorKey: authorKey, reason: reason, duration: d, permanent: permanent})
+	return nil
+}
+
+// eskiMod, Ban'ı olmayan (eski) bir moderasyon arka ucudur.
+type eskiMod struct{ ModerationBackend }
+
+func TestModBan_RouteModerasyonIzniIster(t *testing.T) {
+	s := NewServer(&mockID{}, &mockForum{}, nil, nil, nil, nil, nil, "", nil)
+	for _, r := range s.routeTable() {
+		if r.pattern == "/api/v1/mod/ban" {
+			if r.izin != IzinModerasyon {
+				t.Fatalf("izin %q, moderation olmalı", r.izin)
+			}
+			return
+		}
+	}
+	t.Fatal("/api/v1/mod/ban route'u yok")
+}
+
+func TestModBan_ModeratorYasaklar(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	key := strings.Repeat("aabbccdd", 8)
+	if err := c.Ban(key, 24*time.Hour, false, "spam"); err != nil {
+		t.Fatalf("Ban: %v", err)
+	}
+	if len(mb.yasaklar) != 1 || mb.yasaklar[0] != (yasakKaydi{authorKey: key, reason: "spam", duration: 24 * time.Hour}) {
+		t.Fatalf("beklenmeyen yasak: %+v", mb.yasaklar)
+	}
+}
+
+func TestModBan_KaliciSureyiYokSayar(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	key := strings.Repeat("aabbccdd", 8)
+	if err := c.Ban(key, 5*time.Hour, true, "x"); err != nil {
+		t.Fatalf("Ban: %v", err)
+	}
+	if len(mb.yasaklar) != 1 || !mb.yasaklar[0].permanent || mb.yasaklar[0].duration != 0 {
+		t.Fatalf("kalıcı yasak süresiz gitmeli: %+v", mb.yasaklar)
+	}
+}
+
+func TestModBan_BosSebep400(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	err := c.Ban(strings.Repeat("aabbccdd", 8), time.Hour, false, "   ")
+	if durumKodu(err) != http.StatusBadRequest || len(mb.yasaklar) != 0 {
+		t.Fatalf("boş sebep 400 olmalı ve arka uca ulaşmamalı: %v %+v", err, mb.yasaklar)
+	}
+}
+
+func TestModBan_SureYoksa400(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	err := c.Ban(strings.Repeat("aabbccdd", 8), 0, false, "spam")
+	if durumKodu(err) != http.StatusBadRequest || len(mb.yasaklar) != 0 {
+		t.Fatalf("süresiz ve kalıcı olmayan yasak 400 olmalı: %v", err)
+	}
+}
+
+func TestModBan_GecersizAnahtar400(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	if err := c.Ban("aabbcc", time.Hour, false, "spam"); durumKodu(err) != http.StatusBadRequest || len(mb.yasaklar) != 0 {
+		t.Fatalf("geçersiz anahtar 400 olmalı: %v", err)
+	}
+}
+
+func TestModBan_SiradanKullaniciReddedilir(t *testing.T) {
+	mb := &yasaklayanMod{}
+	c := startTestServerWithMod(t, &mockID{}, mb)
+	if err := c.Ban(strings.Repeat("aabbccdd", 8), time.Hour, false, "spam"); !IsForbidden(err) || len(mb.yasaklar) != 0 {
+		t.Fatalf("sıradan kullanıcı 403 almalı: %v", err)
+	}
+}
+
+func TestModBan_ArkaUcYetkisiz403(t *testing.T) {
+	mb := &yasaklayanMod{banErr: fmt.Errorf("%w: kurucu yasaklanamaz", ErrYetkisiz)}
+	c := startTestServerWithMod(t, &mockID{moderator: true}, mb)
+	if err := c.Ban(strings.Repeat("aabbccdd", 8), time.Hour, false, "spam"); !IsForbidden(err) {
+		t.Fatalf("arka ucun yetki hatası 403 olmalı: %v", err)
+	}
+}
+
+func TestModBan_ArkaUcYoksa501(t *testing.T) {
+	c := startTestServerWithMod(t, &mockID{moderator: true}, eskiMod{&mockModeration{}})
+	if err := c.Ban(strings.Repeat("aabbccdd", 8), time.Hour, false, "spam"); durumKodu(err) != http.StatusNotImplemented {
+		t.Fatalf("Ban'ı olmayan arka uçta 501 beklenirdi: %v", err)
 	}
 }

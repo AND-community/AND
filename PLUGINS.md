@@ -305,7 +305,7 @@ every endpoint has a `Client` method.
 | `GET /api/v1/dm/history?from=`, `/dm/poll` | `dm` | `DMHistory`, `DMHistoryFrom`, `PollDM` |
 | `GET` `POST /api/v1/dm/read` | `dm` | `DMReadMarks`, `MarkDMRead` |
 | `POST /api/v1/file/send`, `/file/consent`; `GET /file/poll`, `/file/consent-poll` | `file` | `SendFile`, `RespondConsent`, `PollFile`, `PollConsent` |
-| `GET /api/v1/mod/bans`, `/mod/history`, `/mod/grants`; `POST /mod/unban`, `/mod/grant`, `/mod/revoke` | `moderation` | `AllBans`, `ModHistory`, `GrantedMods`, `Unban`, `GrantModerator`, `RevokeModerator` |
+| `GET /api/v1/mod/bans`, `/mod/history`, `/mod/grants`; `POST /mod/ban`, `/mod/unban`, `/mod/grant`, `/mod/revoke` | `moderation` | `AllBans`, `ModHistory`, `GrantedMods`, `Ban`, `Unban`, `GrantModerator`, `RevokeModerator` |
 | `GET /api/v1/theme` | — | `GetTheme` |
 | `POST /api/v1/theme` | `theme` | `SetTheme` |
 

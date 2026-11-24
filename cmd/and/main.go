@@ -881,6 +881,21 @@ func (a *modAdapter) Unban(ctx context.Context, authorKey string) error {
 	return moderation.IssueUnbanFor(ctx, a.mod, a.modTopic, a.identity.PrivateKey(), authorKey, a.isFounder, cert)
 }
 
+// Ban, eklentinin (Yönetici Paneli) yasaklamasıdır: terminaldeki profil
+// ekranıyla aynı yetki kuralı (moderation.ResolveBanAuthority) ve aynı
+// yayın (moderation.IssueBanFor).
+func (a *modAdapter) Ban(ctx context.Context, authorKey string, d time.Duration, permanent bool, reason string) error {
+	canBan, isFounder, cert := moderation.ResolveBanAuthority(a.dir, a.mod, a.myPubHex, authorKey)
+	if !canBan {
+		return fmt.Errorf("%w: %s", pluginapi.ErrYetkisiz, dil.T("moderasyon: yetkiniz yok"))
+	}
+	var bitis time.Time
+	if !permanent {
+		bitis = time.Now().UTC().Add(d)
+	}
+	return moderation.IssueBanFor(ctx, a.mod, a.modTopic, a.identity.PrivateKey(), authorKey, isFounder, cert, reason, bitis, permanent)
+}
+
 func (a *modAdapter) History() ([]pluginapi.HistoryEntryInfo, error) {
 	entries := a.mod.History()
 	founderHex := moderation.FounderPubKeyHex
