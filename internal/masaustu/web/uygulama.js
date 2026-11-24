@@ -368,7 +368,7 @@
     k.addEventListener("sohbet-gecmis", () => { if (D.gorunum === "sohbet") sohbetYukle(); });
     k.addEventListener("forum", (e) => forumOlayi(JSON.parse(e.data)));
     // Açılışta arka planda başlayan eklentiler (kenar çubuğunda yeşil nokta).
-    k.addEventListener("terminaller", () => { if (D.asama === "uygulama") terminalleriYukle(); });
+    k.addEventListener("terminaller", () => { if (D.asama === "uygulama") oturumlariYukle(); });
   }
 
   async function uygulamayaGec() {
@@ -382,7 +382,7 @@
     D.asama = "uygulama";
     D.kurallarGerekli = !D.oturum.kurallarOnayli;
     adrestenOku();
-    await terminalleriYukle();
+    await oturumlariYukle();
     ciz();
   }
 
@@ -795,7 +795,7 @@
             const etkin = D.gorunum === "eklenti" && D.eklentiAd === e.ad;
             return el("button", { class: "nav" + (etkin ? " etkin" : ""), "aria-current": etkin ? "page" : undefined, title: e.etiket, on: { click: () => eklentiGoster(e.ad) } },
               ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket),
-              calisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
+              eklentiCalisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
           })])
         : [el("div", { class: "grup-basligi" }, t("Eklentiler")), el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok"))],
       el("div", { class: "gezinme-alt" },
@@ -853,6 +853,7 @@
   }
 
   function gorunumCiz() {
+    arayuzGorunumDegisti();
     // Ekran değişirken kısa bir geçiş (hareket azaltılmışsa yok).
     gorunumAlani.classList.remove("gecis");
     void gorunumAlani.offsetWidth;
@@ -1870,6 +1871,7 @@
     const ad = D.eklentiAd;
     const e = eklentiBilgisi(ad);
     if (!e) { git("forum"); return; } // kapatılmış ya da kaldırılmış
+    if (e.arayuz) { arayuzEklentisiCiz(e); return; } // AND'ın bileşenleriyle (bkz. Eklenti arayüzü)
     const s = terminalDurumu(ad);
     const ekran = el("div", { class: "eklenti-ekrani" });
     D.eklentiDurumAlani = el("div", { class: "eklenti-durum" });
@@ -1998,20 +2000,554 @@
     if (s.term) s.term.dispose();
   }
 
-  // terminalleriYukle, AND'ın içinde açık olan eklentileri bağlar: açılışta
-  // arka planda başlayanları, arayüz yenilenince (ya da dil değişince) hâlâ
-  // çalışanları. Çalışan varsa terminal akışı açılır; eklenti arka planda
-  // kapanırsa kenar çubuğundaki nokta da kalkar.
-  async function terminalleriYukle() {
+  // ── Eklenti arayüzü ───────────────────────────────────────────────────
+  //
+  // Arayüz kipindeki eklenti (manifest'te "ui": 1) ekranını bir bileşen ağacı
+  // olarak gönderir (bkz. paket arayuz); burada AND'ın kendi bileşenleriyle
+  // çizilir. Eklentinin metni hiçbir zaman HTML olarak yorumlanmaz. Tıklamalar,
+  // form gönderimleri ve sekme seçimleri /api/arayuz/olay ile eklentiye gider.
+  // Kullanıcının yazdığı değer, eklenti o alanın değerini değiştirmedikçe
+  // yeni ekranlarda korunur; odak, imleç ve kaydırma da korunur.
+
+  const A = {}; // eklenti adı → arayüz oturumu durumu
+  let arayuzAkisi = null;
+  let gorunurOturum = null; // eklentiye "görünür" bildirilen oturum
+
+  function arayuzDurumu(ad) {
+    if (!A[ad]) A[ad] = { ad, oturum: null, ekran: null, onceki: null, surum: 0, bitti: false, kod: 0, hata: null, yazilan: {}, aciliyor: false, vazgecildi: false, diyalog: null };
+    return A[ad];
+  }
+
+  const eklentiCalisiyor = (ad) => calisiyor(ad) || !!(A[ad] && A[ad].oturum && !A[ad].bitti);
+  const arayuzGosteriliyor = (s) => D.gorunum === "eklenti" && D.eklentiAd === s.ad;
+
+  function arayuzAkisiniAc() {
+    if (arayuzAkisi) return;
+    arayuzAkisi = new EventSource("/api/arayuz/akis");
+    let koptu = false;
+    const bul = (id) => Object.values(A).find((s) => s.oturum === id);
+    const oku = (e) => JSON.parse(e.data);
+    arayuzAkisi.addEventListener("error", () => { koptu = true; });
+    arayuzAkisi.addEventListener("open", () => {
+      if (!koptu) return;
+      koptu = false;
+      for (const s of Object.values(A)) if (s.oturum) arayuzEkraniCek(s);
+    });
+    arayuzAkisi.addEventListener("ekran", (e) => {
+      const o = oku(e);
+      const s = bul(o.id);
+      if (!s || o.surum <= s.surum) return;
+      ekranAl(s, o.ekran, o.surum);
+    });
+    arayuzAkisi.addEventListener("bildirim", (e) => {
+      const o = oku(e);
+      if (bul(o.id)) bildir(o.metin, o.durum);
+    });
+    arayuzAkisi.addEventListener("hata", (e) => {
+      const o = oku(e);
+      const s = bul(o.id);
+      if (!s) return;
+      s.hata = o.metin;
+      if (arayuzGosteriliyor(s)) arayuzCiz(s);
+    });
+    arayuzAkisi.addEventListener("bitti", (e) => {
+      const o = oku(e);
+      const s = bul(o.id);
+      if (!s) return;
+      Object.assign(s, { bitti: true, kod: o.kod });
+      gezinmeCiz();
+      if (arayuzGosteriliyor(s)) arayuzCiz(s);
+    });
+  }
+
+  function ekranAl(s, ekran, surum) {
+    s.onceki = s.ekran;
+    s.ekran = ekran;
+    s.surum = surum;
+    s.hata = null;
+    if (arayuzGosteriliyor(s)) arayuzCiz(s);
+  }
+
+  async function arayuzEkraniCek(s) {
     try {
-      const r = await api("/api/terminal/liste");
-      for (const x of r.terminaller) {
+      const g = await api("/api/arayuz/ekran?id=" + encodeURIComponent(s.oturum));
+      if (g.bitti && !s.bitti) { Object.assign(s, { bitti: true, kod: g.kod }); gezinmeCiz(); }
+      if (g.ekran && g.surum > s.surum) ekranAl(s, g.ekran, g.surum);
+      else if (arayuzGosteriliyor(s)) arayuzCiz(s);
+    } catch (e) {
+      if (e.durum === 404) { Object.assign(s, { oturum: null, bitti: true }); gezinmeCiz(); }
+    }
+  }
+
+  // gorunurlukGuncelle, eklentiye ekranının kullanıcıya görünüp görünmediğini
+  // bildirir (ör. mesajları ancak görünürken okundu sayabilsin).
+  function gorunurlukGuncelle() {
+    const s = D.gorunum === "eklenti" ? A[D.eklentiAd] : null;
+    const simdiki = s && s.oturum && !s.bitti && !document.hidden ? s.oturum : null;
+    if (simdiki === gorunurOturum) return;
+    if (gorunurOturum) api("/api/arayuz/gorunur", { id: gorunurOturum, gorunur: false }).catch(() => {});
+    if (simdiki) api("/api/arayuz/gorunur", { id: simdiki, gorunur: true }).catch(() => {});
+    gorunurOturum = simdiki;
+  }
+  document.addEventListener("visibilitychange", gorunurlukGuncelle);
+
+  // arayuzGorunumDegisti, ekran değişirken çağrılır: gizlenen eklentilerin
+  // diyalogları kapanır, eklentilere görünürlükleri bildirilir.
+  function arayuzGorunumDegisti() {
+    for (const s of Object.values(A)) if (!arayuzGosteriliyor(s)) diyalogKapat(s);
+    gorunurlukGuncelle();
+  }
+
+  function arayuzEklentisiCiz(e) {
+    const s = arayuzDurumu(e.ad);
+    D.arayuzAlani = el("div", { class: "eklenti-arayuzu" });
+    bosalt(gorunumAlani, D.arayuzAlani);
+    arayuzCiz(s);
+    if (!s.oturum && !s.bitti && !s.vazgecildi) arayuzBaslat(s);
+    else if (s.oturum && !s.ekran) arayuzEkraniCek(s);
+  }
+
+  async function arayuzBaslat(s, onay) {
+    if (s.aciliyor) return;
+    s.aciliyor = true;
+    s.vazgecildi = false;
+    try {
+      const r = await api("/api/eklenti/ac", { ad: s.ad, onay: !!onay, gomulu: true });
+      if (r.izinGerekli) {
+        s.aciliyor = false;
+        izinSor(r, () => arayuzBaslat(s, true), () => { s.vazgecildi = true; arayuzCiz(s); });
+        return;
+      }
+      if (s.oturum !== r.oturum) Object.assign(s, { oturum: r.oturum, ekran: null, onceki: null, surum: 0, bitti: false, kod: 0, hata: null, yazilan: {} });
+      arayuzAkisiniAc();
+      await arayuzEkraniCek(s);
+      gezinmeCiz();
+      gorunurlukGuncelle();
+    } catch (e) {
+      bildir(e.message, "hata");
+    } finally {
+      s.aciliyor = false;
+      if (arayuzGosteriliyor(s)) arayuzCiz(s);
+    }
+  }
+
+  function arayuzOlayi(s, olay, oid, deger, degerler) {
+    if (!s.oturum || s.bitti) return;
+    api("/api/arayuz/olay", { id: s.oturum, olay, oid: oid || "", deger: deger || "", degerler: degerler || undefined })
+      .catch((e) => bildir(e.message, "hata"));
+  }
+
+  async function arayuzKapat(s) {
+    if (eklentiCalisiyor(s.ad)) {
+      const e = eklentiBilgisi(s.ad);
+      if (!(await onayla(t("Eklentiyi kapat"), tf("%s hemen kapanır; kaydetmediğin işler kaybolabilir.", e ? e.etiket : s.ad), t("Eklentiyi kapat"), true))) return;
+    }
+    if (s.oturum) await api("/api/arayuz/kapat", { id: s.oturum }).catch(() => {});
+    diyalogKapat(s);
+    delete A[s.ad];
+    gorunurlukGuncelle();
+    git("forum");
+  }
+
+  // ── Çizim ──
+
+  function arayuzCiz(s) {
+    const alan = D.arayuzAlani;
+    if (!alan || !arayuzGosteriliyor(s)) return;
+    const bilgi = eklentiBilgisi(s.ad) || { etiket: s.ad };
+    const e = s.ekran || {};
+    const durum = durumuYakala(alan);
+    const kapatDugmesi = el("button", { class: "ikon-dugme", title: t("Eklentiyi kapat"), "aria-label": t("Eklentiyi kapat"), on: { click: () => arayuzKapat(s) } }, ikon("kapat"));
+    const araclar = s.bitti ? [] : (e.araclar || []).map((o, i) => ogeCiz(s, o, "a" + i));
+    const baslik = e.baslik || bilgi.etiket;
+    const ust = (e.yol && e.yol.length)
+      ? el("header", { class: "ust-cubuk" }, ikon(e.ikon || kategoriIkonu(bilgi.kategoriKodu), "baslik-ikon"),
+        el("nav", { class: "baslik-grubu a-yol", "aria-label": baslik }, e.yol.map((k, i) => [
+          i ? el("span", { class: "a-yol-ayrac", "aria-hidden": "true" }, "›") : null,
+          k.id && i < e.yol.length - 1
+            ? el("button", { class: "a-yol-oge", on: { click: () => arayuzOlayi(s, "tikla", k.id) } }, k.metin)
+            : el(i === e.yol.length - 1 ? "h1" : "span", { class: "a-yol-oge son" }, k.metin)])),
+        el("div", { class: "bosluk" }), araclar, kapatDugmesi)
+      : ustCubuk(e.ikon || kategoriIkonu(bilgi.kategoriKodu), baslik, e.altBaslik || bilgi.kategori, araclar, kapatDugmesi);
+
+    let govde;
+    if (s.bitti) {
+      govde = el("div", { class: "a-bitti" }, bosDurum(kategoriIkonu(bilgi.kategoriKodu), tf("%s kapandı.", bilgi.etiket), s.kod ? tf("Çıkış kodu: %d", s.kod) : null),
+        el("div", { class: "durum-dugmeleri" }, el("button", { class: "dugme birincil", on: { click: () => { Object.assign(s, { oturum: null, bitti: false }); arayuzBaslat(s); } } }, ikon("yenile"), t("Yeniden aç"))));
+    } else if (s.vazgecildi) {
+      govde = el("div", { class: "a-bitti" }, bosDurum("kalkan", t("Eklenti açılmadı")),
+        el("div", { class: "durum-dugmeleri" }, el("button", { class: "dugme birincil", on: { click: () => arayuzBaslat(s) } }, tb("aç"))));
+    } else if (!s.ekran) {
+      govde = el("div", { class: "a-bekle" }, el("div", { class: "donen" }), el("p", { class: "soluk" }, t("Ekran bekleniyor…")));
+    } else {
+      govde = el("div", { class: "a-govde", "data-kaydir": "govde" },
+        s.hata ? el("div", { class: "hata-kutusu" }, t("Eklentinin ekranı gösterilemedi."), " ", s.hata) : null,
+        e.govde ? ogeCiz(s, e.govde, "g") : null);
+    }
+    bosalt(alan, ust, e.mesgul && !s.bitti ? el("div", { class: "a-mesgul", role: "progressbar" }) : null, govde,
+      e.durum && !s.bitti ? el("div", { class: "a-durum" }, e.durum) : null);
+    durumuGeriYukle(alan, durum);
+    arayuzDiyalogu(s, s.bitti ? null : e.diyalog);
+    const odak = !document.activeElement || document.activeElement === document.body ? alan.querySelector("[data-odak]") : null;
+    if (odak) odak.focus();
+  }
+
+  // durumuYakala / durumuGeriYukle: yeniden çizimde odak, imleç ve kaydırma
+  // konumları korunur (anahtar: öğe kimliği, yoksa ağaçtaki yolu).
+  function durumuYakala(kok) {
+    const d = { kaydir: {}, odak: null };
+    for (const k of kok.querySelectorAll("[data-kaydir]")) d.kaydir[k.getAttribute("data-kaydir")] = [k.scrollTop, k.scrollLeft];
+    const a = document.activeElement;
+    if (a && kok.contains(a) && a.hasAttribute("data-anahtar")) {
+      d.odak = { anahtar: a.getAttribute("data-anahtar") };
+      try { d.odak.bas = a.selectionStart; d.odak.son = a.selectionEnd; } catch { /* seçimi olmayan öğe */ }
+    }
+    return d;
+  }
+
+  function durumuGeriYukle(kok, d) {
+    for (const k of kok.querySelectorAll("[data-kaydir]")) {
+      const v = d.kaydir[k.getAttribute("data-kaydir")];
+      if (v) { k.scrollTop = v[0]; k.scrollLeft = v[1]; }
+    }
+    if (!d.odak) return;
+    const a = [...kok.querySelectorAll("[data-anahtar]")].find((x) => x.getAttribute("data-anahtar") === d.odak.anahtar);
+    if (!a) return;
+    a.focus({ preventScroll: true });
+    if (d.odak.bas != null) try { a.setSelectionRange(d.odak.bas, d.odak.son); } catch { /* seçimi olmayan öğe */ }
+  }
+
+  // oncekiDeger, alanın bir önceki ekrandaki değeridir; eklenti değeri
+  // değiştirmediyse kullanıcının yazdığı korunur.
+  function oncekiDeger(s, id) {
+    let bulunan;
+    const ara = (o) => {
+      if (!o || bulunan !== undefined) return;
+      if (o.id === id && ["girdi", "metinAlani", "secim", "onayKutusu"].includes(o.tur)) { bulunan = o.tur === "onayKutusu" ? !!o.isaretli : (o.deger || ""); return; }
+      for (const c of o.cocuklar || []) ara(c);
+      ara(o.sol); ara(o.sag); ara(o.dugme);
+      for (const c of o.araclar || []) ara(c);
+    };
+    const e = s.onceki || {};
+    for (const c of e.araclar || []) ara(c);
+    ara(e.govde);
+    if (e.diyalog) { ara(e.diyalog.govde); for (const c of e.diyalog.dugmeler || []) ara(c); }
+    return bulunan;
+  }
+
+  function alanDegeri(s, o) {
+    const yeni = o.tur === "onayKutusu" ? !!o.isaretli : (o.deger || "");
+    if (o.id in s.yazilan) {
+      if (oncekiDeger(s, o.id) === yeni) return s.yazilan[o.id];
+      delete s.yazilan[o.id]; // eklenti değeri değiştirdi (ör. gönderimden sonra boşalttı)
+    }
+    return yeni;
+  }
+
+  const STILLER = ["soluk", "kalin", "kod", "iyi", "uyari", "hata", "vurgu"];
+  const stilSinifi = (stil) => (STILLER.includes(stil) ? " s-" + stil : "");
+
+  function parcalarCiz(o) {
+    if (!o.parcalar || !o.parcalar.length) return o.metin || "";
+    return o.parcalar.map((p) => el("span", { class: stilSinifi(p.stil).trim() || undefined }, p.metin));
+  }
+
+  function ogeCiz(s, o, yol) {
+    if (!o) return null;
+    const anahtar = o.id || yol;
+    const cocuklar = (liste) => (liste || []).map((c, i) => ogeCiz(s, c, yol + "." + i));
+    switch (o.tur) {
+      case "yigin": return el("div", { class: "a-yigin a-aralik-" + (o.aralik || "orta") }, cocuklar(o.cocuklar));
+      case "satir": return el("div", { class: "a-satir" + (o.sarmala ? " sarmal" : "") + (o.hizala ? " a-hizala-" + o.hizala : "") }, cocuklar(o.cocuklar));
+      case "bolunmus": return el("div", { class: "a-bolunmus" },
+        el("div", { class: "a-sol", "data-kaydir": anahtar + "/sol" }, ogeCiz(s, o.sol, yol + ".sol")),
+        el("div", { class: "a-sag", "data-kaydir": anahtar + "/sag" }, ogeCiz(s, o.sag, yol + ".sag")));
+      case "bolum": return el("section", { class: "a-bolum" },
+        o.baslik || (o.araclar && o.araclar.length) ? el("div", { class: "a-bolum-ust" },
+          el("div", null, o.baslik ? el("h3", null, o.baslik) : null, o.aciklama ? el("p", { class: "soluk" }, o.aciklama) : null),
+          el("div", { class: "a-bolum-arac" }, cocuklar(o.araclar))) : null,
+        cocuklar(o.cocuklar));
+      case "kart": return el("div", { class: "a-kart" }, cocuklar(o.cocuklar));
+      case "sekmeler": return el("div", { class: "sekmeler a-sekmeler", role: "tablist" }, (o.sekmeler || []).map((k) =>
+        el("button", { class: "sekme" + (o.secili === k.id ? " etkin" : ""), role: "tab", "aria-selected": o.secili === k.id ? "true" : "false",
+          on: { click: () => { if (o.secili !== k.id) arayuzOlayi(s, "sekme", o.id, k.id); } } },
+        k.ikon ? ikon(k.ikon) : null, k.etiket, k.sayac ? el("b", { class: "sayac" }, String(k.sayac)) : null)));
+      case "ayrac": return el("hr", { class: "a-ayrac" });
+      case "metin": return el("p", { class: "a-metin" + stilSinifi(o.stil) + (o.boyut ? " b-" + o.boyut : "") }, parcalarCiz(o));
+      case "baslik": return el(o.duzey === 3 ? "h3" : "h2", { class: "a-baslik" }, o.metin);
+      case "rozet": return rozetCiz(o.metin, o.renk);
+      case "anahtarDeger": return el("div", { class: "a-kv" }, (o.ciftler || []).map((c) =>
+        el("div", { class: "satir-kv" }, el("div", { class: "k" }, c.anahtar),
+          el("div", { class: "v" + (c.kod ? " es-aralikli" : "") }, c.deger,
+            c.kopyala ? el("button", { class: "ikon-dugme kucuk", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(c.deger) } }, ikon("kopyala")) : null))));
+      case "bos": return el("div", { class: "a-bos" }, bosDurum(o.ikon || "eklenti", o.baslik, o.metin), o.dugme ? el("div", { class: "durum-dugmeleri" }, ogeCiz(s, o.dugme, yol + ".d")) : null);
+      case "kod": return el("div", { class: "kod-blogu" }, el("pre", { "data-kaydir": anahtar }, o.satirNo
+        ? o.metin.split("\n").map((m, i) => [el("span", { class: "a-satir-no", "aria-hidden": "true" }, String(i + 1)), m, "\n"])
+        : o.metin));
+      case "fark": return farkCiz(o, anahtar);
+      case "ilerleme": {
+        const cubuk = el("div", { class: "a-ilerleme" + (o.oran == null ? " belirsiz" : ""), role: "progressbar" }, el("div"));
+        if (o.oran != null) cubuk.firstChild.style.width = (o.oran * 100) + "%";
+        return cubuk;
+      }
+      case "baglanti": return el("button", { class: "a-baglanti", on: { click: () => (o.url ? disariAc(o.url) : arayuzOlayi(s, "tikla", o.id)) } }, o.metin);
+      case "dugme": return dugmeCiz(s, o, null);
+      case "liste": return listeCiz(s, o, anahtar);
+      case "tablo": return tabloCiz(s, o);
+      case "form": return el("form", { class: "a-form", "data-form": o.id, on: { submit: (ev) => { ev.preventDefault(); formGonder(s, ev.currentTarget); } } }, cocuklar(o.cocuklar));
+      case "girdi": case "metinAlani": case "secim": case "onayKutusu": return alanCiz(s, o, anahtar, yol);
+      case "mesajAkisi": return el("div", { class: "a-mesajlar", "data-kaydir": anahtar }, (o.mesajlar || []).map((m) =>
+        el("div", { class: "a-mesaj" + (m.giden ? " giden" : "") + (m.durum ? " " + m.durum : "") },
+          m.kimden && !m.giden ? el("div", { class: "a-mesaj-kimden" }, m.kimden) : null,
+          el("div", { class: "a-mesaj-metin" }, m.metin), m.zaman ? el("time", { class: "a-mesaj-zaman", datetime: m.zaman }, saat(m.zaman)) : null)));
+      default: return el("p", { class: "a-metin s-soluk" }, t("Bu öğe bu AND sürümünde gösterilemiyor."));
+    }
+  }
+
+  function rozetCiz(metin, renk) {
+    return el("span", { class: "rozet a-rozet" + (["vurgu", "iyi", "uyari", "hata"].includes(renk) ? " r-" + renk : "") }, metin);
+  }
+
+  function dugmeCiz(s, o, satir) {
+    const varyant = { birincil: " birincil", tehlikeli: " tehlike", hayalet: " hayalet" }[o.varyant] || "";
+    const tikla = async (ev) => {
+      if (o.kopyala) { kopyala(o.kopyala); return; }
+      if (o.onay && !(await onayla(o.onay.baslik || t("Emin misin?"), o.onay.metin || "", o.onay.dugme || o.metin, o.varyant === "tehlikeli"))) return;
+      if (o.gonder) {
+        const kap = ev.currentTarget.closest(".pencere") || ev.currentTarget.closest(".eklenti-arayuzu");
+        const form = ev.currentTarget.closest("form") || (kap && kap.querySelector("form"));
+        if (form) { formGonder(s, form); return; }
+      }
+      arayuzOlayi(s, "tikla", o.id, satir);
+    };
+    return el("button", {
+      class: "dugme" + varyant + (satir != null ? " kucuk" : ""), type: "button", disabled: o.devreDisi,
+      title: o.kisayol ? o.metin + " (" + o.kisayol + ")" : undefined, "data-kisayol": o.kisayol || undefined, "data-anahtar": o.id || undefined,
+      on: { click: (ev) => { ev.stopPropagation(); tikla(ev); } },
+    }, o.ikon ? ikon(o.ikon) : null, o.metin);
+  }
+
+  function formGonder(s, form) {
+    const degerler = {};
+    for (const a of form.querySelectorAll("[data-alan]")) degerler[a.getAttribute("data-alan")] = a.type === "checkbox" ? (a.checked ? "1" : "0") : a.value;
+    arayuzOlayi(s, "gonder", form.getAttribute("data-form"), "", degerler);
+  }
+
+  function alanCiz(s, o, anahtar, yol) {
+    const deger = alanDegeri(s, o);
+    const kaydet = (v) => { s.yazilan[o.id] = v; };
+    const ortak = { "data-alan": o.id, "data-anahtar": anahtar, "data-odak": o.odak ? "" : undefined, disabled: o.devreDisi, id: "a-" + yol };
+    if (o.tur === "onayKutusu") {
+      return el("label", { class: "a-onay" }, el("input", { ...ortak, type: "checkbox", checked: deger, on: { change: (ev) => kaydet(ev.target.checked) } }), el("span", null, o.etiket));
+    }
+    let girdi;
+    if (o.tur === "secim") {
+      girdi = el("select", { ...ortak, class: "secim", on: { change: (ev) => { kaydet(ev.target.value); if (o.aninda) arayuzOlayi(s, "degisti", o.id, ev.target.value); } } },
+        (o.secenekler || []).map((c) => el("option", { value: c.deger }, c.etiket)));
+      girdi.value = deger;
+    } else if (o.tur === "metinAlani") {
+      girdi = el("textarea", { ...ortak, class: "metin-alani" + (o.kod ? " es-aralikli a-kod" : ""), rows: o.satir || (o.kod ? 18 : 5), maxlength: o.enUzun || undefined,
+        placeholder: o.yerTutucu || undefined, spellcheck: o.kod ? "false" : undefined, value: deger,
+        on: { input: (ev) => kaydet(ev.target.value), keydown: (ev) => metinAlaniTusu(ev, o) } });
+    } else {
+      let zaman = null;
+      girdi = el("input", { ...ortak, class: "girdi", type: o.tip === "sifre" ? "password" : "text", maxlength: o.enUzun || undefined, placeholder: o.yerTutucu || undefined,
+        required: o.zorunlu, autocomplete: "off", value: deger, list: o.oneriler && o.oneriler.length ? "a-oneri-" + yol : undefined,
+        on: {
+          input: (ev) => {
+            kaydet(ev.target.value);
+            if (o.canli) { clearTimeout(zaman); zaman = setTimeout(() => arayuzOlayi(s, "degisti", o.id, ev.target.value), 250); }
+          },
+          keydown: (ev) => {
+            if (ev.key !== "Enter" || ev.isComposing) return;
+            const form = ev.target.closest("form");
+            if (form) { ev.preventDefault(); formGonder(s, form); }
+          },
+        } });
+    }
+    return el("div", { class: "alan a-alan" },
+      o.etiket ? el("label", { for: "a-" + yol }, o.etiket) : null,
+      girdi,
+      o.oneriler && o.oneriler.length ? el("datalist", { id: "a-oneri-" + yol }, o.oneriler.map((n) => el("option", { value: n.deger }, n.etiket || n.deger))) : null,
+      o.aciklama ? el("div", { class: "alan-not" }, o.aciklama) : null,
+      o.hata ? el("div", { class: "alan-durum asim", role: "alert" }, o.hata) : null);
+  }
+
+  function metinAlaniTusu(ev, o) {
+    if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+      const form = ev.target.closest("form");
+      if (form) { ev.preventDefault(); form.requestSubmit(); }
+      return;
+    }
+    if (o.kod && ev.key === "Tab" && !ev.shiftKey && !ev.ctrlKey && !ev.altKey) {
+      ev.preventDefault();
+      ev.target.setRangeText("\t", ev.target.selectionStart, ev.target.selectionEnd, "end");
+      ev.target.dispatchEvent(new Event("input"));
+    }
+  }
+
+  function listeCiz(s, o, anahtar) {
+    const ogeler = o.ogeler || [];
+    let suzgec = "";
+    const satirlar = el("div", { class: "a-liste", role: "listbox", tabindex: "0", "aria-activedescendant": undefined, "data-anahtar": anahtar,
+      on: { keydown: (ev) => listeTusu(ev, s, o, satirlar) } });
+    const ciz = () => {
+      const g = ogeler.filter((x) => !suzgec || (x.baslik + " " + (x.alt || "")).toLocaleLowerCase(DIL).includes(suzgec));
+      bosalt(satirlar, g.length ? g.map((x) => el("div", {
+        class: "a-oge" + (o.secili === x.id ? " etkin" : "") + (x.soluk ? " soluk" : ""), role: "option", "aria-selected": o.secili === x.id ? "true" : "false", "data-oge": x.id,
+        on: { click: () => { if (o.secili !== x.id) arayuzOlayi(s, "sec", o.id, x.id); }, dblclick: () => arayuzOlayi(s, "ac", o.id, x.id) },
+      }, x.ikon ? ikon(x.ikon, "a-oge-ikon") : null,
+      el("div", { class: "a-oge-metin" }, el("div", { class: "a-oge-baslik" }, el("span", { class: "a-oge-baslik-metin" }, x.baslik), (x.rozetler || []).map((r) => rozetCiz(r.metin, r.renk))),
+        x.alt ? el("div", { class: "a-oge-alt" }, x.alt) : null),
+      x.sag ? el("span", { class: "a-oge-sag" }, x.sag) : null,
+      x.dugmeler && x.dugmeler.length ? el("div", { class: "a-oge-dugmeler" }, x.dugmeler.map((d) => dugmeCiz(s, d, x.id))) : null))
+        : el("p", { class: "a-bos-metin soluk" }, o.bos || ""));
+    };
+    ciz();
+    const arama = o.arama ? el("input", { class: "girdi a-suz", type: "search", placeholder: t("Süz…"), "data-anahtar": anahtar + "/suz",
+      on: { input: (ev) => { suzgec = ev.target.value.trim().toLocaleLowerCase(DIL); ciz(); } } }) : null;
+    const kap = el("div", { class: "a-liste-kap", "data-kaydir": anahtar }, arama, satirlar);
+    setTimeout(() => { const e = satirlar.querySelector(".a-oge.etkin"); if (e) e.scrollIntoView({ block: "nearest" }); }, 0);
+    return kap;
+  }
+
+  function listeTusu(ev, s, o, satirlar) {
+    if (ev.target !== satirlar) return;
+    const ids = [...satirlar.querySelectorAll("[data-oge]")].map((x) => x.getAttribute("data-oge"));
+    const i = ids.indexOf(o.secili);
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      const j = Math.max(0, Math.min(ids.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)));
+      if (ids[j] !== undefined && ids[j] !== o.secili) arayuzOlayi(s, "sec", o.id, ids[j]);
+    } else if (ev.key === "Enter" && o.secili) {
+      ev.preventDefault();
+      arayuzOlayi(s, "ac", o.id, o.secili);
+    }
+  }
+
+  function tabloCiz(s, o) {
+    const hizala = (h) => (h === "orta" || h === "son" ? " h-" + h : "");
+    return el("div", { class: "a-tablo-kap" }, el("table", { class: "a-tablo" },
+      el("thead", null, el("tr", null, (o.sutunlar || []).map((c) => el("th", { class: hizala(c.hizala).trim() || undefined }, c.baslik)), (o.satirlar || []).some((r) => r.dugmeler && r.dugmeler.length) ? el("th") : null)),
+      el("tbody", null, (o.satirlar || []).map((r) => el("tr", { class: o.secili === r.id ? "etkin" : undefined, on: { click: () => arayuzOlayi(s, "sec", o.id, r.id) } },
+        (r.hucreler || []).map((h, i) => el("td", { class: hizala((o.sutunlar[i] || {}).hizala).trim() || undefined }, (h || []).map((p) => el("span", { class: stilSinifi(p.stil).trim() || undefined }, p.metin)))),
+        r.dugmeler && r.dugmeler.length ? el("td", { class: "a-tablo-dugmeler" }, r.dugmeler.map((d) => dugmeCiz(s, d, r.id))) : null))),
+      (o.satirlar || []).length ? null : el("caption", { class: "soluk" }, o.bos || "")));
+  }
+
+  function farkCiz(o, anahtar) {
+    const tur = { "+": "ekle", "-": "sil", "@": "baslik" };
+    return el("div", { class: "a-fark" }, (o.dosyalar || []).map((f, i) =>
+      el("details", { class: "a-fark-dosya", open: true },
+        el("summary", null, f.durum ? rozetCiz(f.durum, { A: "iyi", D: "hata", M: "vurgu" }[f.durum]) : null,
+          el("span", { class: "a-fark-yol es-aralikli" }, f.yol),
+          f.eklenen ? el("span", { class: "s-iyi" }, "+" + f.eklenen) : null, f.silinen ? el("span", { class: "s-hata" }, "−" + f.silinen) : null),
+        el("pre", { class: "a-fark-satirlar", "data-kaydir": anahtar + "/" + i }, (f.satirlar || []).map((l) =>
+          el("div", { class: "a-fark-satir " + (tur[l.tur] || "bag") },
+            el("span", { class: "a-satir-no", "aria-hidden": "true" }, l.eski ? String(l.eski) : ""),
+            el("span", { class: "a-satir-no", "aria-hidden": "true" }, l.yeni ? String(l.yeni) : ""),
+            el("span", { class: "a-fark-isaret", "aria-hidden": "true" }, l.tur === "@" ? "" : l.tur), l.metin))))));
+  }
+
+  // ── Diyalog ──
+
+  function diyalogKapat(s) {
+    if (!s.diyalog) return;
+    s.diyalog.perde.remove();
+    s.diyalog = null;
+  }
+
+  function arayuzDiyalogu(s, d) {
+    if (!d || !arayuzGosteriliyor(s)) { diyalogKapat(s); return; }
+    const kimlik = d.id || d.baslik || "";
+    if (s.diyalog && s.diyalog.kimlik !== kimlik) diyalogKapat(s);
+    if (!s.diyalog) {
+      const govde = el("div", { class: "pencere-govde" });
+      const alt = el("div", { class: "pencere-alt" });
+      const baslik = el("h2");
+      const vazgec = () => arayuzOlayi(s, "diyalogKapat");
+      const pencere = el("div", { class: "pencere genis a-diyalog", role: "dialog", "aria-modal": "true" },
+        el("div", { class: "pencere-ust" }, baslik, el("button", { class: "ikon-dugme", "aria-label": t("Kapat"), on: { click: vazgec } }, ikon("kapat"))),
+        govde, alt);
+      const perde = el("div", { class: "perde", on: {
+        mousedown: (ev) => { if (ev.target === perde) vazgec(); },
+        keydown: (ev) => { if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); vazgec(); } },
+      } }, pencere);
+      document.getElementById("katman").append(perde);
+      s.diyalog = { kimlik, perde, pencere, govde, alt, baslik, yeni: true };
+    }
+    const g = s.diyalog;
+    const durum = durumuYakala(g.pencere);
+    g.baslik.textContent = d.baslik || "";
+    g.pencere.setAttribute("aria-label", d.baslik || "");
+    bosalt(g.govde, d.govde ? ogeCiz(s, d.govde, "d") : null);
+    bosalt(g.alt, (d.dugmeler || []).map((o, i) => ogeCiz(s, o, "dd" + i)));
+    durumuGeriYukle(g.pencere, durum);
+    if (g.yeni) {
+      g.yeni = false;
+      setTimeout(() => {
+        const ilk = g.pencere.querySelector("[data-odak]") || g.pencere.querySelector("input, textarea, select") || g.alt.querySelector(".birincil");
+        if (ilk) ilk.focus();
+      }, 0);
+    }
+  }
+
+  // ── Klavye ──
+
+  function tusAdi(ev) {
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key.toLowerCase().replace("arrow", "");
+    return (ev.ctrlKey || ev.metaKey ? "ctrl+" : "") + (ev.altKey ? "alt+" : "") + (ev.shiftKey && ev.key.length > 1 ? "shift+" : "") + k;
+  }
+
+  // arayuzTusu, eklentinin ekranı açıkken tuşları işler: eklentinin
+  // kısayolları, Esc ve Alt+← ("geri"). İşlediyse true döner.
+  function arayuzTusu(ev) {
+    if (D.gorunum !== "eklenti") return false;
+    const s = A[D.eklentiAd];
+    if (!s || !s.oturum || s.bitti || !D.arayuzAlani) return false;
+    const katman = document.getElementById("katman");
+    const kendiDiyalogu = s.diyalog && katman.lastElementChild === s.diyalog.perde;
+    if (katman.children.length && !kendiDiyalogu) return false; // AND'ın kendi penceresi açık
+    const ad = tusAdi(ev);
+    if (kendiDiyalogu && ad === "escape") {
+      ev.preventDefault();
+      arayuzOlayi(s, "diyalogKapat");
+      return true;
+    }
+    const yaziyor = ev.target && ev.target.matches && ev.target.matches("input, textarea, select");
+    if (!kendiDiyalogu && (ad === "escape" || ad === "alt+left") && !(yaziyor && ad === "escape")) {
+      ev.preventDefault();
+      arayuzOlayi(s, "geri");
+      return true;
+    }
+    if (yaziyor && !ev.ctrlKey && !ev.metaKey && !ev.altKey) return false;
+    const kok = kendiDiyalogu ? s.diyalog.pencere : D.arayuzAlani;
+    const d = [...kok.querySelectorAll("[data-kisayol]")].find((b) => b.getAttribute("data-kisayol") === ad && !b.disabled);
+    if (!d) return false;
+    ev.preventDefault();
+    d.click();
+    return true;
+  }
+
+  // oturumlariYukle, AND'ın içinde açık olan eklentileri bağlar: açılışta
+  // arka planda başlayanları, arayüz yenilenince (ya da dil değişince) hâlâ
+  // çalışanları. Çalışan varsa olay akışları açılır; eklenti arka planda
+  // kapanırsa kenar çubuğundaki nokta da kalkar.
+  async function oturumlariYukle() {
+    let r;
+    try { r = await api("/api/eklenti/oturumlar"); } catch { return; }
+    for (const x of r.oturumlar) {
+      if (x.tur === "arayuz") {
+        const s = arayuzDurumu(x.ad);
+        if (s.oturum !== x.id && (!s.oturum || s.bitti)) Object.assign(s, { oturum: x.id, bitti: x.bitti, kod: x.kod, ekran: null, onceki: null, surum: 0, hata: null, yazilan: {} });
+        if (!x.bitti) { arayuzAkisiniAc(); arayuzEkraniCek(s); }
+      } else {
         const s = terminalDurumu(x.ad);
         if (!s.oturum) Object.assign(s, { oturum: x.id, bitti: x.bitti, kod: x.kod, ofs: 0 });
+        if (!x.bitti) terminalAkisiniAc();
       }
-      if (r.terminaller.some((x) => !x.bitti)) terminalAkisiniAc();
-      if (r.terminaller.length) gezinmeCiz();
-    } catch { /* terminal yoksa sorun değil */ }
+    }
+    if (r.oturumlar.length) gezinmeCiz();
   }
 
   // ── AND hakkında ──────────────────────────────────────────────────────
@@ -2157,6 +2693,7 @@
       hizliErisim();
       return;
     }
+    if (arayuzTusu(e)) return;
     if (!e.altKey || e.ctrlKey || e.metaKey) return;
     const kisayol = { 1: "forum", 2: "sohbet", 3: "ayarlar", 4: "hakkinda" }[e.key];
     if (kisayol) { e.preventDefault(); git(kisayol); }

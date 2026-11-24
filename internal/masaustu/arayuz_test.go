@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -76,8 +77,41 @@ func sahteArayuzEklentisi(kip string) {
 		for i := 1; i <= 100; i++ {
 			satir(fmt.Sprintf(`{"tur":"ekran","ekran":{"baslik":"%d"}}`, i))
 		}
+	case "sagir":
+		// Standart girdiyi hiç okumaz: AND kapanırken öldürülmeli.
+		satir(`{"tur":"ekran","ekran":{"baslik":"sagir"}}`)
+		time.Sleep(time.Hour)
+		return
+	case "vitrin":
+		_ = arayuz.Calistir(vitrin{})
+		return
 	}
-	time.Sleep(time.Hour)
+	// Standart girdi kapanınca (AND kapandı) çıkar.
+	_, _ = io.Copy(io.Discard, os.Stdin)
+}
+
+// AND kapanırken (hepsiniDurdur) girdisini okumayan eklenti de en geç
+// durdurmaSuresi sonunda öldürülür; AND ondan önce çıkıp eklentiyi yetim
+// bırakmaz.
+func TestArayuz_HepsiniDurdurBekler(t *testing.T) {
+	d := yeniDeneme(t)
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(), sahteArayuzDegiskeni+"=sagir")
+	o, err := d.u.arayuz.baslat("sagir", "Sağır", cmd, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ekranBekle(t, d, o.id, baslikOlsun("sagir"))
+	basla := time.Now()
+	d.u.arayuz.hepsiniDurdur()
+	select {
+	case <-o.bittiC:
+	default:
+		t.Fatalf("hepsiniDurdur döndüğünde eklenti hâlâ çalışıyor (%v sonra)", time.Since(basla))
+	}
+	if sure := time.Since(basla); sure > durdurmaSuresi+time.Second {
+		t.Errorf("hepsiniDurdur %v sürdü", sure)
+	}
 }
 
 // arayuzBaslat, test ikilisini kip kipinde arayüz eklentisi olarak başlatır.

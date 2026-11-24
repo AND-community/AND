@@ -10,6 +10,10 @@ package masaustu
 // Adres http://127.0.0.1:<port>/ac?kod=onizleme biçimindedir; kod her
 // kullanımdan sonra yenilenir. ONIZLEME_ASAMA: kayit | giris | (boş: uygulama).
 // ONIZLEME_KURALLAR=1 kurallar onayını gösterir. ONIZLEME_DIL: tr, en, …
+// ONIZLEME_VITRIN=1 bütün arayüz bileşenlerini gösteren sahte bir arayüz
+// eklentisini ("Vitrin", Araçlar) başlatır. ONIZLEME_ARAYUZ=<exe> gerçek bir
+// arayüz eklentisini (ör. DeltaX) sahte bir AND API'siyle "DeltaX" olarak
+// başlatır.
 
 import (
 	"context"
@@ -21,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/chatlog"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
@@ -30,6 +35,7 @@ import (
 	"github.com/lucian95511/and/internal/storage"
 	"github.com/lucian95511/and/internal/tui"
 	"github.com/lucian95511/and/pluginapi"
+	"github.com/lucian95511/and/pluginapi/pluginapitest"
 	"github.com/lucian95511/and/ui"
 )
 
@@ -130,6 +136,18 @@ func TestOnizleme(t *testing.T) {
 	// ONIZLEME_TERMINAL, "--deneme" kipi olan bir eklenti programıdır (ör.
 	// "and eklenti yeni" iskeletinden derlenen): AND'ın içinde, Araçlar
 	// bölümünde "Örnek" adıyla çalışır.
+	if os.Getenv("ONIZLEME_VITRIN") != "" {
+		eklentiler = append(eklentiler, pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "vitrin", Label: "Vitrin", Version: "1.0.0", Author: "AND",
+			Category: pluginapi.KategoriArac, Description: "Eklenti arayüzünün bütün bileşenleri.", UI: arayuz.Surum}, Enabled: true})
+	}
+	arayuzProgrami := os.Getenv("ONIZLEME_ARAYUZ")
+	if arayuzProgrami != "" {
+		for i := range eklentiler {
+			if eklentiler[i].Name() == "DeltaX" {
+				eklentiler[i].Manifest.UI = arayuz.Surum
+			}
+		}
+	}
 	terminalProgrami := os.Getenv("ONIZLEME_TERMINAL")
 	if terminalProgrami != "" {
 		eklentiler = append(eklentiler, pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "ornek", Label: "Örnek", Version: "0.1.0", Author: "Umut",
@@ -156,6 +174,36 @@ func TestOnizleme(t *testing.T) {
 			u.yayin.gonder("terminaller", true)
 		}()
 		defer u.term.hepsiniDurdur()
+	}
+	// Arayüz eklentileri de gerçek AND'daki gibi açılıştan biraz sonra
+	// başlar (bkz. eklentileriBaslat).
+	arayuzBaslat := func(ad, etiket string, cmd *exec.Cmd) {
+		go func() {
+			time.Sleep(2 * time.Second)
+			if _, err := u.arayuz.baslat(ad, etiket, cmd, nil); err != nil {
+				t.Error(err)
+				return
+			}
+			u.yayin.gonder("terminaller", true)
+		}()
+	}
+	defer u.arayuz.hepsiniDurdur()
+	if os.Getenv("ONIZLEME_VITRIN") != "" {
+		cmd := exec.Command(os.Args[0])
+		cmd.Env = append(os.Environ(), sahteArayuzDegiskeni+"=vitrin")
+		arayuzBaslat("vitrin", "Vitrin", cmd)
+	}
+	if arayuzProgrami != "" {
+		sn, err := pluginapitest.Yeni().Ornek().Baslat(t.TempDir(), pluginapi.IzinDM, pluginapi.IzinDosya)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sn.Kapat()
+		cmd := exec.Command(arayuzProgrami)
+		cmd.Dir = filepath.Dir(arayuzProgrami)
+		cmd.Env = append(append(os.Environ(), sn.Ortam()...), dil.OrtamDegiskeni+"="+dil.Etkin(),
+			ui.GomuluOrtamDegiskeni+"=1", arayuz.OrtamDegiskeni+"=1")
+		arayuzBaslat("DeltaX", "DeltaX", cmd)
 	}
 	if os.Getenv("ONIZLEME_ASAMA") == "" {
 		u.giris.mu.Lock()

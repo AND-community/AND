@@ -10,11 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/lucian95511/and/arayuz"
+	"github.com/lucian95511/and/arayuz/arayuztest"
 	stdcrypto "github.com/lucian95511/and/internal/crypto"
 	"github.com/lucian95511/and/internal/forum"
 	"github.com/lucian95511/and/internal/pluginmgr"
@@ -567,5 +570,48 @@ func TestEklentiler_KendiligindenBaslayacaklar(t *testing.T) {
 	d.u.eklentileriBaslat(d.u.cek.Load())
 	if l := jsonCoz(t, d.al("/api/terminal/liste"))["terminaller"].([]any); len(l) != 0 {
 		t.Errorf("API adresi yokken başlayan eklentiler: %v", l)
+	}
+}
+
+// TestArayuzIkonlari: eklentilerin kullanabileceği ikonlar (arayuz.Ikonlar)
+// pencerenin ikon kümesinde olmalı; yoksa eklentinin ikonu boş çizilir.
+func TestArayuzIkonlari(t *testing.T) {
+	js, err := webDosyalari.ReadFile("web/uygulama.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(js)
+	bas := strings.Index(s, "const IKONLAR = {")
+	son := strings.Index(s[bas:], "\n  };")
+	if bas < 0 || son < 0 {
+		t.Fatal("IKONLAR bulunamadı")
+	}
+	var adlar []string
+	for _, m := range regexp.MustCompile(`(?m)^\s{4}(\w+):`).FindAllStringSubmatch(s[bas:bas+son], -1) {
+		adlar = append(adlar, m[1])
+	}
+	for _, ad := range arayuz.Ikonlar {
+		if !slices.Contains(adlar, ad) {
+			t.Errorf("arayuz.Ikonlar'daki %q uygulama.js'in IKONLAR'ında yok", ad)
+		}
+	}
+}
+
+// TestVitrinGecerli: önizlemenin vitrini her sekmede ve diyalogla AND'ın
+// kabul edeceği bir ekrandır.
+func TestVitrinGecerli(t *testing.T) {
+	s := arayuztest.Yeni(vitrin{})
+	for _, sekme := range []string{"genel", "form", "fark", "tablo"} {
+		s.SekmeSec("sekmeler", sekme)
+		arayuztest.Denetle(t, s.Ekran())
+	}
+	s.Tikla("diyalogAc")
+	if _, ok := arayuztest.Bul(s.Ekran(), "dTamam"); !ok {
+		t.Fatal("diyalog açılmadı")
+	}
+	arayuztest.Denetle(t, s.Ekran())
+	s.FormGonder("dForm", map[string]string{"dAd": "Ekip"})
+	if s.Ekran().Diyalog != nil {
+		t.Error("form gönderilince diyalog kapanmadı")
 	}
 }

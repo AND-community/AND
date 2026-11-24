@@ -213,6 +213,12 @@ func (o *arayuzOturumu) gonder(m arayuz.AndMesaji) error {
 	return err
 }
 
+func (o *arayuzOturumu) girisiKapat() {
+	o.yazMu.Lock()
+	_ = o.giris.Close()
+	o.yazMu.Unlock()
+}
+
 func (o *arayuzOturumu) bittiMi() bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -222,9 +228,7 @@ func (o *arayuzOturumu) bittiMi() bool {
 // durdur, eklentinin standart girdisini kapatır (arayuz.Calistir bunu
 // kapanma sayar); eklenti durdurmaSuresi içinde çıkmazsa süreç öldürülür.
 func (o *arayuzOturumu) durdur() {
-	o.yazMu.Lock()
-	_ = o.giris.Close()
-	o.yazMu.Unlock()
+	o.girisiKapat()
 	go func() {
 		select {
 		case <-o.bittiC:
@@ -251,12 +255,31 @@ func (y *arayuzler) bul(id string) *arayuzOturumu {
 	return y.liste[id]
 }
 
-// hepsiniDurdur, AND kapanırken arayüz kipindeki eklentileri kapatır.
+// hepsiniDurdur, AND kapanırken arayüz kipindeki eklentileri kapatır ve
+// bitmelerini bekler: standart girdisi kapanınca durdurmaSuresi içinde
+// çıkmayan eklenti öldürülür. Beklemeden dönseydi AND önce çıkar, girdisini
+// okumayan bir eklenti yetim kalırdı.
 func (y *arayuzler) hepsiniDurdur() {
 	y.mu.Lock()
-	defer y.mu.Unlock()
+	liste := make([]*arayuzOturumu, 0, len(y.liste))
 	for _, o := range y.liste {
-		o.durdur()
+		liste = append(liste, o)
+	}
+	y.mu.Unlock()
+	for _, o := range liste {
+		o.girisiKapat()
+	}
+	son := time.Now().Add(durdurmaSuresi)
+	for _, o := range liste {
+		select {
+		case <-o.bittiC:
+		case <-time.After(time.Until(son)):
+			_ = o.cmd.Process.Kill()
+			select {
+			case <-o.bittiC:
+			case <-time.After(time.Second):
+			}
+		}
 	}
 }
 
