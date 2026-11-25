@@ -89,3 +89,18 @@ func TestListenExternalPermissions(t *testing.T) {
 		t.Fatalf("socket izinleri 0600 olmalı, %o bulundu — grup/diğerleri erişimi olabilir", perm)
 	}
 }
+
+// hariciIstemci, dataDir'in harici dinleyicisine (Unix domain socket)
+// bağlanan bir HTTP istemcisidir (bkz. harici_test.go).
+func hariciIstemci(dataDir string) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", socketPathFor(dataDir))
+			},
+			DisableKeepAlives: true,
+		},
+		Timeout: 3 * time.Second,
+	}
+}

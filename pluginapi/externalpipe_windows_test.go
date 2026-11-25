@@ -202,3 +202,17 @@ func parseSddlAces(s string) []string {
 	}
 	return aces
 }
+
+// hariciIstemci, dataDir'in harici dinleyicisine (named pipe) bağlanan bir
+// HTTP istemcisidir (bkz. harici_test.go).
+func hariciIstemci(dataDir string) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return winio.DialPipeContext(ctx, pipeNameFor(dataDir))
+			},
+			DisableKeepAlives: true,
+		},
+		Timeout: 3 * time.Second,
+	}
+}

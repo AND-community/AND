@@ -578,9 +578,14 @@ type Server struct {
 	// yetkiler, geçerli API anahtarlarının (özetleriyle) yetkileridir: Start'ın
 	// döndürdüğü tam yetkili ana anahtar ve EklentiAnahtari'nın eklenti
 	// başına verdikleri.
-	yetkiMu     sync.RWMutex
-	yetkiler    map[[sha256.Size]byte]yetki
-	srv         *http.Server
+	yetkiMu  sync.RWMutex
+	yetkiler map[[sha256.Size]byte]yetki
+	srv      *http.Server
+	// hariciMu, harici dinleyiciyi (externalLn/externalSrv) korur: Ayarlar'dan
+	// AND çalışırken açılıp kapatılabilir (bkz. harici.go). hariciBitti, AND
+	// kapanırken dinleyicinin yeniden açılmasını engeller.
+	hariciMu    sync.Mutex
+	hariciBitti bool
 	externalLn  net.Listener
 	externalSrv *http.Server
 	id          IdentityBackend
@@ -631,7 +636,9 @@ func (s *Server) HariciKapat() { s.hariciKapali = true }
 
 // enableExternalAPI, AND_ENABLE_EXTERNAL_API=1 ortam değişkeniyle
 // etkinleştirilen, güvenilir harici araçlar (ör. bir editör eklentisi) için
-// ikinci bir dinleyici açar (bkz. listenExternal / externalpipe_*.go).
+// ikinci bir dinleyici açar (bkz. listenExternal / externalpipe_*.go). Aynı
+// dinleyici Ayarlar'daki "VS Code bağlantısı" seçimiyle de açılır (bkz.
+// harici.go).
 //
 // Bu ikinci dinleyici AND_API_ADDR/AND_API_TOKEN mekanizmasından TAMAMEN
 // AYRIDIR ve bir bearer token KULLANMAZ: Windows'ta yalnızca pipe'ın
@@ -778,28 +785,25 @@ func (s *Server) Start(ctx context.Context) (addr, token string, err error) {
 	s.srv = newHTTPServer(s.authMiddleware(s.buildMux(false)))
 	go s.srv.Serve(ln) //nolint:errcheck
 
-	if enableExternalAPI() && s.dataDir != "" && !s.hariciKapali {
-		if extLn, perr := listenExternal(s.dataDir); perr != nil {
-			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı dinleyicisi başlatılamadı:", perr)
+	// Harici dinleyici ortam değişkeniyle ya da Ayarlar'daki "VS Code
+	// bağlantısı" seçimiyle (bkz. harici.go) açılır.
+	if (enableExternalAPI() || HariciAyari(s.dataDir)) && s.dataDir != "" && !s.hariciKapali {
+		s.hariciMu.Lock()
+		if perr := s.hariciBaslatKilitli(); perr != nil {
+			fmt.Fprintln(os.Stderr, perr)
 		} else {
-			s.externalLn = extLn
-			// authMiddleware YOK: bu dinleyiciye erişim zaten OS tarafından
-			// (yalnızca bu kullanıcı) kısıtlanmış durumda — bkz. enableExternalAPI.
-			// buildMux(true), yalnızca routeTable()'da allowExternal:true
-			// işaretli route'ları içerir; buradaki araç tam yetkilidir.
-			s.externalSrv = newHTTPServer(tamYetkiyle(s.buildMux(true)))
-			go s.externalSrv.Serve(extLn) //nolint:errcheck
 			fmt.Fprintln(os.Stderr, "pluginapi: harici bağlantı etkin —", externalDescription(s.dataDir))
 		}
+		s.hariciMu.Unlock()
 	}
 
 	go func() {
 		<-ctx.Done()
 		s.srv.Close()
-		if s.externalSrv != nil {
-			s.externalSrv.Close()
-			cleanupExternal(s.dataDir)
-		}
+		s.hariciMu.Lock()
+		s.hariciBitti = true
+		s.hariciDurdurKilitli()
+		s.hariciMu.Unlock()
 	}()
 	return s.addr, s.token, nil
 }
