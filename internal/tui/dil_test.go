@@ -57,6 +57,8 @@ func dilEkranlari(t *testing.T, w, h int) map[string]string {
 	t.Helper()
 	boyut := tea.WindowSizeMsg{Width: w, Height: h}
 	ekranlar := map[string]string{}
+	// Ayarlar › Eklentiler'deki VS Code bağlantısı satırı da denetlensin.
+	hariciyle(t, &sahteHarici{})
 
 	m := dilTestModeli(t, w, h)
 	for i, oge := range m.menuItems {

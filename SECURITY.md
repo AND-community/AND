@@ -191,8 +191,9 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
 - `AND_API_ADDR`/`AND_API_TOKEN` ortam değişkenleri yalnızca AND tarafından başlatılan alt
   süreçlere iletilir; bu ana dinleyiciye yapılan her istek `X-And-Token` başlığıyla doğrulanır —
   doğru token'ı bilmeyen bir istek reddedilir.
-- **İkinci, opt-in bir dinleyici** (`AND_ENABLE_EXTERNAL_API=1` ile açılır; bkz.
-  `pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`) AND'ın kendi başlatmadığı
+- **İkinci, opt-in bir dinleyici** (Ayarlar › Eklentiler › VS Code bağlantısı ya da
+  `AND_ENABLE_EXTERNAL_API=1` ile açılır, varsayılan kapalı; seçim `harici_baglanti.json`'da, 0600;
+  bkz. `pluginapi/harici.go`, `pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`) AND'ın kendi başlatmadığı
   süreçlerin (ör. `and-vscode` uzantısı) bağlanabilmesi için vardır. Bu dinleyicide bearer token
   YOKTUR — erişim kararını bir sır değil doğrudan işletim sistemi verir: Windows'ta sahibe özel bir
   security descriptor'lı (`D:P(A;;GA;;;OW)`) named pipe, Unix'te `0600` izinli bir domain socket.

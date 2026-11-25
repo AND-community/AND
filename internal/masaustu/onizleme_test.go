@@ -262,7 +262,7 @@ func TestOnizleme(t *testing.T) {
 		u.giris.asama = asamaBasliyor
 		u.giris.mu.Unlock()
 		u.cek.Store(yeniCekirdek(dir, Cekirdek{Kimlik: ben, Forum: f, Sohbet: sohbet, Profil: prof, Eklentiler: eklentiler,
-			OkunmamisDM: func() int { return 2 }}))
+			OkunmamisDM: func() int { return 2 }, Harici: &sahteHarici{}}))
 		go u.olaylariIlet(context.Background(), u.cek.Load())
 	}
 	u.sv.baslat()

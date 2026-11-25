@@ -61,6 +61,8 @@ func (u *Uygulama) rotalar() {
 	m.HandleFunc("GET /api/eklentiler", u.cekirdekle(u.eklentiListesi))
 	m.HandleFunc("POST /api/eklenti/etkin", u.cekirdekle(u.eklentiEtkin))
 	m.HandleFunc("POST /api/eklenti/ac", u.cekirdekle(u.eklentiAc))
+	m.HandleFunc("GET /api/harici", u.cekirdekle(u.hariciDurumu))
+	m.HandleFunc("POST /api/harici", u.cekirdekle(u.hariciAyarla))
 	// AND'ın içinde çalışan eklentilerin terminalleri (bkz. terminal.go).
 	m.HandleFunc("GET /api/terminal/akis", u.term.yayin.isle)
 	m.HandleFunc("GET /api/terminal/liste", u.terminalListesi)

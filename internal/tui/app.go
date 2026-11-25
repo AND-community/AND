@@ -1430,6 +1430,10 @@ func (m appModel) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			onek = len(ui.Presets)
 		}
 		switch msg.String() {
+		case "v":
+			if m.settingsTab == 1 {
+				m.hariciDegistir()
+			}
 		case "up", "k":
 			if m.settingsIdx > 0 {
 				m.settingsIdx--
@@ -1523,7 +1527,7 @@ func (m *appModel) syncSettingsVP() {
 	// Etiket sütunu Türkçede 18; daha uzun çevirilerde genişler.
 	labelW := etiketGenisligi(18, "Sürüm", "Platform", "Veri dizini", "Ad", "Genel anahtar", "Rol", "Aktivite",
 		"Kurtarma kodu", "Bio", "Durum", "Bağlantı", "Etiketler", "Peer ID", "Bağlantı durumu",
-		"Sohbet geçmişi", "Yasaklar", "Ağ", "Forum", "Toplam konu", "Toplam yanıt")
+		"Sohbet geçmişi", "Yasaklar", "Ağ", "Forum", "Toplam konu", "Toplam yanıt", "VS Code bağlantısı")
 	girinti := strings.Repeat(" ", labelW)
 	row := func(k, v string) string { return ui.KV(labelW, k, v) + "\n" }
 	// ipucu, bir alanın altındaki "x ile düzenle" türü küçük açıklamadır.
@@ -1726,6 +1730,20 @@ func (m *appModel) syncSettingsVP() {
 		}
 
 	case 1: // ── Eklentiler ────────────────────────────────────
+		if HariciBaglanti != nil {
+			durum := HariciBaglanti.HariciDurumu()
+			deger := ui.S.Muted.Render(dil.T("kapalı"))
+			if durum.Acik {
+				deger = ui.S.Success.Render(dil.T("açık"))
+			}
+			b.WriteString(row(dil.T("VS Code bağlantısı"), deger))
+			if durum.Ortamdan {
+				b.WriteString(ipucu(dil.T("AND_ENABLE_EXTERNAL_API ile açık; buradan kapatılamaz")))
+			} else {
+				b.WriteString(ipucu(dil.T("v ile aç/kapat · VS Code'daki AND eklentisi bu AND'a bağlanır")))
+			}
+			b.WriteString("\n")
+		}
 		list := m.settingsPluginList()
 		if len(list) == 0 {
 			b.WriteString(ui.S.Muted.Render(dil.T("Yüklü eklenti yok — and-plugin-* dosyaları AND ile aynı dizine konur.")) + "\n")
@@ -2051,7 +2069,11 @@ func (m appModel) viewSettings() string {
 		hints = []ui.Hint{ui.H("↑↓", dil.T("kaydır")), ui.H("b/s/w", dil.T("bio/durum/bağlantı")), ui.H("t", dil.T("etiketler")),
 			ui.H("v", dil.T("GitHub doğrula")), ui.H("m", dil.T("kurtarma kodu")), sekme, geri}
 	case m.settingsTab == 1:
-		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("space", dil.T("aç/kapat")), ui.H("r", dil.T("izinleri geri al")), sekme, geri}
+		hints = []ui.Hint{ui.H("↑↓", dil.T("seç")), ui.H("space", dil.T("aç/kapat")), ui.H("r", dil.T("izinleri geri al"))}
+		if HariciBaglanti != nil {
+			hints = append(hints, ui.H("v", "VS Code")) // özel ad; çevrilmez
+		}
+		hints = append(hints, sekme, geri)
 	case m.settingsTab == 4:
 		hints = []ui.Hint{ui.H("↑↓", dil.T("kaydır")), sekme, geri}
 	case m.settingsTab == 3:

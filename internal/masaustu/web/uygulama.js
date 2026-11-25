@@ -1358,8 +1358,33 @@
       }, el("span", { class: "daire" }), el("span", null, d.ad), el("span", { class: "kod" }, d.kod))))));
   }
 
+  // hariciBolumu, VS Code'daki AND eklentisinin bu AND'a bağlanmasını açıp
+  // kapatan kart (eklenti API'sinin harici dinleyicisi). Ortam değişkeniyle
+  // açıksa anahtar kilitlidir.
+  function hariciBolumu(h) {
+    const anahtar = el("input", { type: "checkbox", checked: h.acik, disabled: h.ortamdan, "aria-label": t("VS Code bağlantısı") });
+    anahtar.addEventListener("change", async () => {
+      try {
+        const s = await api("/api/harici", { acik: anahtar.checked });
+        anahtar.checked = s.acik;
+        bildir(s.acik ? t("VS Code bağlantısı açıldı") : t("VS Code bağlantısı kapatıldı"), "iyi");
+      } catch (err) {
+        anahtar.checked = !anahtar.checked;
+        bildir(err.message, "hata");
+      }
+    });
+    return el("div", { class: "bolum" }, el("h3", null, t("VS Code bağlantısı")),
+      el("div", { class: "kutu" }, el("div", { class: "eklenti-karti" },
+        el("div", { class: "eklenti-simgesi" }, ikon("kod")),
+        el("div", { class: "bilgi" },
+          el("div", { class: "ad" }, t("VS Code'daki AND eklentisi")),
+          el("p", { class: "aciklama" }, t("Açıkken VS Code'daki AND eklentisi bu AND'a bağlanır: forum, mesajlar, sohbet, site ve DeltaX. Bağlantıya yalnızca bu bilgisayardaki kendi kullanıcı hesabın erişebilir.")),
+          h.ortamdan ? el("p", { class: "aciklama soluk" }, t("AND_ENABLE_EXTERNAL_API ile açık; buradan kapatılamaz")) : null),
+        el("div", { class: "islemler" }, el("label", { class: "anahtar" }, anahtar, el("span"))))));
+  }
+
   async function eklentilerSekmesi(ic) {
-    const r = await api("/api/eklentiler");
+    const [r, h] = await Promise.all([api("/api/eklentiler"), api("/api/harici").catch(() => null)]);
     const kart = (e) => {
       const anahtar = el("input", { type: "checkbox", checked: e.etkin, "aria-label": t("Etkin") });
       anahtar.addEventListener("change", async () => {
@@ -1388,7 +1413,7 @@
           el("label", { class: "anahtar" }, anahtar, el("span")),
           e.etkin && !e.tema ? el("button", { class: "dugme kucuk", on: { click: () => eklentiGoster(e.ad) } }, ikon(kategoriIkonu(e.kategoriKodu)), tb("aç")) : null));
     };
-    bosalt(ic, el("div", { class: "bolum" }, el("h3", null, t("Kurulu eklentiler")),
+    bosalt(ic, h && h.var ? hariciBolumu(h) : null, el("div", { class: "bolum" }, el("h3", null, t("Kurulu eklentiler")),
       el("p", { class: "paragraf soluk" }, t("Eklentiler AND'ın içinde açılır. Kapattığın eklenti menüde görünmez.")),
       r.eklentiler.length
         ? bolumle(r.eklentiler).map((g) => el("div", { class: "eklenti-bolumu" },

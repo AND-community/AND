@@ -46,6 +46,9 @@ type Cekirdek struct {
 	// uyguladığı temayı bildirir. İkisi de nil olabilir.
 	Guncelleme <-chan tui.UpdateReadyMsg
 	Tema       <-chan pluginapi.ThemeReq
+	// Harici, VS Code bağlantısını (eklenti API'sinin harici dinleyicisi)
+	// açıp kapatır; nil ise Ayarlar'da gösterilmez.
+	Harici HariciDenetim
 }
 
 // cekirdek, Cekirdek'in arayüz tarafındaki çalışma durumudur.

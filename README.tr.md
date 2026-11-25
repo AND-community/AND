@@ -726,9 +726,12 @@ eklenti alt süreçlerine ulaşır — bağımsız başlatılmış bir süreç (
 ortam değişkenlerini hiçbir zaman göremez, çünkü rastgele port + rastgele token her açılışta
 yalnızca bellekte tutulur ve hiçbir dosyaya yazılmaz.
 
-Bunu güvenli bir şekilde çözmek için `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
-etkinleştirilebilen, **opt-in ve varsayılan kapalı** ikinci bir dinleyici vardır
-(`pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
+Bunu güvenli bir şekilde çözmek için **opt-in ve varsayılan kapalı** ikinci bir dinleyici vardır.
+**Ayarlar › Eklentiler › VS Code bağlantısı**'ndan açılır (masaüstü uygulaması; terminalde
+Eklentiler sekmesinde `v`); seçim veri dizinindeki `harici_baglanti.json`'a kaydedilir ve AND'ı
+yeniden başlatmadan hemen geçerli olur. `AND_ENABLE_EXTERNAL_API=1` ortam değişkeni de çalışmaya
+devam eder ve dinleyiciyi açık tutar (`pluginapi/harici.go`, `pluginapi/externalpipe_windows.go` /
+`externalpipe_unix.go`):
 
 - **Windows:** yalnızca dinleyiciyi açan kullanıcıya erişim izni veren bir security
   descriptor'lı (`D:P(A;;GA;;;<kullanıcı SID'i>)`; SID alınamazsa `OW`) **named pipe**.
@@ -737,8 +740,8 @@ etkinleştirilebilen, **opt-in ve varsayılan kapalı** ikinci bir dinleyici var
 Bu ikinci dinleyicide bearer token **yoktur** — erişim bir sırla değil doğrudan işletim sistemi
 tarafından (yalnızca aynı kullanıcı) kısıtlanır; pipe/socket adı `AND_DATA_DIR`'den türetilir ve
 gizli değildir (bkz. `and-vscode/src/live/liveAddr.ts` — aynı formülle bağımsızca hesaplar).
-`AND_ENABLE_EXTERNAL_API` ayarlanmadıysa bu dinleyici hiç açılmaz ve mevcut davranış hiçbir
-şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
+Ayar kapalıysa ve `AND_ENABLE_EXTERNAL_API` ayarlanmadıysa bu dinleyici hiç açılmaz ve mevcut
+davranış hiçbir şekilde değişmez. Kullanım örneği: [and-vscode](and-vscode/README.md)'deki canlı Forum/DM/Sohbet/Ağ/Site paneli ve kişisel site sayfalarının VS Code editöründe düzenlenip yayınlanması.
 
 İçerik yayınlayan/gönderen uç noktalar (forum, site, sohbet, DM, dosya) ayrıca yerel bir hız
 sınırına tabidir (`pluginapi/ratelimit.go`) — token'lı dinleyicideki HERHANGİ bir

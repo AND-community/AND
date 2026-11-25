@@ -491,6 +491,8 @@ func run() error {
 		apiAddr = ""
 	} else {
 		tui.EklentiAnahtari = apiSrv.EklentiAnahtari
+		// Ayarlar › Eklentiler'deki "VS Code bağlantısı" (harici dinleyici).
+		tui.HariciBaglanti = apiSrv
 	}
 
 	plugins := pluginmgr.DiscoverWithState(dir)
@@ -552,6 +554,7 @@ func run() error {
 			Eklentiler: plugins, APIAdresi: apiAddr, EklentiAnahtari: eklentiAnahtari,
 			Senkron: senkron.Status, OkunmamisDM: dmBroker.OkunmamisSayisi,
 			Uyari: tui.BaslangicUyarisi, Kurucu: isFounder, Guncelleme: updateCh, Tema: themeCh,
+			Harici: tui.HariciBaglanti,
 		})
 	} else {
 		err = tui.Run(ctx, id, node, plugins, apiAddr, forumStore, profileStore, siteStore, dir, chatStore, mod, modTopic, updateCh, themeCh)

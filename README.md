@@ -727,9 +727,11 @@ The `AND_API_ADDR`/`AND_API_TOKEN` mechanism above only reaches plugin subproces
 environment variables, because the random port and the random token exist only in memory for each
 run and are never written to any file.
 
-To solve this safely there is a second listener that is **opt-in and off by default**, enabled with
-the `AND_ENABLE_EXTERNAL_API=1` environment variable
-(`pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
+To solve this safely there is a second listener that is **opt-in and off by default**. Turn it on in
+**Settings › Plugins › VS Code connection** (desktop app, or `v` on the Plugins tab in the terminal);
+the choice is saved in `harici_baglanti.json` in the data directory and takes effect immediately,
+without restarting AND. The `AND_ENABLE_EXTERNAL_API=1` environment variable still works and keeps it
+on (`pluginapi/harici.go`, `pluginapi/externalpipe_windows.go` / `externalpipe_unix.go`):
 
 - **Windows:** a **named pipe** whose security descriptor grants access only to the user who opened
   the listener (`D:P(A;;GA;;;<user SID>)`; `OW` if the SID can't be read).
@@ -738,7 +740,8 @@ the `AND_ENABLE_EXTERNAL_API=1` environment variable
 This second listener has **no** bearer token — access is restricted not by a secret but directly by
 the operating system (same user only); the pipe/socket name is derived from `AND_DATA_DIR` and is
 not secret (see `and-vscode/src/live/liveAddr.ts`, which computes it independently with the same
-formula). If `AND_ENABLE_EXTERNAL_API` is not set, this listener is never opened and nothing changes.
+formula). If the setting is off and `AND_ENABLE_EXTERNAL_API` is not set, this listener is never
+opened and nothing changes.
 Example use: the live Forum/DM/Chat/Network/Site panel in [and-vscode](and-vscode/README.md), and
 editing and publishing personal site pages in the VS Code editor.
 
