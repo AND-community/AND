@@ -12,6 +12,12 @@ type Listener = (e?: unknown) => void;
 const camel = (a: string): string => a.replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase());
 
 class FakeEl {
+  /**
+   * innerHTML yazılınca içindeki id'li öğeler gerçek tarayıcıdaki gibi yeni
+   * öğelerdir: boot() bu kancayla onları kayıttan siler, sonraki
+   * getElementById taze (değersiz, dinleyicisiz) bir öğe verir.
+   */
+  static yenilendi: (html: string) => void = () => {};
   children: FakeEl[] = [];
   listeners: Record<string, Listener[]> = {};
   dataset: Record<string, string> = {};
@@ -25,12 +31,20 @@ class FakeEl {
   value = "";
   disabled = false;
   lastQuery: FakeEl[] = [];
-  classList = { add(): void {}, remove(): void {} };
+  /** Seçiciye göre son querySelectorAll sonucu. */
+  queries: Record<string, FakeEl[]> = {};
+  classList = { add(): void {}, remove(): void {}, toggle(): void {} };
   private html = "";
 
   set innerHTML(v: string) {
     this.html = v;
     this.children = [];
+    FakeEl.yenilendi(v);
+  }
+  focus(): void {}
+  /** Olayı bütün dinleyicilere iletir (input, change, keydown…). */
+  fire(tur: string, e?: unknown): void {
+    (this.listeners[tur] ?? []).forEach((f) => f(e));
   }
   get innerHTML(): string {
     return this.html + this.children.map((c) => c.innerHTML).join("");
@@ -62,6 +76,7 @@ class FakeEl {
       }
       return e;
     });
+    this.queries[sel] = this.lastQuery;
     return this.lastQuery;
   }
 }
@@ -74,6 +89,11 @@ function boot() {
 
   const els: Record<string, FakeEl> = {};
   const el = (id: string): FakeEl => (els[id] ??= new FakeEl());
+  FakeEl.yenilendi = (yeni) => {
+    for (const [, id] of yeni.matchAll(/\sid="([^"]+)"/g)) {
+      delete els[id];
+    }
+  };
   const root = new FakeEl();
   const posted: unknown[] = [];
   let onMessage: Listener = () => {};
@@ -109,7 +129,7 @@ test("panel: açılışta yenileme ister, CSP dışarıdan betik/stil yüklemez"
   assert.deepEqual(posted, [{ type: "refreshAll" }]);
   assert.match(html, /default-src 'none'/);
   assert.doesNotMatch(html, /<script src=|<link /);
-  for (const id of ["connBadge", "refreshBtn", "identityBody", "peersBody", "chatList", "chatInput", "chatSend", "dmNewPeer", "dmNewBtn", "dmConvs", "dmCount", "dmHead", "dmInput", "dmSend", "postCategory", "postCreate", "viewPostBtn", "siteNewBtn", "siteBody", "fileSendBtn", "consentBody", "receivedFilesBody", "themeName"]) {
+  for (const id of ["connBadge", "refreshBtn", "identityBody", "peersBody", "chatList", "chatInput", "chatSend", "dmNewPeer", "dmNewBtn", "dmConvs", "dmCount", "dmHead", "dmInput", "dmSend", "forumKategori", "forumYeniBtn", "forumKonular", "forumEski", "forumSag", "viewPostBtn", "siteNewBtn", "siteBody", "fileSendBtn", "consentBody", "receivedFilesBody", "themeName"]) {
     assert.ok(html.includes(`id="${id}"`), `${id} eksik`);
   }
 });
@@ -120,7 +140,6 @@ test("panel: kimlik kaçırılır, kopyala düğmesi copyText gönderir", () => 
   send({ type: "role", data: { is_founder: false, is_moderator: true } });
   assert.ok(els.identityBody.innerHTML.includes("a3f9&lt;x&gt;"));
   assert.ok(els.identityBody.innerHTML.includes("Moderatör"));
-  assert.equal(els.modSection.style.display, "", "moderatöre moderasyon bölümü görünmeli");
   posted.length = 0;
   els.identityBody.lastQuery[0].click();
   assert.deepEqual(posted, [{ type: "copyText", text: "12D3KooABC", label: "Peer ID" }]);
@@ -271,15 +290,240 @@ test("panel: geçmiş tutmayan AND'da açıklama değişir", () => {
   assert.match(els.dmLede.textContent, /geçmişi tutmuyor/);
 });
 
-test("panel: konu ayrıntısı ve yanıt", () => {
-  const { els, el, posted, send } = boot();
-  send({ type: "postDetail", data: { id: "k1", title: "T <i>", category: "Go", author_name: "z", author_key: "5d", body: "g", replies: [{ author_name: "a", author_key: "a1", body: "y" }] } });
-  assert.ok(els.postDetailBody.innerHTML.includes("T &lt;i&gt;"));
-  assert.ok(els.postDetailBody.innerHTML.includes("1 yanıt"));
+const birSaatOnce = () => new Date(Date.now() - 3600_000).toISOString();
+const ozet = (id: string, ek: Record<string, unknown> = {}) => ({
+  id,
+  category: "Go",
+  title: "Başlık " + id,
+  author_name: "ali",
+  author_key: "a1",
+  created_at: birSaatOnce(),
+  reply_count: 2,
+  ...ek,
+});
+const ayrinti = (id: string, ek: Record<string, unknown> = {}) => ({
+  id,
+  title: "Başlık " + id,
+  category: "Go",
+  author_name: "ali",
+  author_key: "a1",
+  body: "gövde " + id,
+  created_at: birSaatOnce(),
+  replies: [],
+  ...ek,
+});
+
+test("panel forum: konu listesi kaçırılır, kategori süzgeci sayılarıyla, tıklayınca forumOpen", () => {
+  const { els, posted, send } = boot();
+  send({
+    type: "forumPosts",
+    liste: true,
+    konular: [ozet("k1", { title: "<b>x</b>" }), ozet("k2", { category: "Python", author_role: "moderator", reply_count: 1 })],
+    kategoriler: [{ kategori: "Python", sayi: 1 }, { kategori: "Go", sayi: 1 }],
+  });
+  const liste = els.forumKonular.innerHTML;
+  assert.ok(liste.includes("&lt;b&gt;x&lt;/b&gt;") && !liste.includes("<b>x</b>"), liste);
+  assert.ok(liste.includes("2 yanıt") && liste.includes("1 yanıt"), liste);
+  assert.ok(liste.includes("Moderatör"), liste);
+  assert.ok(liste.includes("1 saat önce"), liste);
+  const secenekler = els.forumKategori.innerHTML;
+  assert.ok(secenekler.includes("Tüm kategoriler (2)"), secenekler);
+  assert.ok(secenekler.includes(">Go (1)<") && secenekler.includes(">Python (1)<"), secenekler);
+
+  els.forumKategori.value = "Python";
+  els.forumKategori.fire("change");
+  assert.ok(!els.forumKonular.innerHTML.includes('data-konu-ac="k1"'));
+  assert.ok(els.forumKonular.innerHTML.includes('data-konu-ac="k2"'));
   posted.length = 0;
-  el("replyBody").value = "katılıyorum";
+  els.forumKonular.queries["[data-konu-ac]"][0].click();
+  assert.deepEqual(posted, [{ type: "forumOpen", id: "k2" }]);
+});
+
+test("panel forum: ayrıntı, kod bloğu kaçırılır; Sil yalnız kendi konunda ya da moderatöre; yazar profili açar", () => {
+  const { els, posted, send } = boot();
+  send({ type: "identity", data: { name: "ben", peer_id: "12D3", pub_key: "B0" } });
+  send({ type: "role", data: { is_founder: false, is_moderator: false } });
+  send({
+    type: "postDetail",
+    ac: true,
+    data: ayrinti("k1", {
+      body: "önce [code=go]x := <1>[/code] sonra",
+      replies: [{ id: "y1", author_name: "veli", author_key: "v1", body: "y", created_at: birSaatOnce(), author_role: "founder" }],
+    }),
+  });
+  let sag = els.forumSag.innerHTML;
+  assert.ok(!sag.includes("data-sil"), "başkasının konusunda üyeye Sil yok");
+  assert.ok(sag.includes('<pre class="kod">') && sag.includes("x := &lt;1&gt;") && sag.includes(">go<"), sag);
+  assert.ok(sag.includes("Kurucu") && sag.includes("1 yanıt"), sag);
+  // Blok etiketlerinin çevresindeki satır sonu boş satır bırakmaz (pre zaten blok).
+  send({ type: "postDetail", ac: true, data: ayrinti("k1", { body: "a\n[code]\nx\n[/code]\nb\r\n[code]y[/code]\r\nc" }) });
+  sag = els.forumSag.innerHTML;
+  assert.ok(sag.includes("a<pre") && sag.includes("</pre>b") && sag.includes("</pre>c") && sag.includes("<code>x\n</code>"), sag);
+  send({ type: "postDetail", ac: true, data: ayrinti("k1", { body: "önce [code=go]x := <1>[/code] sonra" }) });
+
+  posted.length = 0;
+  els.forumSag.queries["[data-profil]"][0].click();
+  assert.deepEqual(posted, [{ type: "profile", key: "a1" }]);
+
+  send({ type: "postDetail", ac: true, data: ayrinti("k1", { author_key: "b0" }) });
+  posted.length = 0;
+  els.forumSag.queries["[data-sil]"][0].click();
+  assert.deepEqual(posted, [{ type: "deletePost", postId: "k1", own: true, title: "Başlık k1" }]);
+
+  send({ type: "role", data: { is_founder: false, is_moderator: true } });
+  send({ type: "postDetail", ac: true, data: ayrinti("k2") });
+  sag = els.forumSag.innerHTML;
+  posted.length = 0;
+  els.forumSag.queries["[data-sil]"][0].click();
+  assert.deepEqual(posted, [{ type: "deletePost", postId: "k2", own: false, title: "Başlık k2" }]);
+});
+
+test("panel forum: yanıt taslağı canlı yenilemede ve konu değişiminde korunur, gönderilince temizlenir", () => {
+  const { els, posted, send } = boot();
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  els.replyBody.value = "yarım";
+  els.replyBody.fire("input");
+  send({ type: "postDetail", data: ayrinti("k1", { replies: [{ id: "y", author_name: "a", author_key: "a", body: "yeni", created_at: birSaatOnce() }] }) });
+  assert.ok(els.forumSag.innerHTML.includes("yeni"), "canlı yenileme çizilmeli");
+  assert.equal(els.replyBody.value, "yarım", "canlı yenileme yazılanı silmemeli");
+  send({ type: "postDetail", ac: true, data: ayrinti("k2") });
+  assert.equal(els.replyBody.value, "");
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  assert.equal(els.replyBody.value, "yarım");
+
+  posted.length = 0;
   els.replySend.click();
-  assert.deepEqual(posted, [{ type: "reply", postId: "k1", body: "katılıyorum" }]);
+  assert.deepEqual(posted, [{ type: "reply", postId: "k1", body: "yarım" }]);
+  send({ type: "replySent", postId: "k1" });
+  assert.equal(els.replyBody.value, "");
+  send({ type: "postDetail", data: ayrinti("k1") });
+  assert.equal(els.replyBody.value, "");
+});
+
+test("panel forum: canlı yenileme yeni konu formundan atmaz; başka konunun yenilemesi açık konuyu değiştirmez", () => {
+  const { els, send } = boot();
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  els.forumYeniBtn.click();
+  assert.ok(els.forumSag.innerHTML.includes('id="postTitle"'));
+  send({ type: "postDetail", data: ayrinti("k1") });
+  assert.ok(els.forumSag.innerHTML.includes('id="postTitle"'), "form açık kalmalı");
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  send({ type: "postDetail", data: ayrinti("k9") });
+  assert.ok(els.forumSag.innerHTML.includes("Başlık k1") && !els.forumSag.innerHTML.includes("Başlık k9"));
+});
+
+test("panel forum: yeni konu formu doğrular, taslağı tutar, createPost gönderir; Vazgeç taslağı atar", () => {
+  const { els, posted, send } = boot();
+  els.forumYeniBtn.click();
+  posted.length = 0;
+  els.postTitle.value = "Başlık";
+  els.postTitle.fire("input");
+  els.postCreate.click();
+  assert.deepEqual(posted, []);
+  assert.match(els.banner.textContent, /boş olamaz/);
+
+  els.postCategory.value = "Python";
+  els.postCategory.fire("change");
+  els.postBody.value = "gövde";
+  els.postBody.fire("input");
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  els.forumYeniBtn.click();
+  assert.equal(els.postTitle.value, "Başlık", "taslak korunmalı");
+  assert.equal(els.postCategory.value, "Python");
+  els.postCreate.click();
+  assert.deepEqual(posted, [{ type: "createPost", category: "Python", title: "Başlık", body: "gövde" }]);
+
+  send({ type: "forumCreated" });
+  els.forumYeniBtn.click();
+  assert.equal(els.postTitle.value, "", "yayınlanınca taslak silinmeli");
+  els.postTitle.value = "atılacak";
+  els.postTitle.fire("input");
+  els.postCancel.click();
+  els.forumYeniBtn.click();
+  assert.equal(els.postTitle.value, "", "Vazgeç taslağı atmalı");
+});
+
+test("panel forum: konu yoksa ya da silindiyse ilgili not görünür", () => {
+  const { els, send } = boot();
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  send({ type: "postGone", id: "k2" });
+  assert.ok(els.forumSag.innerHTML.includes("Başlık k1"), "başka konunun gidişi açık konuyu etkilemez");
+  send({ type: "postGone", id: "k1" });
+  assert.match(els.forumSag.innerHTML, /artık yok/);
+  send({ type: "postGone", id: "zz", ac: true });
+  assert.match(els.forumSag.innerHTML, /artık yok/);
+  send({ type: "postDetail", ac: true, data: ayrinti("k3") });
+  send({ type: "postDeleted", id: "k3" });
+  assert.match(els.forumSag.innerHTML, /soldan bir konu seç/);
+});
+
+test("panel forum: liste vermeyen eski AND'da ID kutusu görünür", () => {
+  const { els, posted, send } = boot();
+  send({ type: "forumPosts", liste: false, konular: [], kategoriler: [] });
+  assert.equal(els.forumEski.style.display, "");
+  assert.equal(els.forumKonular.style.display, "none");
+  posted.length = 0;
+  els.viewPostId.value = " abc ";
+  els.viewPostBtn.click();
+  assert.deepEqual(posted, [{ type: "forumOpen", id: "abc" }]);
+  send({ type: "forumPosts", liste: true, konular: [ozet("k1")], kategoriler: [{ kategori: "Go", sayi: 1 }] });
+  assert.equal(els.forumEski.style.display, "none");
+  assert.equal(els.forumKonular.style.display, "");
+});
+
+test("panel forum: profil kaçırılır; moderatöre yasak formu, kendine ve üyeye yok", () => {
+  const { els, el, posted, send } = boot();
+  send({ type: "identity", data: { name: "ben", peer_id: "12D3", pub_key: "b0" } });
+  send({ type: "role", data: { is_founder: false, is_moderator: true } });
+  send({ type: "postDetail", ac: true, data: ayrinti("k1") });
+  send({
+    type: "profile",
+    data: {
+      key: "a1",
+      name: "<ali>",
+      role: "moderator",
+      post_count: 2,
+      reply_count: 5,
+      first_seen: "2026-11-01T10:00:00Z",
+      status: "meşgul",
+      bio: "merhaba",
+      tags: ["Go"],
+      link: "https://ornek.dev",
+      github_user: "ali",
+      ban: { permanent: true, reason: "spam" },
+      site_pages: [{ slug: "cv", title: "Özgeçmiş", body: "", updated_at: "2026-11-02T10:00:00Z" }],
+    },
+  });
+  const sag = els.forumSag.innerHTML;
+  for (const parca of ["&lt;ali&gt;", "Moderatör", "2 konu", "5 yanıt", "meşgul", "merhaba", "https://ornek.dev", "ali", "Özgeçmiş", "/cv", "spam", "Konuya dön"]) {
+    assert.ok(sag.includes(parca), `${parca} yok: ${sag}`);
+  }
+  assert.ok(!sag.includes("<ali>"));
+  assert.ok(sag.includes('id="banGonder"'));
+
+  posted.length = 0;
+  el("banSebep").value = "  ";
+  els.banGonder.click();
+  assert.deepEqual(posted, []);
+  assert.match(els.banner.textContent, /Sebep boş olamaz/);
+  el("banSure").value = "604800";
+  el("banSebep").value = " reklam ";
+  els.banGonder.click();
+  el("banSure").value = "kalici";
+  els.banGonder.click();
+  assert.deepEqual(posted, [
+    { type: "ban", key: "a1", name: "<ali>", seconds: 604800, reason: "reklam" },
+    { type: "ban", key: "a1", name: "<ali>", permanent: true, reason: "reklam" },
+  ]);
+
+  els.profilGeri.click();
+  assert.ok(els.forumSag.innerHTML.includes("Başlık k1"), "Konuya dön konuyu göstermeli");
+
+  send({ type: "profile", data: { key: "B0", name: "ben", post_count: 0, reply_count: 0 } });
+  assert.ok(!els.forumSag.innerHTML.includes('id="banGonder"'), "kendini yasaklama formu olmamalı");
+  send({ type: "role", data: { is_founder: false, is_moderator: false } });
+  send({ type: "profile", data: { key: "a1", name: "ali", post_count: 0, reply_count: 0 } });
+  assert.ok(!els.forumSag.innerHTML.includes('id="banGonder"'), "üyeye yasak formu olmamalı");
 });
 
 test("panel: tema değişkenleri uygulanır, boş temada varsayılana dönülür", () => {
@@ -353,24 +597,52 @@ test("panel: her dilde HTML, betik çıktısı, kategori ve tema adları çevril
       send({ type: "identity", data: { name: "", peer_id: "12D3KooABC", pub_key: "a3f9" } });
       send({ type: "role", data: { is_founder: true, is_moderator: false } });
       send({
-        type: "postDetail",
-        data: { id: "k1", title: "T", category: "Yapay Zeka", author_name: "z", body: "g", replies: [{ author_name: "a", body: "y" }, { author_name: "b", body: "x" }] },
+        type: "forumPosts",
+        liste: true,
+        konular: [{ id: "k1", title: "T", category: "Yapay Zeka", author_name: "z", author_key: "z1", reply_count: 2, author_role: "founder", created_at: new Date(Date.now() - 7200_000).toISOString() }],
+        kategoriler: [{ kategori: "Yapay Zeka", sayi: 1 }],
       });
+      const liste = [els.forumKonular.innerHTML, els.forumKategori.innerHTML].join("\n");
+      send({
+        type: "postDetail",
+        ac: true,
+        data: { id: "k1", title: "T", category: "Yapay Zeka", author_name: "z", author_key: "a3f9", body: "g", replies: [{ author_name: "a", body: "y" }, { author_name: "b", body: "x" }] },
+      });
+      const konu = els.forumSag.innerHTML;
+      els.forumYeniBtn.click();
+      const yeniKonu = els.forumSag.innerHTML;
+      send({
+        type: "profile",
+        data: { key: "z1", name: "z", role: "moderator", post_count: 1, reply_count: 3, first_seen: "2026-11-01T10:00:00Z", tags: ["Yapay Zeka"], ban: { expires_at: "2026-12-01T10:00:00Z", reason: "r" }, site_pages: [{ slug: "s", title: "S" }] },
+      });
+      const profil = els.forumSag.innerHTML;
+      send({ type: "postGone", id: "x", ac: true });
+      const gitti = els.forumSag.innerHTML;
       send({ type: "theme", data: { themeName: "Gece Moru" } });
       send({ type: "sitePages", data: { max: 20, maxBody: 8000, pages: [] } });
       send({ type: "dmData", data: { konusmalar: [], gecmisYok: true } });
       const cikti = [
         els.connBadge.textContent,
         els.identityBody.innerHTML,
-        els.postDetailBody.innerHTML,
+        liste,
+        konu,
+        yeniKonu,
+        profil,
+        gitti,
         els.themeName.textContent,
         els.siteBody.innerHTML,
         els.dmLede.textContent,
       ].join("\n");
       assert.deepEqual(kalintilar(kod, gorunenMetin(cikti)), [], `${kod}: betik çıktısında çevrilmemiş metin`);
-      assert.ok(els.postDetailBody.innerHTML.includes(`<h3>${t("%d yanıt", 2)}</h3>`), `${kod}: çoğul biçim`);
-      assert.ok(els.postDetailBody.innerHTML.includes(t("Yapay Zeka")), `${kod}: kategori adı`);
+      assert.ok(konu.includes(`<h3>${t("%d yanıt", 2)}</h3>`), `${kod}: çoğul biçim`);
+      assert.ok(konu.includes(t("Yapay Zeka")) && liste.includes(t("Yapay Zeka")), `${kod}: kategori adı`);
       assert.equal(els.themeName.textContent, t("%s teması", t("Gece Moru")), `${kod}: tema adı`);
+      // AND'ın bütün hazır temaları ve özel renk (ui/theme.go, ui/ozel.go).
+      for (const ad of ["Klasik", "Turkuaz", "Gece Moru", "Kehribar", "Orman", "Gül", "Okyanus", "Gün Batımı", "Lavanta", "Mono", "Özel"]) {
+        send({ type: "theme", data: { themeName: ad } });
+        assert.equal(els.themeName.textContent, t("%s teması", t(ad)), `${kod}: ${ad} teması`);
+        assert.notEqual(t(ad), ad === "Mono" ? "" : ad, `${kod}: ${ad} çevrilmeli`);
+      }
     }
     // Tekil/çoğul biçimi betikte sayıya göre seçilir: İngilizcede 1 tekil, Fransızcada 0 tekil, Rusçada üç biçim.
     const yanitlar = (n: number) => Array.from({ length: n }, () => ({ author_name: "a", body: "y" }));
@@ -382,8 +654,8 @@ test("panel: her dilde HTML, betik çıktısı, kategori ve tema adları çevril
     for (const [kod, n, beklenen] of durumlar) {
       ayarla(kod);
       const { els, send } = boot();
-      send({ type: "postDetail", data: { id: "k", title: "T", category: "Go", author_name: "z", body: "g", replies: yanitlar(n) } });
-      assert.ok(els.postDetailBody.innerHTML.includes(`<h3>${beklenen}</h3>`), `${kod} ${n}: ${els.postDetailBody.innerHTML}`);
+      send({ type: "postDetail", ac: true, data: { id: "k", title: "T", category: "Go", author_name: "z", body: "g", replies: yanitlar(n) } });
+      assert.ok(els.forumSag.innerHTML.includes(`<h3>${beklenen}</h3>`), `${kod} ${n}: ${els.forumSag.innerHTML}`);
     }
   } finally {
     ayarla(KAYNAK);

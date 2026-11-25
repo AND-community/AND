@@ -5,6 +5,7 @@
 import * as crypto from "crypto";
 import { FORUM_CATEGORIES, ThemeReq } from "./liveTypes";
 import { ansiOrHexToCss, readableTextOn } from "./themeColor";
+import { forumBetigi, forumBolumu, forumCss } from "./forum/forumHtml";
 import { betikDegeri, bicimle, cogulBicimi, etkin, ham, k, t } from "../dil/dil";
 
 function escapeHtml(s: string): string {
@@ -58,8 +59,23 @@ function icon(name: string): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] ?? ""}</svg>`;
 }
 
-/** AND'ın hazır tema adları (ui/theme.go); panelin alt köşesinde etkin dilde gösterilir. */
-const TEMA_ADLARI = [k("Klasik"), k("Turkuaz"), k("Gece Moru"), k("Kehribar"), k("Orman"), k("Mono")];
+/**
+ * AND'ın hazır tema adları (ui/theme.go) ve özel renkten türetilen tema
+ * (ui/ozel.go); panelin alt köşesinde etkin dilde gösterilir.
+ */
+const TEMA_ADLARI = [
+  k("Klasik"),
+  k("Turkuaz"),
+  k("Gece Moru"),
+  k("Kehribar"),
+  k("Orman"),
+  k("Gül"),
+  k("Okyanus"),
+  k("Gün Batımı"),
+  k("Lavanta"),
+  k("Mono"),
+  k("Özel"),
+];
 
 /**
  * Canlı Panel'in HTML'i. Görsel dil iki katmanlıdır: yüzeyler, metin ve form
@@ -71,10 +87,6 @@ const TEMA_ADLARI = [k("Klasik"), k("Turkuaz"), k("Gece Moru"), k("Kehribar"), k
  */
 export function renderHtml(webview: { cspSource: string }): string {
   const nonce = crypto.randomBytes(16).toString("hex");
-  // Kategori değerleri ağ protokolünün parçasıdır ve Türkçe gönderilir; yalnızca görünen ad çevrilir.
-  const categoryOptions = FORUM_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(t(c))}</option>`).join(
-    ""
-  );
   /** HTML'e yazılacak çeviri. */
   const h = (kaynak: string): string => escapeHtml(t(kaynak));
   /**
@@ -221,6 +233,7 @@ export function renderHtml(webview: { cspSource: string }): string {
     .dm { grid-template-columns: 1fr; gap: 12px; }
     .convs { max-height: 28vh; }
   }
+${forumCss()}
 </style>
 </head>
 <body>
@@ -285,28 +298,7 @@ export function renderHtml(webview: { cspSource: string }): string {
       </div>
     </section>
 
-    <section id="tab-forum">
-      <div class="sec-head"><h1>${h("Forum")}</h1><p class="lede">${h("Yeni bir konu aç ya da ID'sini bildiğin bir konuyu görüntüle. Konular yayınlandığı anda ağa yayılır ve 5 gün sonra silinir.")}</p></div>
-      <div class="panel">
-        <div class="field"><label for="postCategory">${h("Kategori")}</label><select id="postCategory">${categoryOptions}</select></div>
-        <div class="field"><label for="postTitle">${h("Başlık")}</label><input type="text" id="postTitle" /></div>
-        <div class="field"><label for="postBody">${h("İçerik")}</label><textarea id="postBody"></textarea></div>
-        <button class="btn primary" id="postCreate">${h("Konuyu yayınla")}</button>
-      </div>
-
-      <h2>${h("Konu görüntüle")}</h2>
-      <div class="composer">
-        <input type="text" id="viewPostId" class="mono" placeholder="${h("Konu ID")}" />
-        <button class="btn secondary" id="viewPostBtn">${h("Göster")}</button>
-      </div>
-      <div id="postDetailBody"></div>
-
-      <div id="modSection" style="display:none">
-        <h2>${h("Moderasyon")}</h2>
-        <p class="lede">${h("Ağdaki tüm konular. Silme, konuyu herkes için kaldırır.")}</p>
-        <ul id="allPostsBody" class="list" data-empty="${h("Konu yok.")}"></ul>
-      </div>
-    </section>
+${forumBolumu(h)}
 
     <section id="tab-site">
       <div class="sec-head"><h1>${h("Kişisel site")}</h1><p class="lede">${bicimle(h("Sayfaların VS Code editöründe açılır; %s. Paylaşım kodunu alan kişi sayfayı AND Arama Motoru'ndaki Kodla Git ekranında ya da %s bayrağıyla açabilir."), [`<strong>${h("kaydetmek (Ctrl+S) sayfayı ağa yayınlar")}</strong>`, `<span class="mono">-site</span>`])}</p></div>
@@ -437,19 +429,6 @@ export function renderHtml(webview: { cspSource: string }): string {
     dmSelect(peer);
   });
   onEnter('dmNewPeer', 'dmNewBtn');
-  document.getElementById('postCreate').addEventListener('click', () => {
-    const category = document.getElementById('postCategory').value;
-    const title = document.getElementById('postTitle').value.trim();
-    const body = document.getElementById('postBody').value.trim();
-    if (!title || !body) { showBanner(${j("Başlık ve içerik boş olamaz.")}, false); return; }
-    vscode.postMessage({ type: 'createPost', category, title, body });
-  });
-  document.getElementById('viewPostBtn').addEventListener('click', () => {
-    const id = document.getElementById('viewPostId').value.trim();
-    if (!id) return;
-    vscode.postMessage({ type: 'viewPost', id });
-  });
-  onEnter('viewPostId', 'viewPostBtn');
   document.getElementById('fileSendBtn').addEventListener('click', () => {
     const peerId = document.getElementById('filePeerId').value.trim();
     if (!peerId) { showBanner(${j("Önce alıcının Peer ID’sini gir.")}, false); return; }
@@ -570,7 +549,8 @@ export function renderHtml(webview: { cspSource: string }): string {
       '<dt>' + esc(${j("Genel anahtar")}) + '</dt><dd><span class="mono" title="' + esc(identity.pub_key) + '">' + esc(identity.pub_key) + '</span>' + kopya(identity.pub_key, ${j("Genel anahtar")}) + '</dd>';
     bindCopy(body);
     isModerator = role.is_founder || role.is_moderator;
-    document.getElementById('modSection').style.display = isModerator ? '' : 'none';
+    // Sil düğmesi ve yasak formu role bağlıdır: açık konu/profil yeniden çizilir.
+    if (forumGorunum === 'konu' || forumGorunum === 'profil') forumSagCiz();
   }
 
   function renderPeers(peers) {
@@ -583,36 +563,6 @@ export function renderHtml(webview: { cspSource: string }): string {
     ).join('');
     bindCopy(document.getElementById('peersBody'));
     document.getElementById('peerIdsList').innerHTML = peers.map(p => '<option value="' + esc(p.peer_id) + '"></option>').join('');
-  }
-
-  function renderPostDetail(d) {
-    const body = document.getElementById('postDetailBody');
-    const yanitlar = d.replies || [];
-    let html = '<article class="post"><h2>' + esc(d.title) + '</h2>' +
-      '<p class="muted">' + th(${j("%s yazdı, %s kategorisinde.")}, '<span class="who" style="--h:' + hue(d.author_key || d.author_name) + '">' + esc(d.author_name) + '</span>', esc(kat(d.category))) + '</p>' +
-      '<div class="body">' + esc(d.body) + '</div>' +
-      '<h3>' + esc(yanitlar.length ? tf(${j("%d yanıt")}, yanitlar.length) : ${j("Henüz yanıt yok")}) + '</h3>' +
-      '<ul class="list replies">' + yanitlar.map(r =>
-        '<li><div class="grow"><span class="who" style="--h:' + hue(r.author_key || r.author_name) + '">' + esc(r.author_name) + '</span>' +
-        '<div class="body">' + esc(r.body) + '</div></div></li>').join('') + '</ul>' +
-      '<div class="composer" style="margin-top:10px"><input type="text" id="replyBody" placeholder="' + esc(${j("Yanıtını yaz…")}) + '" />' +
-      '<button class="btn primary" id="replySend">' + esc(${j("Yanıtla")}) + '</button></div></article>';
-    body.innerHTML = html;
-    document.getElementById('replySend').addEventListener('click', () => {
-      const el = document.getElementById('replyBody');
-      if (!el.value.trim()) return;
-      vscode.postMessage({ type: 'reply', postId: d.id, body: el.value });
-    });
-    onEnter('replyBody', 'replySend');
-  }
-
-  function renderMod(all) {
-    const list = document.getElementById('allPostsBody');
-    list.innerHTML = (all || []).map(p =>
-      '<li><div class="grow"><strong>' + esc(p.title) + '</strong><div class="muted">' + esc(kat(p.category)) + ', ' + esc(p.author_name) + '</div></div>' +
-      '<button class="btn ghost sm danger" data-delete="' + esc(p.id) + '">' + esc(${j("Sil")}) + '</button></li>'
-    ).join('');
-    list.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => vscode.postMessage({ type: 'deletePost', postId: b.dataset.delete })));
   }
 
   function renderSite(data) {
@@ -662,6 +612,7 @@ export function renderHtml(webview: { cspSource: string }): string {
       vscode.postMessage({ type: 'revealFile', path: f.save_path });
     }));
   }
+${forumBetigi(j)}
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
@@ -710,12 +661,6 @@ export function renderHtml(webview: { cspSource: string }): string {
         dmMarkRead();
         break;
       }
-      case 'postDetail':
-        renderPostDetail(msg.data);
-        break;
-      case 'forumMod':
-        renderMod(msg.all);
-        break;
       case 'fileMsg':
         receivedFiles.unshift(msg.data);
         renderReceivedFiles();
@@ -746,6 +691,8 @@ export function renderHtml(webview: { cspSource: string }): string {
       case 'error':
         showBanner(msg.message, false);
         break;
+      default:
+        forumMesaji(msg);
     }
   });
 

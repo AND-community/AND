@@ -5,8 +5,9 @@ import { gecerliPeerID } from "./dmCore";
 import { DmMerkezi } from "./dmMerkezi";
 import { LiveClient } from "./liveClient";
 import { LiveConnection } from "./liveConnection";
-import { ChatMsg, RoleInfo, SitePageInfo } from "./liveTypes";
+import { ChatMsg, IdentityInfo, RoleInfo, SitePageInfo } from "./liveTypes";
 import { renderHtml, resolveThemeColors } from "./panelHtml";
+import { ForumDenetci } from "./forum/forumDenetci";
 import { SiteFileSystem } from "./site/siteFileSystem";
 import { SITE_MAX_BODY_BYTES, SITE_MAX_PAGES, utf8Bytes } from "./site/sitePage";
 import { t } from "../dil/dil";
@@ -86,21 +87,19 @@ export function showLivePanel(
   const thePanel = panel;
   const forgetPanel = trackDisposable(context, thePanel);
   let currentRole: RoleInfo | undefined;
+  let currentIdentity: IdentityInfo | undefined;
 
-  /** AND'ın forum.go'sunda onay kuyruğu yoktur — gönderiler oluşturulduğu anda
-   * yayınlanır; kurucu/moderatörün tek yetkisi mevcut bir konuyu silmektir
-   * (bkz. AND README "Moderasyon"). Bu yüzden yalnızca getAllPosts vardır. */
-  async function refreshForumModIfAuthorized(): Promise<void> {
-    if (!currentRole?.is_founder && !currentRole?.is_moderator) {
-      return;
-    }
-    const c = conn.getClient();
-    if (!c) {
-      return;
-    }
-    const all = await c.getAllPosts();
-    void thePanel.webview.postMessage({ type: "forumMod", all });
-  }
+  // Forum sekmesi: konu listesi, açık konu, canlı değişimler, silme ve
+  // yasaklama (bkz. forum/forumDenetci.ts). Değiştirilemez işlemler (silme,
+  // yasaklama) VS Code'un kalıcı onay penceresiyle sorulur.
+  const forum = new ForumDenetci(
+    () => conn.getClient(),
+    {
+      gonder: (m) => void thePanel.webview.postMessage(m),
+      onayla: async (soru, dugme) => (await vscode.window.showWarningMessage(soru, { modal: true }, dugme)) === dugme,
+    },
+    () => ({ moderator: !!(currentRole?.is_founder || currentRole?.is_moderator), anahtar: currentIdentity?.pub_key })
+  );
 
   thePanel.webview.html = renderHtml(thePanel.webview);
 
@@ -179,13 +178,16 @@ export function showLivePanel(
           }
           const [identity, role, peers] = await Promise.all([c.getIdentity(), c.getRole(), c.getPeers()]);
           currentRole = role;
+          currentIdentity = identity;
           void thePanel.webview.postMessage({ type: "identity", data: identity });
           void thePanel.webview.postMessage({ type: "role", data: role });
           void thePanel.webview.postMessage({ type: "peers", data: peers });
-          if (role.is_founder || role.is_moderator) {
-            const all = await c.getAllPosts();
-            void thePanel.webview.postMessage({ type: "forumMod", all });
+          try {
+            await forum.listeyiGonder();
+          } catch (err) {
+            void thePanel.webview.postMessage({ type: "error", message: t("Forum alınamadı: %s", describeError(err)) });
           }
+          forum.izlemeyiBaslat();
           try {
             await pushTheme(c, true);
           } catch {
@@ -279,35 +281,9 @@ export function showLivePanel(
           await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(String(msg.path)));
           return;
         }
-        case "createPost": {
-          await client!.createPost({
-            category: String(msg.category),
-            title: String(msg.title),
-            body: String(msg.body),
-          });
-          void thePanel.webview.postMessage({ type: "info", message: t("Gönderi oluşturuldu ve ağa yayınlandı.") });
-          await refreshForumModIfAuthorized();
-          return;
-        }
-        case "viewPost": {
-          const detail = await client!.getPost(String(msg.id));
-          void thePanel.webview.postMessage({ type: "postDetail", data: detail });
-          return;
-        }
-        case "reply": {
-          await client!.createReply({ post_id: String(msg.postId), body: String(msg.body) });
-          const detail = await client!.getPost(String(msg.postId));
-          void thePanel.webview.postMessage({ type: "postDetail", data: detail });
-          await refreshForumModIfAuthorized();
-          return;
-        }
-        case "deletePost": {
-          await client!.deletePost(String(msg.postId));
-          void thePanel.webview.postMessage({ type: "info", message: t("İşlem tamamlandı.") });
-          await refreshForumModIfAuthorized();
-          return;
-        }
         default:
+          // Forum iletileri (forumOpen, createPost, reply, deletePost, profile, ban).
+          await forum.mesaj(msg);
           return;
       }
     } catch (err) {
@@ -316,6 +292,7 @@ export function showLivePanel(
   });
 
   thePanel.onDidDispose(() => {
+    forum.izlemeyiDurdur();
     clearInterval(themeTimer);
     clearInterval(dmTimer);
     disposeSub.dispose();
