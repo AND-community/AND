@@ -348,6 +348,8 @@ ${forumBolumu(h)}
   const COPY_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
   let isModerator = false;
   let bannerTimer;
+  // Son bilinen bağlantı durumu (null: henüz bilinmiyor).
+  let sonBaglanti = null;
 
   function showBanner(text, ok) {
     banner.textContent = text;
@@ -621,6 +623,10 @@ ${forumBetigi(j)}
         const badge = document.getElementById('connBadge');
         badge.textContent = msg.connected ? ${j("bağlı")} : ${j("bağlı değil")};
         badge.className = 'conn' + (msg.connected ? ' ok' : '');
+        // Bağlantı sonradan kurulduysa (AND açıldı ya da Ayarlar'da VS Code bağlantısı açıldı)
+        // Yenile'yi beklemeden her şey yüklenir. Açılıştaki ilk durum için gerekmez: açılış zaten ister.
+        if (msg.connected && sonBaglanti === false) vscode.postMessage({ type: 'refreshAll' });
+        sonBaglanti = !!msg.connected;
         // Hiç bağlanılamadıysa (kimlik yok) "Yükleniyor…" yerine bağlantının nasıl açılacağı yazılır.
         if (!msg.connected && !window.__identity) {
           document.getElementById('identityBody').innerHTML = '<dt>' + esc(${j("Durum")}) + '</dt><dd class="muted">' +

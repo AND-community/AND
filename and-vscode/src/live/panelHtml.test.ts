@@ -156,6 +156,21 @@ test("panel: bağlantı yoksa kimlik bölümü VS Code bağlantısının nerede 
   assert.ok(els.identityBody.innerHTML.includes("umut"), "bilinen kimlik bağlantı kopunca silinmemeli");
 });
 
+test("panel: bağlantı sonradan kurulunca (VS Code bağlantısı açıldı) panel kendini yeniler", () => {
+  const { posted, send } = boot();
+  send({ type: "connectionState", connected: false });
+  posted.length = 0;
+  send({ type: "connectionState", connected: true });
+  assert.deepEqual(posted, [{ type: "refreshAll" }]);
+  send({ type: "connectionState", connected: true });
+  assert.equal(posted.length, 1, "zaten bağlıyken yeniden istenmez (döngü olmaz)");
+
+  const ilk = boot();
+  ilk.posted.length = 0;
+  ilk.send({ type: "connectionState", connected: true });
+  assert.deepEqual(ilk.posted, [], "açılıştaki ilk durum yenileme istemez (açılış zaten istedi)");
+});
+
 test("panel: eş sayacı ve alıcı önerileri", () => {
   const { els, send } = boot();
   send({ type: "peers", data: [{ peer_id: "p1", addrs: ["/ip4/1.2.3.4/tcp/1"] }, { peer_id: "p2", addrs: [] }] });
