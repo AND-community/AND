@@ -728,7 +728,7 @@ and can be distributed independently of AND; see [PLUGINS.md](PLUGINS.md) for th
 
 1. At startup AND looks in the `Eklentiler/*/` folders next to its own binary for a `plugin.json` and an `and-plugin-<name>` binary. An `and-plugin-*` binary placed directly next to `and` is loaded only if an `and-plugin-<name>.json` manifest sits beside it. Plugins installed with `and plugin install` are found in `eklentiler/` in the data directory.
 2. The first time the user opens a plugin, AND asks for the permissions listed in its `plugin.json`.
-3. AND starts the plugin binary in the same terminal with these environment variables:
+3. AND starts the plugin binary with these environment variables. In the terminal interface the plugin takes over the terminal; in the desktop app it runs inside AND's window (see [Desktop interface](#desktop-interface)):
 
    | Variable | Description |
    |----------|-------------|
@@ -738,10 +738,10 @@ and can be distributed independently of AND; see [PLUGINS.md](PLUGINS.md) for th
    | `AND_DIL` | The active interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`; see [Interface language](#interface-language)) |
 
 4. The plugin performs identity, forum, DM and file operations by sending HTTP requests to AND at `AND_API_ADDR`.
-5. When the plugin's TUI exits, AND takes control back.
+5. In the terminal interface, AND takes the terminal back when the plugin's TUI exits.
 
-> The forum, Özel Chat, Site and the Admin Panel open with AND's own interface in the desktop app
-> (interface mode, see PLUGINS.md).
+> The forum, Özel Chat, Site, the Admin Panel and DeltaX open with AND's own interface in the
+> desktop app (interface mode, see PLUGINS.md).
 
 ### Standalone external tools (e.g. the VS Code extension)
 

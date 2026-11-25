@@ -730,7 +730,7 @@ AND eklentileri **bağımsız yürütülebilir programlardır**. Her eklenti ayr
 
 1. AND başlangıçta kendi binary'sinin yanındaki `Eklentiler/*/` klasörlerinde `plugin.json` ile `and-plugin-<isim>` binary'sini arar. `and`'ın yanına doğrudan konan bir `and-plugin-*` binary'si yalnızca yanında `and-plugin-<isim>.json` manifesti varsa yüklenir. `and eklenti kur` ile kurulan eklentiler veri dizinindeki `eklentiler/` klasöründe bulunur.
 2. Kullanıcı bir eklentiyi ilk kez açtığında `plugin.json`'daki izinler sorulur.
-3. AND eklenti binary'sini aynı terminalde, şu ortam değişkenleriyle başlatır:
+3. AND eklenti binary'sini şu ortam değişkenleriyle başlatır. Terminal arayüzünde eklenti terminali devralır; masaüstü uygulamasında AND'ın penceresinin içinde çalışır (bkz. [Masaüstü arayüzü](#masaüstü-arayüzü)):
 
    | Değişken | Açıklama |
    |----------|----------|
@@ -740,10 +740,10 @@ AND eklentileri **bağımsız yürütülebilir programlardır**. Her eklenti ayr
    | `AND_DIL` | Etkin arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`; bkz. [Arayüz dili](#arayüz-dili)) |
 
 4. Eklenti, `AND_API_ADDR` üzerinden AND'a HTTP istekleri göndererek kimlik, forum, DM ve dosya işlemlerini gerçekleştirir.
-5. Eklenti TUI'sı kapandığında AND kontrolü geri alır.
+5. Terminal arayüzünde eklenti TUI'sı kapandığında AND terminali geri alır.
 
-> Forum, Özel Chat, Site ve Yönetici Paneli masaüstü uygulamasında AND'ın kendi arayüzüyle açılır
-> (arayüz kipi, bkz. EKLENTILER.md).
+> Forum, Özel Chat, Site, Yönetici Paneli ve DeltaX masaüstü uygulamasında AND'ın kendi arayüzüyle
+> açılır (arayüz kipi, bkz. EKLENTILER.md).
 
 ### Bağımsız harici araçlar (ör. VS Code eklentisi)
 
