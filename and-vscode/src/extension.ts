@@ -311,7 +311,7 @@ export class DeltaXExtension {
     this.liveStatusBar.text = connected ? `$(broadcast) ${t("AND: bağlı")}${badge}` : `$(circle-slash) ${t("AND: bağlı değil")}`;
     this.liveStatusBar.tooltip = connected
       ? t("AND'a canlı bağlısınız — Forum/DM/Sohbet/Ağ paneli için tıklayın")
-      : t("AND kapalı ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamış — canlı panel için tıklayın");
+      : t("AND kapalı ya da VS Code bağlantısı kapalı (AND › Ayarlar › Eklentiler) — canlı panel için tıklayın");
     this.liveStatusBar.show();
   }
 

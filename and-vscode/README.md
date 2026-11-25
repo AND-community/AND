@@ -70,10 +70,8 @@ işler; aynı DM için her pencerede ayrı bildirim çıkmaz.
 ## Canlı Panel (Forum / DM / Sohbet / Ağ)
 
 AND açıkken (ve aşağıdaki tek seferlik kurulum yapıldıysa) Komut Paleti → **"AND: Canlı Panel"**
-ile: kimlik/rol bilgisi, bağlı eşler, genel sohbet, doğrudan mesaj (DM), forumda yeni konu açma
-(AND'da onay kuyruğu yoktur — gönderi oluşturulduğu anda ağa yayınlanır), bir konuyu ID ile
-görüntüleyip yanıtlama ve — kurucu/moderatörseniz — tüm gönderileri görüntüleyip istenmeyen bir
-konuyu silme.
+ile: kimlik/rol bilgisi, bağlı eşler, genel sohbet, doğrudan mesaj (DM), forum, kişisel site ve
+dosyalar.
 
 Durum çubuğunda sol altta **"AND: bağlı" / "AND: bağlı değil"** göstergesi vardır; tıklayınca
 paneli açar.
@@ -92,14 +90,29 @@ sayıyı gösterir. Karşı taraf çevrimdışıysa mesaj AND'ın giden kutusund
 ve o bağlandığında gider; bir hafta içinde gidemezse **gönderilemedi** olur. DeltaX'in DM ile taşınan
 grup mesajları burada hiç görünmez.
 
+**Forum** sekmesi AND'daki forum eklentisinin yaptıklarını yapar:
+
+| Özellik | Nasıl |
+|---|---|
+| Konuları gezme | Solda kategori süzgeci (konu sayılarıyla) ve konu listesi: yazar, rol rozeti, yanıt sayısı, son etkinlik. Sıra son etkinliğe göre |
+| Canlı güncelleme | Panel açıkken yeni konu, yanıt ve silinen konu listeye ve açık konuya kendiliğinden yansır; yazmakta olduğun yanıt silinmez |
+| Okuma ve yanıtlama | Konuya tıkla; `[code]` / `[code=dil]` blokları kod olarak görünür. Yanıt kutusunda **Enter** gönderir, **Shift+Enter** yeni satır |
+| Yeni konu | **Yeni konu** → kategori, başlık, içerik. Yazdığın taslak, başka bir konuya bakıp dönünce durur; **Vazgeç** atar. AND'da onay kuyruğu yoktur — konu yayınlandığı anda ağa yayılır ve 5 gün sonra silinir |
+| Kendi konunu silme | Konunun sağ üstündeki **Sil** (onay sorulur); kurucu ya da moderatörsen her konuda görünür |
+| Yazar profili | Yazarın adına tıkla: rol, konu/yanıt sayısı, ilk görülme, durum, hakkında, ilgi alanları, bağlantı, doğrulanmış GitHub, yasak durumu ve site sayfaları |
+| Yasaklama | Kurucu ya da moderatörsen profilde **Yazarı yasakla**: 1 saat, 1 gün, 7 gün, 30 gün ya da kalıcı, sebep zorunlu (onay sorulur). Yasak listesi, geçmiş ve moderatör atama AND'daki Yönetici Paneli'ndedir |
+
+Konu listesi vermeyen eski bir AND'da moderatöre eski tüm-konular listesi, üyeye ID ile konu açma
+kutusu görünür.
+
 ### Nasıl bağlanır — mimari
 
 AND'ın eklenti API'si (`pluginapi`) normalde yalnızca AND'ın kendisinin başlattığı
 eklenti alt süreçlerine (`AND_API_ADDR`/`AND_API_TOKEN` ortam değişkenleriyle) açılır — bağımsız
 başlatılmış bir VS Code uzantısı bu değişkenleri asla göremez. Bunu çözmek için AND'ın Go
-kaynağına küçük, opt-in bir ekleme yapıldı: `AND_ENABLE_EXTERNAL_API=1` ortam değişkeniyle
-açıldığında AND, mevcut token'lı TCP dinleyicisinin YANINA (onu değiştirmeden) **ikinci bir
-dinleyici** açar:
+kaynağına küçük, opt-in bir ekleme yapıldı: AND'ın Ayarlar'ındaki **VS Code bağlantısı** (ya da
+`AND_ENABLE_EXTERNAL_API=1` ortam değişkeni) açıkken AND, mevcut token'lı TCP dinleyicisinin YANINA
+(onu değiştirmeden) **ikinci bir dinleyici** açar:
 
 - **Windows:** sabit, türetilmiş adlı bir **named pipe** (`\\.\pipe\and-plugin-api-<hash>`),
   security descriptor'ı yalnızca pipe'ın sahibine (owner) erişim izni verecek şekilde ayarlanmış
@@ -115,7 +128,12 @@ AND'ın kullandığı `AND_DATA_DIR` yoluyla birebir aynı formülle (bkz. `src/
 
 ### Kurulum (tek seferlik)
 
-AND'ı başlatmadan önce ortam değişkenini ayarlayın:
+AND'da **Ayarlar › Eklentiler › VS Code bağlantısı**'nı aç (terminal arayüzünde Eklentiler
+sekmesinde `v`). Seçim kaydedilir ve AND'ı yeniden başlatmadan hemen geçerli olur; uzantı birkaç
+saniye içinde bağlanır. Kapatınca bağlantı hemen kesilir.
+
+Ortam değişkeni de çalışmaya devam eder (ör. betikle başlatılan bir AND için); onunla açılan
+bağlantı Ayarlar'dan kapatılamaz:
 
 ```powershell
 # PowerShell
@@ -128,15 +146,16 @@ $env:AND_ENABLE_EXTERNAL_API = "1"
 AND_ENABLE_EXTERNAL_API=1 ./and
 ```
 
-Bu değişken ayarlanmadıysa AND, mevcut davranışını (yalnızca kendi başlattığı eklentilere
-token'lı erişim) hiçbir şekilde değiştirmez — ikinci dinleyici hiç açılmaz.
+İkisi de kapalıysa AND, mevcut davranışını (yalnızca kendi başlattığı eklentilere token'lı
+erişim) hiçbir şekilde değiştirmez — ikinci dinleyici hiç açılmaz.
 
 ### Kapsam ve sınırlamalar
 
-- **Forum'da tüm gönderileri gözatma (`getAllPosts`) yalnızca kurucu/moderatör
-  rolüyle çalışır** — bu, AND'ın API'sinin kendi tasarımıdır (bkz. `enforceModeratorRole`),
-  uzantı tarafından eklenen bir kısıtlama değildir. Normal bir üye olarak yeni konu açabilir,
-  bilinen bir konu ID'sine yanıt yazabilir ve ID'sini bildiğiniz bir konuyu görüntüleyebilirsiniz.
+- Forum, AND'ın konu listesi (`/forum/posts`) ve değişim (`/forum/changes`, uzun yoklama) uçlarını
+  kullanır. Bunlar olmayan eski bir AND'da konu listesi yalnızca kurucu/moderatöre görünür ve canlı
+  güncelleme yerine Yenile düğmesi kullanılır.
+- Forum taslakları VS Code'da yalnızca panel açık kaldıkça tutulur; AND'daki forum eklentisinin
+  taslak dosyalarıyla paylaşılmaz (ikisi aynı anda yazıp birbirini ezmesin diye).
 - DM'ler panel kapalıyken de arka planda AND'ın DM geçmişinden okunur (2 saniyede bir, yalnızca
   yeni kayıtlar istenir); gelen DM bildirim olarak düşer. VS Code kapalıyken gelenler açılışta tek bir
   özet bildirimle haber verilir. Geçmiş tutmayan eski bir AND'da canlı dinlemeye (long-poll) geçilir;

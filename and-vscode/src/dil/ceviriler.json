@@ -261,13 +261,6 @@
     "fr": "Connecté en direct à AND — cliquez pour le panneau Forum/MP/Chat/Réseau",
     "ru": "Подключено к AND — нажмите, чтобы открыть панель «Форум/ЛС/Чат/Сеть»"
   },
-  "AND kapalı ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamış — canlı panel için tıklayın": {
-    "en": "AND is closed or AND_ENABLE_EXTERNAL_API=1 is not set — click for the live panel",
-    "de": "AND ist geschlossen oder AND_ENABLE_EXTERNAL_API=1 ist nicht gesetzt — klicken für das Live-Panel",
-    "es": "AND está cerrado o no se ha establecido AND_ENABLE_EXTERNAL_API=1: haz clic para abrir el panel en vivo",
-    "fr": "AND est fermé ou AND_ENABLE_EXTERNAL_API=1 n'est pas défini — cliquez pour le panneau en direct",
-    "ru": "AND закрыт или не задан AND_ENABLE_EXTERNAL_API=1 — нажмите, чтобы открыть живую панель"
-  },
   "(birleştiriliyor)": {"en": "(merging)", "de": "(Merge läuft)", "es": "(fusionando)", "fr": "(fusion en cours)", "ru": "(идёт слияние)"},
   "DeltaX proje: %s — dal değiştirmek için tıklayın": {
     "en": "DeltaX project: %s — click to switch branch",
@@ -666,13 +659,6 @@
     "es": "No hay conexión en vivo con AND.",
     "fr": "Aucune connexion en direct à AND.",
     "ru": "Нет живого подключения к AND."
-  },
-  "AND'a canlı bağlantı yok. AND açık ve AND_ENABLE_EXTERNAL_API=1 ayarlanmış olmalı.": {
-    "en": "No live connection to AND. AND must be running with AND_ENABLE_EXTERNAL_API=1 set.",
-    "de": "Keine Live-Verbindung zu AND. AND muss laufen und AND_ENABLE_EXTERNAL_API=1 muss gesetzt sein.",
-    "es": "No hay conexión en vivo con AND. AND debe estar abierto y con AND_ENABLE_EXTERNAL_API=1.",
-    "fr": "Aucune connexion en direct à AND. AND doit être lancé avec AND_ENABLE_EXTERNAL_API=1.",
-    "ru": "Нет живого подключения к AND. AND должен быть запущен с AND_ENABLE_EXTERNAL_API=1."
   },
   "Paylaşılacak açık bir dosya yok.": {
     "en": "There is no open file to share.",
@@ -1163,13 +1149,6 @@
     "fr": "AND n'a pas enregistré la page « %s » — ce slug a peut-être déjà été supprimé (un slug supprimé ne peut pas être réutilisé). Créez une nouvelle page avec un autre slug.",
     "ru": "AND не сохранил страницу «%s» — возможно, этот slug уже удалялся (удалённый slug нельзя использовать снова). Создайте новую страницу с другим slug."
   },
-  "AND'a canlı bağlantı yok — AND açık ve AND_ENABLE_EXTERNAL_API=1 ile başlatılmış olmalı.": {
-    "en": "No live connection to AND — AND must be running and started with AND_ENABLE_EXTERNAL_API=1.",
-    "de": "Keine Live-Verbindung zu AND — AND muss laufen und mit AND_ENABLE_EXTERNAL_API=1 gestartet worden sein.",
-    "es": "No hay conexión en vivo con AND: AND debe estar abierto e iniciado con AND_ENABLE_EXTERNAL_API=1.",
-    "fr": "Aucune connexion en direct à AND — AND doit être lancé avec AND_ENABLE_EXTERNAL_API=1.",
-    "ru": "Нет живого подключения к AND — AND должен быть запущен с AND_ENABLE_EXTERNAL_API=1."
-  },
   "Geçersiz slug \"%s\" — yalnızca küçük harf, rakam ve tire (baş/son tire olamaz), en fazla %d karakter.": {
     "en": "Invalid slug \"%s\" — only lowercase letters, digits and hyphens (no leading/trailing hyphen), at most %d characters.",
     "de": "Ungültiger Slug „%s“ — nur Kleinbuchstaben, Ziffern und Bindestriche (kein Bindestrich am Anfang/Ende), höchstens %d Zeichen.",
@@ -1323,5 +1302,7 @@
   "Okyanus": {"en": "Ocean", "de": "Ozean", "es": "Océano", "fr": "Océan", "ru": "Океан"},
   "Gün Batımı": {"en": "Sunset", "de": "Sonnenuntergang", "es": "Atardecer", "fr": "Coucher de soleil", "ru": "Закат"},
   "Lavanta": {"en": "Lavender", "de": "Lavendel", "es": "Lavanda", "fr": "Lavande", "ru": "Лаванда"},
-  "Özel": {"en": "Custom", "de": "Eigene", "es": "Personalizado", "fr": "Personnalisé", "ru": "Своя"}
+  "Özel": {"en": "Custom", "de": "Eigene", "es": "Personalizado", "fr": "Personnalisé", "ru": "Своя"},
+  "AND kapalı ya da VS Code bağlantısı kapalı (AND › Ayarlar › Eklentiler) — canlı panel için tıklayın": {"en": "AND is closed or the VS Code connection is off (AND › Settings › Plugins) — click for the live panel", "de": "AND ist geschlossen oder die VS-Code-Verbindung ist aus (AND › Einstellungen › Plugins) — klicken für das Live-Panel", "es": "AND está cerrado o la conexión con VS Code está desactivada (AND › Ajustes › Plugins): haz clic para abrir el panel en vivo", "fr": "AND est fermé ou la connexion VS Code est désactivée (AND › Paramètres › Extensions) — cliquez pour le panneau en direct", "ru": "AND закрыт или подключение VS Code выключено (AND › Настройки › Плагины) — нажмите, чтобы открыть живую панель"},
+  "AND'a canlı bağlantı yok. AND açık olmalı ve AND'ın Ayarlar › Eklentiler bölümünde VS Code bağlantısı açık olmalı.": {"en": "No live connection to AND. AND must be running, with the VS Code connection turned on under Settings › Plugins in AND.", "de": "Keine Live-Verbindung zu AND. AND muss laufen und die VS-Code-Verbindung muss in AND unter Einstellungen › Plugins eingeschaltet sein.", "es": "No hay conexión en vivo con AND. AND debe estar abierto y la conexión con VS Code activada en Ajustes › Plugins de AND.", "fr": "Aucune connexion en direct à AND. AND doit être ouvert et la connexion VS Code activée dans Paramètres › Extensions d'AND.", "ru": "Нет живого подключения к AND. AND должен быть запущен, а подключение VS Code — включено в AND в разделе Настройки › Плагины."}
 }

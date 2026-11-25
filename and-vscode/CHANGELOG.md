@@ -1,5 +1,44 @@
 # Değişiklik Günlüğü
 
+## 0.10.0
+
+**Forum AND'daki gibi; bağlanmak için ortam değişkeni gerekmiyor.**
+
+AND'da forum bir eklentiye taşındı ve eklenti API'si yeni uçlar kazandı. Uzantı bunlara uyuyor:
+
+- **Forum sekmesi baştan yazıldı.** Solda kategori süzgeci (konu sayılarıyla) ve konu listesi
+  (yazar, rol rozeti, yanıt sayısı, son etkinlik), sağda okunan konu. Önceden normal bir üye konu
+  listesini göremiyordu, yalnızca ID'sini bildiği konuyu açabiliyordu.
+- **Canlı:** panel açıkken yeni konu, yanıt ve silinen konu listeye ve açık konuya kendiliğinden
+  yansıyor (AND'ın `/forum/changes` uzun yoklaması). Yazmakta olduğun yanıt yeniden çizimde
+  silinmiyor; konu başına ayrı tutuluyor.
+- `[code]` ve `[code=dil]` blokları kod bloğu olarak görünüyor.
+- **Yeni konu formu** sağ bölmede; taslak başka bir konuya bakıp dönünce duruyor.
+- **Kendi konunu silme** (AND'ın `delete-own` ucu); kurucu ve moderatör her konuyu silebiliyor.
+  Silmeden önce VS Code'un onay penceresi soruyor.
+- **Yazar profili:** yazarın adına tıklayınca rol, konu/yanıt sayısı, ilk görülme, durum, hakkında,
+  ilgi alanları, bağlantı, doğrulanmış GitHub, yasak durumu ve site sayfaları.
+- **Yasaklama:** kurucu ve moderatör profilde yazarı 1 saat, 1 gün, 7 gün, 30 gün ya da kalıcı
+  yasaklayabiliyor (sebep zorunlu, onay sorulur).
+- Konu listesi vermeyen eski bir AND'da moderatör eski tüm-konular listesine düşüyor; üyeye ID ile
+  konu açma kutusu ve "AND'ı güncelle" notu görünüyor.
+
+Bağlantı:
+
+- AND artık **Ayarlar › Eklentiler › VS Code bağlantısı** anahtarıyla bağlantıyı açıyor (masaüstü
+  ve terminal); `AND_ENABLE_EXTERNAL_API=1` gerekmiyor ama hâlâ çalışıyor. Durum çubuğunun ipucu,
+  bağlantı yok uyarıları ve panelin Kimlik bölümü bu anahtarı gösteriyor.
+
+Temalar:
+
+- AND'ın yeni hazır temaları (Gül, Okyanus, Gün Batımı, Lavanta) ve özel renk teması panelin alt
+  köşesinde etkin dilde adlarıyla görünüyor.
+
+Testler 120'den 147'ye çıktı: forum verisi ve sıralama, değişim izleyicisi (eski AND, hata ve
+durdurma), forum denetçisi (açık konunun yenilenmesi, silinen konu, yeni konunun açılması, silme ve
+yasaklama onayı) ve sekmenin sahte DOM'da çizimi (kaçırma, taslaklar, eski AND, profil, yasak formu,
+her dilde çeviri). Sahte DOM artık gerçek tarayıcı gibi yeniden çizilen öğeleri yeniliyor.
+
 ## 0.9.0
 
 **Uzantı artık AND'ın altı dilinde: Türkçe, English, Deutsch, Español, Français, Русский.**

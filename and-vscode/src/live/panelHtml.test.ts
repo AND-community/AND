@@ -145,6 +145,17 @@ test("panel: kimlik kaçırılır, kopyala düğmesi copyText gönderir", () => 
   assert.deepEqual(posted, [{ type: "copyText", text: "12D3KooABC", label: "Peer ID" }]);
 });
 
+test("panel: bağlantı yoksa kimlik bölümü VS Code bağlantısının nerede açılacağını söyler", () => {
+  const { els, send } = boot();
+  send({ type: "connectionState", connected: false });
+  assert.match(els.identityBody.innerHTML, /Ayarlar › Eklentiler/);
+  assert.match(els.identityBody.innerHTML, /VS Code bağlantısı/);
+  send({ type: "identity", data: { name: "umut", peer_id: "12D3", pub_key: "a3" } });
+  send({ type: "role", data: { is_founder: false, is_moderator: false } });
+  send({ type: "connectionState", connected: false });
+  assert.ok(els.identityBody.innerHTML.includes("umut"), "bilinen kimlik bağlantı kopunca silinmemeli");
+});
+
 test("panel: eş sayacı ve alıcı önerileri", () => {
   const { els, send } = boot();
   send({ type: "peers", data: [{ peer_id: "p1", addrs: ["/ip4/1.2.3.4/tcp/1"] }, { peer_id: "p2", addrs: [] }] });
@@ -315,6 +326,17 @@ const ayrinti = (id: string, ek: Record<string, unknown> = {}) => ({
 
 test("panel forum: konu listesi kaçırılır, kategori süzgeci sayılarıyla, tıklayınca forumOpen", () => {
   const { els, posted, send } = boot();
+  send({
+    type: "forumPosts",
+    liste: true,
+    konular: [ozet("k1", { title: "<b>x</b>" }), ozet("k2", { category: "Python", author_role: "moderator", reply_count: 1 })],
+    kategoriler: [{ kategori: "Python", sayi: 1 }, { kategori: "Go", sayi: 1 }],
+  });
+  // AND yanıtsız konuda reply_count'u hiç göndermez (omitempty): yeni AND'da (zamanı olan konu) 0 yanıt yazılır.
+  send({ type: "forumPosts", liste: true, konular: [ozet("s", { reply_count: undefined })], kategoriler: [{ kategori: "Go", sayi: 1 }] });
+  assert.ok(els.forumKonular.innerHTML.includes("0 yanıt"), els.forumKonular.innerHTML);
+  send({ type: "forumPosts", liste: true, konular: [{ id: "e", category: "Go", title: "eski", author_name: "a", author_key: "a" }], kategoriler: [{ kategori: "Go", sayi: 1 }] });
+  assert.ok(!els.forumKonular.innerHTML.includes("yanıt"), "eski AND'ın konusunda yanıt sayısı bilinmez");
   send({
     type: "forumPosts",
     liste: true,

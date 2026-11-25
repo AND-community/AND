@@ -175,7 +175,8 @@ export function forumBetigi(j: (kaynak: string) => string): string {
       '<div class="konu-baslik">' + esc(k.title) + '</div>' +
       '<div class="konu-alt"><span class="who" style="--h:' + hue(k.author_key || k.author_name) + '">' + esc(k.author_name) + '</span>' + rolRozeti(k.author_role) +
       (forumKategori ? '' : '<span>' + esc(kat(k.category)) + '</span>') +
-      (typeof k.reply_count === 'number' ? '<span>' + esc(tf(${j("%d yanıt")}, k.reply_count)) + '</span>' : '') +
+      // AND yanıtsız konuda reply_count'u göndermez; zamanı olan (yeni AND'ın) konuda bu 0 yanıttır.
+      (k.created_at || typeof k.reply_count === 'number' ? '<span>' + esc(tf(${j("%d yanıt")}, k.reply_count || 0)) + '</span>' : '') +
       zamanEtiketi(k.last_activity || k.created_at) + '</div></li>'
     ).join('');
     ul.querySelectorAll('[data-konu-ac]').forEach(li => {

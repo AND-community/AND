@@ -621,6 +621,11 @@ ${forumBetigi(j)}
         const badge = document.getElementById('connBadge');
         badge.textContent = msg.connected ? ${j("bağlı")} : ${j("bağlı değil")};
         badge.className = 'conn' + (msg.connected ? ' ok' : '');
+        // Hiç bağlanılamadıysa (kimlik yok) "Yükleniyor…" yerine bağlantının nasıl açılacağı yazılır.
+        if (!msg.connected && !window.__identity) {
+          document.getElementById('identityBody').innerHTML = '<dt>' + esc(${j("Durum")}) + '</dt><dd class="muted">' +
+            esc(${j("AND'a canlı bağlantı yok. AND açık olmalı ve AND'ın Ayarlar › Eklentiler bölümünde VS Code bağlantısı açık olmalı.")}) + '</dd>';
+        }
         break;
       }
       case 'identity':

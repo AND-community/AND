@@ -6,8 +6,9 @@ const POLL_INTERVAL_MS = 10_000;
 
 /**
  * AND'ın canlı yerel API'sine (named pipe / Unix socket) bağlantı durumunu
- * yönetir. AND kapalıyken ya da AND_ENABLE_EXTERNAL_API=1 ayarlanmamışken
- * bağlantı basitçe başarısız olur — bu normaldir, DeltaX'in kendi yerel
+ * yönetir. AND kapalıyken ya da AND'da VS Code bağlantısı (Ayarlar ›
+ * Eklentiler ya da AND_ENABLE_EXTERNAL_API=1) kapalıyken bağlantı basitçe
+ * başarısız olur — bu normaldir, DeltaX'in kendi yerel
  * dosya tabanlı özellikleri bundan etkilenmez.
  */
 export class LiveConnection implements vscode.Disposable {

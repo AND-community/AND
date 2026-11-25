@@ -298,7 +298,7 @@ export class SiteFileSystem implements vscode.FileSystemProvider, vscode.Disposa
     const client = await this.conn.ensureConnected();
     if (!client) {
       throw vscode.FileSystemError.Unavailable(
-        t("AND'a canlı bağlantı yok — AND açık ve AND_ENABLE_EXTERNAL_API=1 ile başlatılmış olmalı.")
+        t("AND'a canlı bağlantı yok. AND açık olmalı ve AND'ın Ayarlar › Eklentiler bölümünde VS Code bağlantısı açık olmalı.")
       );
     }
     return client;

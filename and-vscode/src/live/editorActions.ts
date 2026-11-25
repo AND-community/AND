@@ -16,7 +16,7 @@ export async function requireClient(conn: LiveConnection): Promise<LiveClient | 
   const client = await conn.ensureConnected();
   if (!client) {
     void vscode.window.showErrorMessage(
-      t("AND'a canlı bağlantı yok. AND açık ve AND_ENABLE_EXTERNAL_API=1 ayarlanmış olmalı.")
+      t("AND'a canlı bağlantı yok. AND açık olmalı ve AND'ın Ayarlar › Eklentiler bölümünde VS Code bağlantısı açık olmalı.")
     );
   }
   return client;
