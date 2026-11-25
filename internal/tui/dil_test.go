@@ -88,10 +88,6 @@ func dilEkranlari(t *testing.T, w, h int) map[string]string {
 	mm, _ := m.eklentiAc(m.eklentiIndeksi("ozel_chat"), nil)
 	ekranlar["izin"] = mm.(appModel).View()
 
-	fm := newForumModel(context.Background(), nil, m.identity, nil, nil, nil, m.dataDir, true, nil, nil)
-	f, _ := fm.Update(boyut)
-	ekranlar["forum_kategoriler"] = f.View()
-
 	giris := func(lm loginModel) string {
 		g, _ := lm.Update(boyut)
 		return g.View()

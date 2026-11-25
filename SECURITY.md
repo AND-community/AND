@@ -156,8 +156,8 @@ AND'ın güvenlik tasarımını anlayarak değerlendirme yapman için temel bile
   yayınlanmaz; böylece imzasız, dolayısıyla güncellenemeyen bir sürüm çıkmaz. Kurulum komutları
   `.github/workflows/release.yml`'deki "Özet dosyasını imzala" adımındadır.
 - AND güncellenince aynı sürümle yayınlanan eklentiler de güncellenir; her eklenti dosyası ve manifest'i
-  aynı (imzası doğrulanmış) `SHA256SUMS.txt`'ye karşı denetlenir. Ayrı depolardaki DeltaX, Pembiş ve
-  Konu Aç da sürüm iş akışında derlenip aynı sürüme konur. Sürümde dosyası olmayan eklentilere
+  aynı (imzası doğrulanmış) `SHA256SUMS.txt`'ye karşı denetlenir. Ayrı depolardaki DeltaX ve
+  Pembiş de sürüm iş akışında derlenip aynı sürüme konur. Sürümde dosyası olmayan eklentilere
   (ör. üçüncü taraf) dokunulmaz; doğrulanamayan bir eklenti eski haliyle kalır. Yeni sürüm yeni bir izin
   isterse kullanıcıya bir sonraki açılışta yeniden sorulur.
 - Sürüm imzalama genel anahtarı (Ed25519, hex):

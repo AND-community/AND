@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -128,7 +129,6 @@ func TestOnizleme(t *testing.T) {
 		t.Fatal(err)
 	}
 	eklentiler := []pluginmgr.Plugin{
-		{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç", Version: "1.2.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Foruma yeni konu açar."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Forum konularını kişisel bir web sitesi olarak yayımlar."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIletisim, Description: "Uçtan uca şifreli özel mesajlar.", Permissions: []string{pluginapi.IzinDM}}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "forum", Label: "Forum", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIletisim, Description: "Kategoriler, konular ve yanıtlar.", Permissions: []string{pluginapi.IzinForum}}, Enabled: true},
@@ -140,6 +140,10 @@ func TestOnizleme(t *testing.T) {
 	// ONIZLEME_TERMINAL, "--deneme" kipi olan bir eklenti programıdır (ör.
 	// "and eklenti yeni" iskeletinden derlenen): AND'ın içinde, Araçlar
 	// bölümünde "Örnek" adıyla çalışır.
+	// ONIZLEME_FORUMSUZ: forum eklentisi kurulu değilmiş gibi (açılış Sohbet'e düşer).
+	if os.Getenv("ONIZLEME_FORUMSUZ") != "" {
+		eklentiler = slices.DeleteFunc(eklentiler, func(p pluginmgr.Plugin) bool { return p.Name() == "forum" })
+	}
 	if os.Getenv("ONIZLEME_VITRIN") != "" {
 		eklentiler = append(eklentiler, pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "vitrin", Label: "Vitrin", Version: "1.0.0", Author: "AND",
 			Category: pluginapi.KategoriArac, Description: "Eklenti arayüzünün bütün bileşenleri.", UI: arayuz.Surum}, Enabled: true})

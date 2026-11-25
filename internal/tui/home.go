@@ -276,11 +276,13 @@ func (m appModel) homeDetailSide(w, h int) string {
 		}
 	}
 
-	if m.pluginByIdx[m.menuIndex] != nil {
+	// Forum eklentisi, forumun kendi önizlemesini (kategoriler, son konular)
+	// gösterir; öteki eklentiler eklenti listesini.
+	if pl := m.pluginByIdx[m.menuIndex]; pl != nil && pl.Name() != forumEklentisi {
 		b.WriteString(ui.Section(dil.T("Yüklü eklentiler")) + "\n\n")
 		for _, pl := range m.plugins {
 			if pl.Label() == "" {
-				continue // forumdan açılan gizli eklentiler (ör. konu_ac)
+				continue // menüde görünmeyen (etiketsiz) eklentiler
 			}
 			nokta := ui.S.Success.Render("●")
 			if !pl.Enabled {
@@ -370,7 +372,7 @@ func (m appModel) homeDetailMain(w, h int) string {
 	}
 	kalan := func() int { return h - lipgloss.Height(strings.TrimRight(b.String(), "\n")) }
 
-	if pl := m.pluginByIdx[m.menuIndex]; pl != nil {
+	if pl := m.pluginByIdx[m.menuIndex]; pl != nil && pl.Name() != forumEklentisi {
 		durum := ui.S.Success.Render(dil.T("● açık"))
 		if !pl.Enabled {
 			durum = ui.S.Muted.Render(dil.T("○ kapalı"))

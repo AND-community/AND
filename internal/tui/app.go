@@ -37,7 +37,6 @@ type appScreen int
 
 const (
 	screenMenu appScreen = iota
-	screenForum
 	screenChat
 	screenChatProfile
 	screenSettings
@@ -121,7 +120,6 @@ type appModel struct {
 	profileStore *profile.Store
 	siteStore    *site.Store
 	dataDir      string
-	forumModel   tea.Model
 
 	chatStore *chatlog.Store
 	screen    appScreen
@@ -242,10 +240,9 @@ type appModel struct {
 	githubCancel          context.CancelFunc
 	githubLastAttempt     time.Time
 
-	width, height  int
-	quitting       bool
-	updateNotice   string
-	_canCreatePost bool
+	width, height int
+	quitting      bool
+	updateNotice  string
 }
 
 type themeChangedMsg struct{ theme ThemeConfig }
@@ -310,9 +307,7 @@ func Run(ctx context.Context, id *stdcrypto.Identity, node *network.Node,
 		}()
 	}
 
-	son, err := p.Run()
-	cikistaTaslaklariKaydet(son)
-	if err != nil {
+	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("tui: run app program: %w", err)
 	}
 	return nil
@@ -354,12 +349,21 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 	// başlıklarını nerede çizeceğini belirler — Enter/Space tuş işleyicileri
 	// (handleMenuKey) hâlâ etiket string'ine ya da pluginByIdx'e bakar,
 	// gruplamadan bağımsızdır.
-	items := []string{dil.K("Forum"), dil.K("Sohbet")}
-	byIdx := []*pluginmgr.Plugin{nil, nil}
-	groups := []string{dil.K("Topluluk"), dil.K("Topluluk")}
+	// Forum artık bir eklentidir (Eklentiler/forum): kuruluysa Topluluk
+	// dalında Sohbet'in üstünde durur, kategori dallarında tekrarlanmaz.
+	var items []string
+	var byIdx []*pluginmgr.Plugin
+	var groups []string
+	for i := range plugins {
+		if plugins[i].Name() == forumEklentisi && plugins[i].Label() != "" {
+			items, byIdx, groups = append(items, plugins[i].Label()), append(byIdx, &plugins[i]), append(groups, dil.K("Topluluk"))
+			break
+		}
+	}
+	items, byIdx, groups = append(items, dil.K("Sohbet")), append(byIdx, nil), append(groups, dil.K("Topluluk"))
 	var menudekiler []int
 	for i := range plugins {
-		if plugins[i].Label() == "" || plugins[i].Manifest.Category == pluginapi.KategoriTema {
+		if plugins[i].Label() == "" || plugins[i].Manifest.Category == pluginapi.KategoriTema || plugins[i].Name() == forumEklentisi {
 			continue
 		}
 		menudekiler = append(menudekiler, i)
@@ -399,14 +403,6 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		}
 	}
 
-	canCreatePost := false
-	for i := range plugins {
-		if plugins[i].Name() == "konu_ac" && plugins[i].Enabled {
-			canCreatePost = true
-			break
-		}
-	}
-
 	return appModel{
 		ctx:             ctx,
 		identity:        id,
@@ -437,7 +433,6 @@ func newAppModel(ctx context.Context, id *stdcrypto.Identity, node *network.Node
 		linkInput:       linkIn,
 		banReasonInput:  banIn,
 		tagSelected:     make(map[string]bool),
-		_canCreatePost:  canCreatePost,
 	}
 }
 
@@ -571,28 +566,16 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case screenKurallar:
 			m.syncKurallarVP()
 		}
-		if m.screen == screenForum && m.forumModel != nil {
-			var cmd tea.Cmd
-			m.forumModel, cmd = m.forumModel.Update(msg)
-			return m, cmd
-		}
 		return m, nil
 
 	case backMsg:
 		m.screen = screenMenu
-		m.forumModel = nil
 		return m, nil
 
 	case openExternalPluginMsg:
 		return m.launchPlugin(msg.name, msg.env)
 
 	case pluginExitMsg:
-		if m.screen == screenForum && m.forumModel != nil {
-			if fm, ok := m.forumModel.(forumModel); ok && fm.forum != nil {
-				fm.konular = fm.forum.PostsByCategory(fm.kategori)
-				m.forumModel = fm
-			}
-		}
 		return m, nil
 
 	case profileSavedMsg:
@@ -749,18 +732,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.screen == screenForum && m.forumModel != nil {
-			var cmd tea.Cmd
-			m.forumModel, cmd = m.forumModel.Update(msg)
-			return m, cmd
-		}
 		return m.handleKey(msg)
-	}
-
-	if m.screen == screenForum && m.forumModel != nil {
-		var cmd tea.Cmd
-		m.forumModel, cmd = m.forumModel.Update(msg)
-		return m, cmd
 	}
 	return m, nil
 }
@@ -814,20 +786,6 @@ func (m appModel) handleMenuKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case label == "Çıkış":
 			m.quitting = true
 			return m, tea.Quit
-		case label == "Forum":
-			canCreate := false
-			for i := range m.plugins {
-				if m.plugins[i].Name() == "konu_ac" && m.plugins[i].Enabled {
-					canCreate = true
-					break
-				}
-			}
-			fm := newForumModel(m.ctx, m.forumStore, m.identity, m.profileStore, m.chatStore, m.siteStore, m.dataDir, canCreate, m.mod, m.modTopic)
-			initCmd := fm.Init()
-			sized, sizeCmd := fm.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
-			m.forumModel = sized
-			m.screen = screenForum
-			return m, tea.Batch(initCmd, sizeCmd)
 		case label == "Sohbet":
 			m.screen = screenChat
 			m.chatInput.Focus()
@@ -1218,11 +1176,6 @@ func (m appModel) View() string {
 		return ""
 	}
 	switch m.screen {
-	case screenForum:
-		if m.forumModel != nil {
-			return m.forumModel.View()
-		}
-		return m.viewMenu()
 	case screenChat:
 		return m.viewChat()
 	case screenChatProfile:
@@ -2109,3 +2062,6 @@ func (m appModel) viewSettings() string {
 	f.WriteString(ui.KeyHints(iw, hints...))
 	return ui.Page(m.width, m.height, b.String(), f.String())
 }
+
+// forumEklentisi, forumu çizen eklentinin adıdır (bkz. Eklentiler/forum).
+const forumEklentisi = "forum"

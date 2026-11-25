@@ -50,9 +50,6 @@ func (u *Uygulama) rotalar() {
 	m.HandleFunc("GET /api/kurallar", u.kurallar)
 	m.HandleFunc("POST /api/kurallar", u.kurallariKabulEt)
 	m.HandleFunc("GET /api/forum", u.cekirdekle(u.forumOzeti))
-	m.HandleFunc("GET /api/forum/konu", u.cekirdekle(u.konuGetir))
-	m.HandleFunc("POST /api/forum/konu", u.cekirdekle(u.konuAc))
-	m.HandleFunc("POST /api/forum/yanit", u.cekirdekle(u.yanitYaz))
 	m.HandleFunc("GET /api/sohbet", u.cekirdekle(u.sohbetGecmisi))
 	m.HandleFunc("POST /api/sohbet", u.cekirdekle(u.sohbetGonder))
 	m.HandleFunc("GET /api/profil", u.cekirdekle(u.profilGetir))
@@ -175,7 +172,6 @@ func (u *Uygulama) oturum(w http.ResponseWriter, _ *http.Request, d *cekirdek) {
 		"uyari":          d.Uyari,
 		"kurallarOnayli": tui.KurallarOnaylandi(u.dir),
 		"menu":           d.menuEklentileri(),
-		"konuAcabilir":   d.konuAcabilir(),
 	})
 }
 
@@ -261,10 +257,9 @@ func (u *Uygulama) forumOzeti(w http.ResponseWriter, r *http.Request, d *cekirde
 	}
 	sort.Slice(ozetler, func(i, j int) bool { return ozetler[i].SonEtkinlik.After(ozetler[j].SonEtkinlik) })
 	jsonYaz(w, map[string]any{
-		"kategoriler":  kategoriler,
-		"toplam":       d.Forum.TotalPosts(),
-		"konular":      ozetler,
-		"konuAcabilir": d.konuAcabilir(),
+		"kategoriler": kategoriler,
+		"toplam":      d.Forum.TotalPosts(),
+		"konular":     ozetler,
 	})
 }
 
@@ -278,125 +273,7 @@ type yanitBilgisi struct {
 	Kendi     bool           `json:"kendi,omitempty"`
 }
 
-func (u *Uygulama) konuGetir(w http.ResponseWriter, r *http.Request, d *cekirdek) {
-	if d.Forum == nil {
-		hataYaz(w, http.StatusServiceUnavailable, "")
-		return
-	}
-	p := d.Forum.PostByID(r.URL.Query().Get("id"))
-	if p == nil {
-		hataYaz(w, http.StatusNotFound, dil.T("Konu bulunamadı; silinmiş ya da süresi dolmuş olabilir."))
-		return
-	}
-	yanitlar := d.Forum.Replies(p.ID)
-	sort.SliceStable(yanitlar, func(i, j int) bool { return yanitlar[i].CreatedAt.Before(yanitlar[j].CreatedAt) })
-	liste := make([]yanitBilgisi, len(yanitlar))
-	for i, y := range yanitlar {
-		liste[i] = yanitBilgisi{
-			ID: y.ID, Yazar: y.AuthorName, YazarKisa: kisaAnahtar(y.AuthorKey), Rol: d.rol(y.AuthorKey),
-			Zaman: y.CreatedAt, Govde: bbcode.Parcala(y.Body), Kendi: y.AuthorKey == d.anahtar,
-		}
-	}
-	jsonYaz(w, map[string]any{
-		"konu":     d.konuOzeti(p),
-		"govde":    bbcode.Parcala(p.Body),
-		"yanitlar": liste,
-		"sinir":    forum.MaxBodyBytes,
-	})
-}
-
-// icerikDenetle, bir konu ya da yanıt metnini terminal arayüzünün ve Konu
-// Aç eklentisinin yaptığı denetimlerle doğrular; sorun yoksa boş döner.
-func icerikDenetle(icerik string, bosHata string) string {
-	switch {
-	case icerik == "":
-		return bosHata
-	case !bbcode.Dengeli(icerik):
-		return dil.T("Kapanmamış [code] etiketi var, kontrol edin")
-	case len(icerik) > forum.MaxBodyBytes:
-		return dil.F("Yanıt çok uzun (%d/%d bayt)", len(icerik), forum.MaxBodyBytes)
-	}
-	return ""
-}
-
 const enUzunBaslik = 100 // Konu Aç'ınkiyle aynı (karakter)
-
-func (u *Uygulama) konuAc(w http.ResponseWriter, r *http.Request, d *cekirdek) {
-	var istek struct {
-		Kategori string `json:"kategori"`
-		Baslik   string `json:"baslik"`
-		Metin    string `json:"metin"`
-	}
-	if jsonOku(r, &istek) != nil || d.Forum == nil {
-		hataYaz(w, http.StatusBadRequest, "")
-		return
-	}
-	if !d.konuAcabilir() {
-		hataYaz(w, http.StatusForbidden, dil.T("Yeni konu açmak için Konu Aç eklentisini Ayarlar › Eklentiler'den etkinleştir."))
-		return
-	}
-	baslik, metin := temiz(istek.Baslik), temiz(istek.Metin)
-	switch {
-	case !protokol.GecerliKategori(istek.Kategori):
-		hataYaz(w, http.StatusBadRequest, dil.T("Bir kategori seç."))
-		return
-	case baslik == "":
-		hataYaz(w, http.StatusBadRequest, dil.T("Başlık boş olamaz"))
-		return
-	case len([]rune(baslik)) > enUzunBaslik:
-		hataYaz(w, http.StatusBadRequest, dil.F("Başlık en çok %d karakter olabilir.", enUzunBaslik))
-		return
-	}
-	if h := icerikDenetle(metin, dil.T("İçerik boş olamaz")); h != "" {
-		hataYaz(w, http.StatusBadRequest, h)
-		return
-	}
-	p, err := d.Forum.CreatePost(r.Context(), istek.Kategori, baslik, metin)
-	if err != nil {
-		hataYaz(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	jsonYaz(w, map[string]string{"id": p.ID})
-}
-
-func (u *Uygulama) yanitYaz(w http.ResponseWriter, r *http.Request, d *cekirdek) {
-	var istek struct {
-		Konu  string `json:"konu"`
-		Metin string `json:"metin"`
-	}
-	if jsonOku(r, &istek) != nil || d.Forum == nil {
-		hataYaz(w, http.StatusBadRequest, "")
-		return
-	}
-	if d.Forum.PostByID(istek.Konu) == nil {
-		hataYaz(w, http.StatusNotFound, dil.T("Konu bulunamadı; silinmiş ya da süresi dolmuş olabilir."))
-		return
-	}
-	metin := temiz(istek.Metin)
-	if h := icerikDenetle(metin, dil.T("Yanıt boş olamaz")); h != "" {
-		hataYaz(w, http.StatusBadRequest, h)
-		return
-	}
-	if _, err := d.Forum.CreateReply(r.Context(), istek.Konu, metin); err != nil {
-		// Yanıt yerelde saklandı; yalnızca yayımlanamadı (ör. henüz eş yok).
-		hataYaz(w, http.StatusBadGateway, err.Error())
-		return
-	}
-	jsonYaz(w, map[string]bool{"tamam": true})
-}
-
-// konuAcabilir, terminal arayüzündeki kuralın aynısıdır: yeni konu açmak
-// Konu Aç eklentisinin işidir ve o etkinken mümkündür.
-func (d *cekirdek) konuAcabilir() bool {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	for _, p := range d.eklentiler {
-		if p.Name() == "konu_ac" && p.Enabled {
-			return true
-		}
-	}
-	return false
-}
 
 // ─── Sohbet ─────────────────────────────────────────────────────────────────
 

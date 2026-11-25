@@ -162,7 +162,7 @@ func (u *Uygulama) eklentiEtkin(w http.ResponseWriter, r *http.Request, d *cekir
 	case err != nil:
 		hataYaz(w, http.StatusInternalServerError, err.Error())
 	default:
-		jsonYaz(w, map[string]any{"menu": d.menuEklentileri(), "konuAcabilir": d.konuAcabilir()})
+		jsonYaz(w, map[string]any{"menu": d.menuEklentileri()})
 	}
 }
 

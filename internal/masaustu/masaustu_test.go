@@ -310,35 +310,22 @@ func cekirdekli(t *testing.T, eklentiler ...pluginmgr.Plugin) (*deneme, *forum.F
 	return d, f
 }
 
-func TestForum_OzetVeDenetimler(t *testing.T) {
+// TestForum_OzetVeEskiUclarYok: forum bir eklentidir; masaüstü yalnızca Ctrl+K
+// için konu özetini sunar, konu okuma/açma/yanıt uçları yoktur.
+func TestForum_OzetVeEskiUclarYok(t *testing.T) {
 	d, _ := cekirdekli(t)
 	o := jsonCoz(t, d.al("/api/forum"))
-	if o["konuAcabilir"] != false || len(o["kategoriler"].([]any)) == 0 {
+	if _, var_ := o["konuAcabilir"]; var_ || len(o["kategoriler"].([]any)) == 0 {
 		t.Fatalf("özet = %v", o)
 	}
-	// Konu Aç kapalıyken yeni konu açılamaz.
-	if w := d.gonder("/api/forum/konu", map[string]string{"kategori": "Genel", "baslik": "b", "metin": "m"}); w.Code != http.StatusForbidden {
-		t.Errorf("konu_ac yokken = %d", w.Code)
-	}
-
-	d, _ = cekirdekli(t, pluginmgr.Plugin{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç"}, Enabled: true})
-	for _, g := range []map[string]string{
-		{"kategori": "yok-boyle-kategori", "baslik": "b", "metin": "m"},
-		{"kategori": "Genel", "baslik": " ", "metin": "m"},
-		{"kategori": "Genel", "baslik": strings.Repeat("ş", enUzunBaslik+1), "metin": "m"},
-		{"kategori": "Genel", "baslik": "b", "metin": "  "},
-		{"kategori": "Genel", "baslik": "b", "metin": "[code]kapanmadı"},
-		{"kategori": "Genel", "baslik": "b", "metin": strings.Repeat("x", forum.MaxBodyBytes+1)},
+	for _, w := range []*httptest.ResponseRecorder{
+		d.al("/api/forum/konu?id=olmayan"),
+		d.gonder("/api/forum/konu", map[string]string{"kategori": "Genel", "baslik": "b", "metin": "m"}),
+		d.gonder("/api/forum/yanit", map[string]string{"konu": "olmayan", "metin": "m"}),
 	} {
-		if w := d.gonder("/api/forum/konu", g); w.Code != http.StatusBadRequest {
-			t.Errorf("%.40v kabul edildi (%d)", g, w.Code)
+		if w.Code != http.StatusNotFound && w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("eski forum ucu yanıt verdi: %d", w.Code)
 		}
-	}
-	if w := d.gonder("/api/forum/yanit", map[string]string{"konu": "olmayan", "metin": "m"}); w.Code != http.StatusNotFound {
-		t.Errorf("olmayan konuya yanıt = %d", w.Code)
-	}
-	if w := d.al("/api/forum/konu?id=olmayan"); w.Code != http.StatusNotFound {
-		t.Errorf("olmayan konu = %d", w.Code)
 	}
 }
 

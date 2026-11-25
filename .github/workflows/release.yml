@@ -16,7 +16,7 @@ jobs:
       # Sürüme giren eklentiler, "klasör:ad" çiftleri. Ad, eklentinin
       # plugin.json'daki name alanıdır; AND eklentiyi ve güncelleyici sürüm
       # dosyasını bu adla bulur.
-      EKLENTILER: "admin:admin konu_ac:konu_ac ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site"
+      EKLENTILER: "admin:admin forum:forum ozel_chat:ozel_chat DeltaX:DeltaX Pembis:pembis site:site"
     strategy:
       matrix:
         include:
@@ -48,7 +48,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # DeltaX, Pembiş ve Konu Aç ayrı depolardır. Sürüme girmezlerse kurulu
+      # DeltaX ve Pembiş ayrı depolardır (Konu Aç artık forum eklentisinin
+      # parçasıdır). Sürüme girmezlerse kurulu
       # kopyaları otomatik güncellenemez (güncelleyici eklentiyi AND'la aynı
       # sürümdeki and-plugin-<ad>_<os>_<arch> dosyasından günceller); bu
       # yüzden derlemeden önce Eklentiler/ altına alınırlar. Alınamazlarsa
@@ -56,7 +57,7 @@ jobs:
       # bırakırdı.
       - name: Ayrı depolardaki eklentileri al
         run: |
-          for depo in DeltaX Pembis konu_ac; do
+          for depo in DeltaX Pembis; do
             git clone --depth 1 "https://github.com/${{ github.repository_owner }}/${depo}.git" "Eklentiler/${depo}"
           done
 
@@ -112,8 +113,8 @@ jobs:
               ./cmd/and-masaustu
           fi
 
-          # Eklenti binary'leri (liste: işin EKLENTILER değişkeni). DeltaX,
-          # Pembis ve konu_ac bir önceki adımda ayrı depolarından alınır.
+          # Eklenti binary'leri (liste: işin EKLENTILER değişkeni). DeltaX ve
+          # Pembis bir önceki adımda ayrı depolarından alınır.
           for e in ${EKLENTILER}; do
             klasor="${e%%:*}"
             ad="${e##*:}"

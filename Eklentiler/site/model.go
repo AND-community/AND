@@ -74,8 +74,7 @@ var sablonlar = []sablon{
 }
 
 // taslak, henüz ağa YAYINLANMAMIŞ, yalnızca bu düğümde yerel olarak
-// saklanan bir sayfa çalışmasıdır — konu_ac eklentisinin taslak
-// mekanizmasıyla AYNI amaç (uzun bir yazıyı bitirmeden bırakabilmek,
+// saklanan bir sayfa çalışmasıdır — forumun konu taslaklarıyla AYNI amaç (uzun bir yazıyı bitirmeden bırakabilmek,
 // ağ olmadan da devam edebilmek), ama kategori yerine slug ile anahtarlanır
 // (site sayfalarının kategorisi yoktur). Bir slug için en fazla BİR taslak
 // tutulur — taslakKaydet aynı slug'a ait varsa üzerine yazar.

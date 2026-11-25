@@ -45,7 +45,7 @@ SHA-256 özetlerini ve istediği izinleri gösterip onay ister (`-e`/`--evet` so
   dosya başlığından okunur; **kurarken hiçbir şey çalıştırılmaz.**
 - Arşivdeki yollar paketin dışına çıkamaz; bağlantılar, aygıt dosyaları ve 512 MB'ı aşan paketler
   reddedilir. https dışındaki adreslerden indirilmez.
-- AND'la gelen bir eklentinin adını taşıyan paket kurulmaz (ör. sahte bir `konu_ac`).
+- AND'la gelen bir eklentinin adını taşıyan paket kurulmaz (ör. sahte bir `forum`).
 
 Eklenti veri dizinindeki `eklentiler/<ad>/` klasörüne kurulur (Windows'ta `%APPDATA%\and\eklentiler`,
 Linux'ta `~/.config/and/eklentiler`, macOS'ta `~/Library/Application Support/and/eklentiler`); AND
@@ -118,7 +118,7 @@ kopyanın özetiyle tutmayan bir programı başlatmaz.
 | Alan | Zorunlu | Açıklama |
 |---|---|---|
 | `name` | Evet | Eklentinin adı; programın adı `and-plugin-<name>[.exe]` olur. Harf ya da rakamla başlar; harf, rakam, `_`, `-`; en fazla 48 karakter |
-| `label` | Hayır | Menüde görünen ad. Boşsa eklenti menüde görünmez (yalnızca AND'ın kendisinin başlattığı `konu_ac` gibi) |
+| `label` | Hayır | Menüde görünen ad. Boşsa eklenti menüde görünmez |
 | `version` | Hayır | Sürüm; menüde ve `and eklenti liste`'de görünür |
 | `description` | Hayır | Menüdeki kısa açıklama |
 | `author` | Hayır | Yazar |
@@ -149,7 +149,6 @@ değişkenleri:
 | `AND_API_TOKEN` | Bu açılışa özel API anahtarı; eklenti kapanınca geçersizleşir, hiçbir dosyaya yazılmaz | `pluginapi.NewClientFromEnv()` |
 | `AND_DATA_DIR` | AND'ın veri dizini | `pluginapi.DataDir()` |
 | `AND_DIL` | Arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
-| `AND_CATEGORY` | Yalnızca `konu_ac`: forumda seçili kategori | `pluginapi.Category()` |
 | `AND_GOMULU` | `1`: eklenti AND'ın masaüstü penceresinin içinde çalışıyor. Başlık ve kenar AND'ındır; `ui.Page` çerçevesini çizmez (içerik aynı yerde kalır) | `ui.Gomulu` |
 | `AND_ARAYUZ_PROTOKOLU` | Masaüstü eklentiyi arayüz kipinde başlattı (`"ui"` ≥ 1); değeri AND'ın konuştuğu en yüksek protokol sürümü (bkz. [Arayüz](#arayüz-masaüstünde-terminal-yerine-andın-bileşenleri)) | `arayuz.Etkin()` |
 

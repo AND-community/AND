@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -290,6 +291,7 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 	// Eklentiler kategorilerine göre ayrı dallarda, kategori sırasıyla
 	// (İletişim < Yönetim < Geliştirme < Diğer); tema eklentisi menüde yok.
 	plugins := []pluginmgr.Plugin{
+		{Manifest: pluginapi.Manifest{Name: "forum", Label: "Forum", Category: pluginapi.KategoriIletisim}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Category: pluginapi.KategoriGelistirme}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli", Category: pluginapi.KategoriYonetim}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "hava", Label: "Hava"}, Enabled: true},
@@ -323,5 +325,36 @@ func TestAppModel_MenuGroups_TreeStructure(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("viewMenu() çıktısı %q içermiyor", want)
 		}
+	}
+}
+
+// Forum bir eklentidir: kurulu değilse menüde Forum girdisi olmaz.
+func TestMenu_ForumEklentisiYoksaGirdiYok(t *testing.T) {
+	id, err := stdcrypto.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{
+		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Category: pluginapi.KategoriIletisim}, Enabled: true},
+	}, "", nil, nil, nil, "", nil, nil, nil)
+	if m.menuItems[0] != "Sohbet" || slices.Contains(m.menuItems, "Forum") {
+		t.Fatalf("forum eklentisi yokken Forum girdisi olmamalı: %v", m.menuItems)
+	}
+}
+
+// Forum eklentisi Topluluk dalında açılır (Enter onu eklenti olarak açar).
+func TestMenu_ForumEklentisiToplulukta(t *testing.T) {
+	id, err := stdcrypto.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newAppModel(context.Background(), id, nil, []pluginmgr.Plugin{
+		{Manifest: pluginapi.Manifest{Name: "forum", Label: "Forum", Category: pluginapi.KategoriIletisim}, Enabled: true},
+	}, "", nil, nil, nil, "", nil, nil, nil)
+	if m.menuItems[0] != "Forum" || m.menuGroups[0] != "Topluluk" || m.pluginByIdx[0] == nil || m.pluginByIdx[0].Name() != "forum" {
+		t.Fatalf("forum Topluluk dalında eklenti olarak olmalı: %v %v", m.menuItems, m.menuGroups)
+	}
+	if n := slices.Index(m.menuItems[1:], "Forum"); n >= 0 {
+		t.Fatalf("forum iki kez listelenmemeli: %v", m.menuItems)
 	}
 }

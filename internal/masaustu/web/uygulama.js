@@ -305,8 +305,9 @@
     diller: [],
     oturum: null,
     durum: {},
-    gorunum: "forum",
-    forum: { kategori: "", secili: null, veri: null, konu: null, arama: "", taslaklar: {} },
+    gorunum: "",
+    // forum.veri, Ctrl+K'deki konu araması için konu özetidir (bkz. Forum).
+    forum: { veri: null },
     sohbet: { iletiler: [], sinir: 500, yeniVar: false },
     ayarSekmesi: "profil",
     hakkindaSekmesi: "genel",
@@ -366,7 +367,7 @@
     k.addEventListener("tema", (e) => { temaUygula(JSON.parse(e.data)); if (D.gorunum === "ayarlar" && D.ayarSekmesi === "gorunum") sayfaCiz(); });
     k.addEventListener("sohbet", (e) => iletiGeldi(JSON.parse(e.data)));
     k.addEventListener("sohbet-gecmis", () => { if (D.gorunum === "sohbet") sohbetYukle(); });
-    k.addEventListener("forum", (e) => forumOlayi(JSON.parse(e.data)));
+    k.addEventListener("forum", () => forumYukleGecikmeli());
     // Açılışta arka planda başlayan eklentiler (kenar çubuğunda yeşil nokta).
     k.addEventListener("terminaller", () => { if (D.asama === "uygulama") oturumlariYukle(); });
   }
@@ -383,6 +384,7 @@
     D.kurallarGerekli = !D.oturum.kurallarOnayli;
     adrestenOku();
     await oturumlariYukle();
+    forumYukle();
     ciz();
   }
 
@@ -769,48 +771,47 @@
   }
 
   function gezinmeCiz() {
+    // Düzen henüz kurulmadıysa (ör. sayfa yeniden yüklenirken eklenti
+    // oturumları ilk çizimden önce gelirse) kenar çubuğu ciz()'de çizilir.
+    if (!gezinmeAlani) return;
     const o = D.oturum;
     const nav = (ad, ikonAd, etiket, sayac) => el("button", {
       class: "nav" + (D.gorunum === ad ? " etkin" : ""), "aria-current": D.gorunum === ad ? "page" : undefined, title: etiket,
-      on: { click: () => { if (ad === "forum") D.forum.kategori = ""; git(ad); } },
+      on: { click: () => git(ad) },
     }, ikon(ikonAd), el("span", null, etiket), sayac ? el("b", { class: "sayac" }, String(sayac)) : null);
-    // Konusu olan kategoriler Forum'un altında kanal gibi listelenir; geri
-    // kalanı forumun başlığındaki seçimdedir.
-    const kategoriler = D.forum.veri ? D.forum.veri.kategoriler.filter((k) => k.sayi > 0) : [];
-    const kategoriAc = (ad) => { D.forum.kategori = ad; D.forum.secili = null; git("forum"); };
+    // eklentiNavi, bir eklentinin kenar çubuğu girdisi ve (protokol sürüm 2)
+    // altındaki menüsüdür.
+    const eklentiNavi = (e, ikonAd) => {
+      const etkin = D.gorunum === "eklenti" && D.eklentiAd === e.ad;
+      const dugme = el("button", { class: "nav" + (etkin ? " etkin" : ""), "aria-current": etkin ? "page" : undefined, title: e.etiket, on: { click: () => eklentiGoster(e.ad) } },
+        ikon(ikonAd), el("span", null, e.etiket),
+        eklentiCalisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
+      const menu = eklentiMenusu(e.ad);
+      if (!menu.length) return dugme;
+      const s = A[e.ad];
+      return [dugme, el("div", { class: "alt-gezinme" }, menu.map((m) => el("button", {
+        class: "alt-nav" + (etkin && s.menuSecili === m.id ? " etkin" : ""), title: m.etiket,
+        on: { click: () => eklentiMenusuAc(e.ad, m.id) },
+      }, el("span", null, m.etiket), m.sayi ? el("span", { class: "sayi" }, String(m.sayi)) : null)))];
+    };
+    // Forum bir eklentidir (bkz. Forum): Topluluk'ta Sohbet'in üstünde durur,
+    // kategorisinin bölümünde tekrarlanmaz. Öteki eklentiler kategorilerine
+    // göre ayrı bölümlerde (İletişim, İçerik, Yönetim…).
+    const menu = (o && o.menu) || [];
+    const forum = menu.find((e) => e.ad === FORUM);
+    const digerleri = menu.filter((e) => e.ad !== FORUM);
     bosalt(gezinmeAlani,
       el("div", { class: "grup-basligi" }, t("Topluluk")),
-      nav("forum", "forum", t("Forum")),
-      kategoriler.length ? el("div", { class: "alt-gezinme" }, kategoriler.map((k) => el("button", {
-        class: "alt-nav" + (D.gorunum === "forum" && D.forum.kategori === k.ad ? " etkin" : ""), title: k.etiket,
-        on: { click: () => kategoriAc(k.ad) },
-      }, el("span", null, k.etiket), el("span", { class: "sayi" }, String(k.sayi))))) : null,
+      forum ? eklentiNavi(forum, "forum") : null,
       nav("sohbet", "sohbet", t("Sohbet"), D.sohbet.yeniVar && D.gorunum !== "sohbet" ? "•" : null),
-      // Eklentiler tek bir başlık altında değil, kategorilerine göre ayrı
-      // bölümlerde (İletişim, İçerik, Yönetim…; sunucu bölüm sırasına dizer).
-      (o.menu && o.menu.length)
-        ? bolumle(o.menu).map((g) => [
-          el("div", { class: "grup-basligi" }, g.kategori),
-          g.ogeler.map((e) => {
-            const etkin = D.gorunum === "eklenti" && D.eklentiAd === e.ad;
-            return el("button", { class: "nav" + (etkin ? " etkin" : ""), "aria-current": etkin ? "page" : undefined, title: e.etiket, on: { click: () => eklentiGoster(e.ad) } },
-              ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket),
-              eklentiCalisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
-          }).map((dugme, i) => {
-            const e = g.ogeler[i];
-            const menu = eklentiMenusu(e.ad);
-            if (!menu.length) return dugme;
-            const s = A[e.ad];
-            return [dugme, el("div", { class: "alt-gezinme" }, menu.map((m) => el("button", {
-              class: "alt-nav" + (D.gorunum === "eklenti" && D.eklentiAd === e.ad && s.menuSecili === m.id ? " etkin" : ""), title: m.etiket,
-              on: { click: () => eklentiMenusuAc(e.ad, m.id) },
-            }, el("span", null, m.etiket), m.sayi ? el("span", { class: "sayi" }, String(m.sayi)) : null)))];
-          })])
+      digerleri.length
+        ? bolumle(digerleri).map((g) => [el("div", { class: "grup-basligi" }, g.kategori), g.ogeler.map((e) => eklentiNavi(e, kategoriIkonu(e.kategoriKodu)))])
         : [el("div", { class: "grup-basligi" }, t("Eklentiler")), el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok"))],
       el("div", { class: "gezinme-alt" },
         nav("ayarlar", "ayarlar", t("Ayarlar")),
         nav("hakkinda", "bilgi", t("AND hakkında"))));
   }
+
 
   function durumuGuncelle() {
     if (!durumAlani) return;
@@ -835,6 +836,11 @@
   }
 
   function git(gorunum) {
+    // Varsayılan görünüm (boş ya da eski "forum"): forum eklentisi varsa onun
+    // ekranı, yoksa Sohbet.
+    if (!gorunum || gorunum === "forum") {
+      if (forumVar()) { D.eklentiAd = FORUM; gorunum = "eklenti"; } else gorunum = "sohbet";
+    }
     D.gorunum = gorunum;
     if (gorunum === "sohbet") D.sohbet.yeniVar = false;
     adresiYaz();
@@ -846,7 +852,7 @@
   // aynı ekran açılır.
   const GORUNUMLER = ["forum", "sohbet", "ayarlar", "hakkinda", "eklenti"];
   function adresiYaz() {
-    const alt = D.gorunum === "forum" ? (D.forum.secili ? "/" + D.forum.secili : "") : D.gorunum === "ayarlar" ? "/" + D.ayarSekmesi
+    const alt = D.gorunum === "ayarlar" ? "/" + D.ayarSekmesi
       : D.gorunum === "hakkinda" ? "/" + D.hakkindaSekmesi : D.gorunum === "eklenti" ? "/" + encodeURIComponent(D.eklentiAd) : "";
     history.replaceState(null, "", "#" + D.gorunum + alt);
   }
@@ -858,10 +864,15 @@
     if (g === "eklenti") D.eklentiAd = alt;
     if (g === "ayarlar" && AYAR_SEKMELERI.some((s) => s[0] === alt)) D.ayarSekmesi = alt;
     if (g === "hakkinda" && HAKKINDA_SEKMELERI.some((s) => s[0] === alt)) D.hakkindaSekmesi = alt;
-    if (g === "forum" && alt) D.forum.secili = alt;
+    // Eski forum adresleri (#forum, #forum/<konu>) forum eklentisine gider.
+    if (g === "forum") {
+      D.gorunum = "";
+      if (alt) arayuzDurumu(FORUM).bekleyenGit = "konu:" + alt;
+    }
   }
 
   function gorunumCiz() {
+    if (!D.gorunum || D.gorunum === "forum") { git(D.gorunum); return; }
     arayuzGorunumDegisti();
     // Ekran değişirken kısa bir geçiş (hareket azaltılmışsa yok).
     gorunumAlani.classList.remove("gecis");
@@ -872,7 +883,7 @@
       case "ayarlar": return ayarlarCiz();
       case "hakkinda": return hakkindaCiz();
       case "eklenti": return eklentiCiz();
-      default: return forumCiz();
+      default: return sohbetCiz();
     }
   }
 
@@ -946,245 +957,28 @@
   }
 
   // ── Forum ─────────────────────────────────────────────────────────────
+  //
+  // Forum bir eklentidir (Eklentiler/forum): ekranını eklenti çizer. AND
+  // Ctrl+K'deki konu araması için konu özetini (GET /api/forum) okur ve
+  // bağlantıları eklentiye "git" olarak iletir (kategori:<ad>, konu:<id>).
+
+  const FORUM = "forum";
+  const forumVar = () => ((D.oturum && D.oturum.menu) || []).some((e) => e.ad === FORUM);
 
   async function forumYukle() {
-    const q = D.forum.kategori ? "?kategori=" + encodeURIComponent(D.forum.kategori) : "";
-    D.forum.veri = await api("/api/forum" + q);
+    try { D.forum.veri = await api("/api/forum"); } catch { /* Ctrl+K konusuz kalır */ }
+  }
+  let forumZamanlayici = null;
+  function forumYukleGecikmeli() {
+    clearTimeout(forumZamanlayici);
+    forumZamanlayici = setTimeout(forumYukle, 1000);
   }
 
-  // iskelet, yükleme uzarsa (150 ms'den çok) gösterilen yer tutucudur; kısa
-  // yüklemelerde ekran hiç kırpışmaz.
-  function iskeletSatirlari(n) {
-    return Array.from({ length: n }, () => el("div", { class: "iskelet-satir" },
-      el("span", { class: "iskelet k1" }), el("span", { class: "iskelet k2" }), el("span", { class: "iskelet k3" })));
+  // forumAc, forumu (hedef verilirse o kategori ya da konuda) açar.
+  function forumAc(hedef) {
+    if (!forumVar()) { git("sohbet"); return; }
+    if (hedef) eklentiMenusuAc(FORUM, hedef); else eklentiGoster(FORUM);
   }
-
-  async function forumCiz() {
-    const iskelet = setTimeout(() => bosalt(gorunumAlani, el("div", { class: "forum" },
-      el("div", { class: "sutun" }, el("div", { class: "sutun-ust" }, el("span", { class: "iskelet baslik-iskelet" })), iskeletSatirlari(6)),
-      el("section", { class: "detay" }))), 150);
-    try {
-      await forumYukle();
-    } catch (e) {
-      clearTimeout(iskelet);
-      bosalt(gorunumAlani, bosDurum("uyari", t("Forum yüklenemedi."), e.message));
-      return;
-    } finally {
-      clearTimeout(iskelet);
-    }
-    if (D.gorunum !== "forum") return;
-    gezinmeCiz(); // kenar çubuğundaki kategori sayıları
-    const v = D.forum.veri;
-
-    // Sütunun başlığı aynı zamanda kategori seçimidir.
-    const katSecimi = el("select", { class: "baslik-secimi", "aria-label": t("Kategori"), on: { change: () => kategoriSec(katSecimi.value) } },
-      el("option", { value: "" }, t("Tüm konular")),
-      v.kategoriler.map((k) => el("option", { value: k.ad }, k.etiket)));
-    katSecimi.value = D.forum.kategori;
-
-    const arama = el("input", { class: "girdi", type: "search", placeholder: t("Konularda ara"), value: D.forum.arama,
-      on: { input: () => { D.forum.arama = arama.value; konuListesiCiz(); } } });
-
-    const yeniKonu = v.konuAcabilir
-      ? el("button", { class: "dugme birincil kucuk", on: { click: yeniKonuPenceresi } }, ikon("arti"), tb("yeni konu"))
-      : null;
-
-    D.forum.listeAlani = el("div", { class: "kaydirma", role: "list" });
-    D.forum.detayAlani = el("section", { class: "detay" });
-
-    bosalt(gorunumAlani, el("div", { class: "forum" },
-      el("div", { class: "sutun" },
-        el("div", { class: "sutun-ust" }, el("label", { class: "baslik-sarmal" }, katSecimi, ikon("asagi")), yeniKonu),
-        el("div", { class: "arama" }, ikon("ara"), arama),
-        D.forum.listeAlani),
-      D.forum.detayAlani));
-    konuListesiCiz();
-    if (D.forum.secili) konuAc(D.forum.secili, true);
-    else bosalt(D.forum.detayAlani, bosDurum("forum", t("Bir konu seç"), t("Konuları ve yanıtları burada okursun; yanıtın eşler arasında imzalı olarak yayılır.")));
-  }
-
-  function kategoriSec(ad) {
-    D.forum.kategori = ad;
-    D.forum.secili = null;
-    adresiYaz();
-    forumCiz();
-  }
-
-  function konuListesiCiz() {
-    const v = D.forum.veri;
-    if (!v || !D.forum.listeAlani) return;
-    const aranan = D.forum.arama.trim().toLocaleLowerCase(DIL);
-    const konular = aranan ? v.konular.filter((k) => (k.baslik + " " + k.yazar).toLocaleLowerCase(DIL).includes(aranan)) : v.konular;
-    if (!konular.length) {
-      bosalt(D.forum.listeAlani, aranan
-        ? bosDurum("ara", t("Eşleşen konu yok"))
-        : bosDurum("forum", t("Henüz konu yok"), t("Eşlerden gelen konular burada görünür. Forum konuları 5 gün sonra kendiliğinden silinir.")));
-      return;
-    }
-    bosalt(D.forum.listeAlani, konular.map((k) => el("button", {
-      class: "konu-satiri" + (D.forum.secili === k.id ? " etkin" : ""), role: "listitem", "data-id": k.id,
-      on: { click: () => konuAc(k.id) },
-    },
-      D.forum.kategori ? null : el("div", { class: "konu-kategori" }, k.kategoriAd),
-      el("div", { class: "baslik" }, k.baslik),
-      el("div", { class: "meta" },
-        el("span", { class: "yazar" + (k.kendi ? " kendi" : "") }, k.yazar || t("adsız")),
-        k.rol ? el("span", { class: "rozet rol" }, k.rol) : null,
-        zamanEtiketi(k.sonEtkinlik, "zaman"),
-        el("span", { class: "yanit-sayisi" + (k.yanit ? "" : " sifir"), title: t("Yanıtlar") }, ikon("sohbet"), String(k.yanit))))));
-  }
-
-  async function konuAc(id, sessiz) {
-    D.forum.secili = id;
-    adresiYaz();
-    for (const s of D.forum.listeAlani.querySelectorAll(".konu-satiri")) s.classList.toggle("etkin", s.getAttribute("data-id") === id);
-    let k;
-    try {
-      k = await api("/api/forum/konu?id=" + encodeURIComponent(id));
-    } catch (e) {
-      if (!sessiz) bildir(e.message, "hata");
-      D.forum.secili = null;
-      bosalt(D.forum.detayAlani, bosDurum("forum", t("Bir konu seç")));
-      return;
-    }
-    if (D.forum.secili !== id || D.gorunum !== "forum") return;
-    D.forum.konu = k;
-    konuDetayCiz(k);
-  }
-
-  function konuDetayCiz(k) {
-    const kaydirma = D.forum.detayAlani.querySelector(".detay-govde");
-    const altta = kaydirma && kaydirma.scrollTop + kaydirma.clientHeight >= kaydirma.scrollHeight - 40;
-    const eskiKonum = kaydirma ? kaydirma.scrollTop : 0;
-    const ayniKonu = D.forum.cizilen === k.konu.id;
-
-    const yazma = el("textarea", { class: "metin-alani", placeholder: t("Yanıtını yaz…"), value: D.forum.taslaklar[k.konu.id] || "" });
-    const sayac = el("span", { class: "sayac" });
-    const gonder = el("button", { class: "dugme birincil", on: { click: () => yanitGonder(k.konu.id, yazma, gonder) } }, ikon("gonder"), tb("gönder"));
-    const sayacGuncelle = () => {
-      const bayt = new TextEncoder().encode(yazma.value).length;
-      sayac.textContent = bayt + " / " + k.sinir;
-      sayac.classList.toggle("asim", bayt > k.sinir);
-      D.forum.taslaklar[k.konu.id] = yazma.value;
-    };
-    yazma.addEventListener("input", sayacGuncelle);
-    yazma.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); gonder.click(); }
-    });
-    sayacGuncelle();
-
-    // Araç çubuğu: kategori (tıklayınca o kategorinin konuları), başlık
-    // yukarı kaydırılınca onun kısa hâli, yanıt sayısı ve Yanıtla.
-    const aracKonu = el("span", { class: "arac-konu", "aria-hidden": "true" }, ikon("asagi", "arac-ayrac"), el("span", null, k.konu.baslik));
-    const arac = el("div", { class: "detay-arac" },
-      el("button", { class: "kirinti", title: k.konu.kategoriAd, on: { click: () => kategoriSec(k.konu.kategori) } }, ikon("forum"), k.konu.kategoriAd),
-      aracKonu,
-      el("span", { class: "yanit-sayisi" + (k.yanitlar.length ? "" : " sifir"), title: t("Yanıtlar") }, ikon("sohbet"), String(k.yanitlar.length)),
-      el("button", { class: "dugme kucuk", on: { click: () => { yazma.focus(); yazma.scrollIntoView({ block: "nearest" }); } } }, ikon("yanitla"), tb("yanıtla")));
-
-    // Konu bir makale gibi okunur; yanıtlar sol kenardaki bir izlek
-    // çizgisiyle konuya ve birbirine bağlanır.
-    const baslik = el("h1", null, k.konu.baslik);
-    const govde = el("div", { class: "detay-govde" },
-      el("div", { class: "okuma" },
-        el("header", { class: "detay-ust" },
-          baslik,
-          el("div", { class: "konu-yazar" }, avatar(k.konu.yazar, k.konu.yazarKisa, "kucuk"), yazarSatiri(k.konu))),
-        el("article", { class: "ana-metin" }, govdeCiz(k.govde)),
-        el("h2", { class: "yanitlar-basligi" }, k.yanitlar.length ? tf("Yanıtlar (%d)", k.yanitlar.length) : t("Henüz yanıt yok")),
-        k.yanitlar.length ? el("ol", { class: "izlek" }, k.yanitlar.map((y) => el("li", { class: "yanit" + (y.kendi ? " kendi" : "") },
-          avatar(y.yazar, y.yazarKisa, "kucuk"),
-          el("div", { class: "icerik" }, yazarSatiri(y), govdeCiz(y.govde))))) : null));
-
-    bosalt(D.forum.detayAlani,
-      arac,
-      govde,
-      el("div", { class: "yazma" }, yazma,
-        el("div", { class: "yazma-alt" }, yazmaIpuclari(), sayac, gonder)));
-    // Başlık görünür alandan çıkınca araç çubuğunda kısa hâli belirir.
-    if (D.forum.gozlemci) D.forum.gozlemci.disconnect();
-    D.forum.gozlemci = new IntersectionObserver(([g]) => aracKonu.classList.toggle("gorunur", !g.isIntersecting), { root: govde });
-    D.forum.gozlemci.observe(baslik);
-    if (ayniKonu) govde.scrollTop = altta ? govde.scrollHeight : eskiKonum;
-    D.forum.cizilen = k.konu.id;
-  }
-
-  // yazmaIpuclari, konu ve yanıt yazarken gösterilen kısayol ipuçlarıdır.
-  function yazmaIpuclari() {
-    return el("div", { class: "ipuclari" },
-      el("span", { class: "ipucu" }, el("kbd", null, "Ctrl"), el("kbd", null, "Enter"), t("gönderir")),
-      el("span", { class: "ipucu" }, el("code", null, "[code]…[/code]"), t("kod bloğu")));
-  }
-
-  async function yanitGonder(konu, yazma, dugme) {
-    const metin = yazma.value.trim();
-    if (!metin) { bildir(t("Yanıt boş olamaz"), "hata"); return; }
-    dugme.disabled = true;
-    try {
-      await api("/api/forum/yanit", { konu, metin });
-      D.forum.taslaklar[konu] = "";
-      await konuAc(konu, true);
-      const g = D.forum.detayAlani.querySelector(".detay-govde");
-      if (g) g.scrollTop = g.scrollHeight;
-      bildir(t("Yanıtın gönderildi."), "iyi");
-    } catch (e) {
-      bildir(e.message, "hata");
-    } finally {
-      dugme.disabled = false;
-    }
-  }
-
-  let forumYenileme = null;
-  function forumOlayi(o) {
-    if (D.gorunum !== "forum" || !D.forum.veri) return;
-    clearTimeout(forumYenileme);
-    forumYenileme = setTimeout(async () => {
-      try {
-        await forumYukle();
-        konuListesiCiz();
-        if (o.konu && o.konu === D.forum.secili) {
-          const k = await api("/api/forum/konu?id=" + encodeURIComponent(o.konu));
-          if (D.forum.secili === o.konu) konuDetayCiz(k);
-        }
-      } catch { /* bir sonraki olayda yeniden denenir */ }
-    }, 400);
-  }
-
-  function yeniKonuPenceresi() {
-    const v = D.forum.veri;
-    const kategori = el("select", { class: "secim" },
-      el("option", { value: "" }, t("Kategori seç…")),
-      v.kategoriler.map((k) => el("option", { value: k.ad }, k.etiket)));
-    kategori.value = D.forum.kategori;
-    const baslik = el("input", { class: "girdi", maxlength: "100", placeholder: t("Konunun başlığı") });
-    const baslikSayaci = el("span", { class: "alan-durum" }, "0 / 100");
-    baslik.addEventListener("input", () => { baslikSayaci.textContent = [...baslik.value].length + " / 100"; });
-    const metin = el("textarea", { class: "metin-alani", rows: "9", placeholder: t("Ne paylaşmak istiyorsun?") });
-    const hata = hataAlani();
-    const ac = el("button", { class: "dugme birincil" }, ikon("gonder"), t("Konuyu aç"));
-    const kapat = pencereAc({
-      baslik: tb("yeni konu"), genis: true,
-      govde: [hata, alan(t("Kategori"), kategori), alan(t("Başlık"), baslik, baslikSayaci),
-        alan(t("İçerik"), metin, null, yazmaIpuclari())],
-      dugmeler: [el("button", { class: "dugme", on: { click: () => kapat() } }, tb("vazgeç")), ac],
-    });
-    metin.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ac.click(); } });
-    ac.addEventListener("click", async () => {
-      ac.disabled = true;
-      try {
-        const r = await api("/api/forum/konu", { kategori: kategori.value, baslik: baslik.value, metin: metin.value });
-        kapat();
-        bildir(t("Konun açıldı."), "iyi");
-        D.forum.secili = r.id;
-        forumCiz();
-      } catch (e) {
-        hata.goster(e.message);
-      } finally {
-        ac.disabled = false;
-      }
-    });
-  }
-
   // ── Sohbet ────────────────────────────────────────────────────────────
 
   async function sohbetYukle() {
@@ -1879,10 +1673,11 @@
   // eklentiMenusuAc, eklentinin menü öğesini açar: eklentinin ekranına geçer
   // ve hedefi eklentiye iletir (arayuz.Git).
   function eklentiMenusuAc(ad, hedef) {
-    const s = A[ad];
-    if (!s || !s.oturum || s.bitti) { eklentiGoster(ad); return; }
+    const s = arayuzDurumu(ad);
     s.menuSecili = hedef;
     eklentiGoster(ad);
+    // Eklenti henüz açılmadıysa hedef, ilk ekranı gelince gönderilir.
+    if (!s.oturum || s.bitti) { s.bekleyenGit = hedef; return; }
     api("/api/arayuz/git", { id: s.oturum, hedef }).catch((e) => bildir(e.message, "hata"));
   }
 
@@ -2090,6 +1885,11 @@
   }
 
   function ekranAl(s, ekran, surum) {
+    if (s.bekleyenGit && s.oturum) {
+      const hedef = s.bekleyenGit;
+      s.bekleyenGit = null;
+      api("/api/arayuz/git", { id: s.oturum, hedef }).catch(() => {});
+    }
     s.onceki = s.ekran;
     s.ekran = ekran;
     s.surum = surum;
@@ -2708,20 +2508,16 @@
   function erisimKomutlari() {
     const k = [];
     const ekle = (grup, ikonAd, ad, is, alt) => k.push({ grup, ikonAd, ad, is, alt });
-    ekle(t("Gezinme"), "forum", t("Forum"), () => { D.forum.kategori = ""; git("forum"); });
     ekle(t("Gezinme"), "sohbet", t("Sohbet"), () => git("sohbet"));
     for (const [ad, ikonAd, etiket] of AYAR_SEKMELERI) {
       ekle(t("Gezinme"), ikonAd, t("Ayarlar") + " › " + t(etiket), () => { D.ayarSekmesi = ad; git("ayarlar"); });
     }
     ekle(t("Gezinme"), "bilgi", t("AND hakkında"), () => git("hakkinda"));
+    // Forumun kategorileri eklentinin menüsünden gelir (aşağıda); konular
+    // çekirdeğin özetinden.
     const v = D.forum.veri;
-    if (v) {
-      for (const kat of v.kategoriler.filter((x) => x.sayi > 0)) {
-        ekle(t("Kategoriler"), "forum", kat.etiket, () => { D.forum.kategori = kat.ad; D.forum.secili = null; git("forum"); }, String(kat.sayi));
-      }
-      for (const konu of v.konular) {
-        ekle(t("Konular"), "sohbet", konu.baslik, () => { D.forum.secili = konu.id; git("forum"); }, konu.yazar);
-      }
+    if (v && forumVar()) {
+      for (const konu of v.konular) ekle(t("Konular"), "sohbet", konu.baslik, () => forumAc("konu:" + konu.id), konu.yazar);
     }
     for (const e of (D.oturum && D.oturum.menu) || []) {
       ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiGoster(e.ad));

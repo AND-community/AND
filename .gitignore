@@ -12,7 +12,7 @@ bootstrap.txt
 # Moderasyon çıktı dosyaları — andmod tarafından oluşturulur, local.
 bans/
 
-# Konu taslakları — konu_ac eklentisi tarafından oluşturulur.
+# Konu taslakları — forum eklentisi (eskiden konu_ac) oluşturur.
 taslaklar_*.json
 
 # Runtime data files (local forum cache / migration artifacts).

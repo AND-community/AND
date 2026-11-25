@@ -22,6 +22,7 @@ func newHomeTestModel(t *testing.T) appModel {
 	}
 	id.SetName("alice")
 	plugins := []pluginmgr.Plugin{
+		{Manifest: pluginapi.Manifest{Name: "forum", Label: "Forum", Version: "1.0.0", Category: pluginapi.KategoriIletisim}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Version: "1.4.1", Description: "Özel gruplar ve sürüm kontrolü."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Version: "1.2.0"}, Enabled: false},
 	}
@@ -62,8 +63,9 @@ func TestViewMenu_FullScreen(t *testing.T) {
 func TestViewMenu_DetailFollowsSelection(t *testing.T) {
 	mm, _ := newHomeTestModel(t).Update(tea.WindowSizeMsg{Width: 140, Height: 40})
 	m := mm.(appModel)
-	if strings.Contains(ansi.Strip(m.viewMenu()), "space eklentiyi aç/kapat") {
-		t.Error("Forum seçiliyken eklenti ipucu görünmemeli")
+	// Forum bir eklentidir ama seçiliyken forumun kendi önizlemesi görünür.
+	if out := ansi.Strip(m.viewMenu()); !strings.Contains(out, "Son konular") || strings.Contains(out, "Yüklü eklentiler") {
+		t.Error("Forum seçiliyken forum önizlemesi görünmeli")
 	}
 	m.menuIndex = 2 // DeltaX
 	out := ansi.Strip(m.viewMenu())

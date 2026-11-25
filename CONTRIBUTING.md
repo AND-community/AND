@@ -95,7 +95,7 @@ go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
 go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 ```
 
-DeltaX, Pembiş ve Konu Aç ayrı depolardır; nasıl kurulacakları README'nin
+DeltaX ve Pembiş ayrı depolardır; nasıl kurulacakları README'nin
 [Kaynaktan derleme](README.tr.md#kaynaktan-derleme) bölümünde.
 
 ### Test
@@ -122,7 +122,7 @@ cmd/
 
 Eklentiler/
   admin/            — yönetici paneli binary'si
-  konu_ac/          — konu açma binary'si (menüde gizli, forumdan inline açılır)
+  forum/            — forum (kategoriler, konular, yanıtlar, yeni konu; eskiden konu_ac)
   ozel_chat/        — özel mesaj + dosya aktarımı binary'si
   ornek/            — yeni eklenti geliştirme şablonu
 
@@ -255,7 +255,7 @@ yalnızca ekle. Eklenti API'sine uç nokta ya da izin eklersen `pluginapi.APIVer
 
 ### Mevcut eklentileri değiştirmek
 
-- `Eklentiler/admin/`, `Eklentiler/konu_ac/`, `Eklentiler/ozel_chat/` içindeki `main.go` dosyalarını düzenle.
+- `Eklentiler/admin/`, `Eklentiler/forum/`, `Eklentiler/ozel_chat/` içindeki `main.go` dosyalarını düzenle.
 - Manifest'teki `version` alanını semantik versiyonlama ile güncelle.
 - İlgili `Eklentiler/<isim>/README.md`'yi güncelle.
 

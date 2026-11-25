@@ -71,7 +71,8 @@ Eklentiler/
   ozel_chat/        — özel mesajlaşma + dosya aktarımı eklentisi
   site/             — kişisel site oluşturma/düzenleme eklentisi
   ornek/            — API'nin çoğunu kullanan örnek eklenti
-  DeltaX/, Pembis/, konu_ac/
+  forum/            — forum: kategoriler, konular, yanıtlar, yeni konu ve taslaklar
+  DeltaX/, Pembis/
                     — ayrı depolar; derlemek için buraya klonlanır (bkz. Kaynaktan derleme)
 
 pluginapi/          — HERKESE AÇIK eklenti SDK'sı: eklenti HTTP API istemcisi ve sunucusu, tipler, manifest, izinler
@@ -99,16 +100,16 @@ internal/
   filemgr/          — parçalı dosya gönderme/alma; onay (consent) mekanizması
   githubverify/     — GitHub OAuth Device Flow ile hesap doğrulama
   bbcode/           — forum gövdesi için basit BBCode → terminal render
-  tui/              — Bubbletea TUI (menü, forum, sohbet, profil, moderasyon paneli, ayarlar)
+  tui/              — Bubbletea TUI (menü, sohbet, profil, moderasyon, ayarlar; forum bir eklentidir)
   updater/          — GitHub Releases kontrolü ve uygulama güncelleme
 ```
 
 ### Veri akışı — forum konusu
 
 ```
-Kullanıcı → n tuşu (forum ekranında)
-                ↓  AND, and-plugin-konu_ac'ı aynı terminalde başlatır (AND_CATEGORY)
-            konu_ac → POST /api/v1/forum/post → AND → Forum.CreatePost()
+Kullanıcı → n tuşu (forum eklentisinde)
+                ↓  forum eklentisinin yeni konu formu
+            forum eklentisi → POST /api/v1/forum/post → AND → Forum.CreatePost()
                 ↓  Ed25519 imzala
             GossipSub yayını (libp2p)
                 ↓
@@ -253,17 +254,17 @@ go build -o Eklentiler/admin/and-plugin-admin          ./Eklentiler/admin
 go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
 go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 
-# DeltaX, Pembiş ve Konu Aç ayrı depolardır; önce Eklentiler/ altına klonla
+go build -o Eklentiler/forum/and-plugin-forum          ./Eklentiler/forum
+
+# DeltaX ve Pembiş ayrı depolardır; önce Eklentiler/ altına klonla
 git clone https://github.com/AND-community/DeltaX.git   Eklentiler/DeltaX
 git clone https://github.com/AND-community/Pembis.git   Eklentiler/Pembis
-git clone https://github.com/AND-community/konu_ac.git  Eklentiler/konu_ac
 go build -o Eklentiler/DeltaX/and-plugin-DeltaX    ./Eklentiler/DeltaX
 go build -o Eklentiler/Pembis/and-plugin-pembis    ./Eklentiler/Pembis
-go build -o Eklentiler/konu_ac/and-plugin-konu_ac  ./Eklentiler/konu_ac
 ```
 
-Windows'ta her binary adına `.exe` uzantısı ekle. Konu Aç kurulu değilse forumda yeni konu
-açılamaz (`n` tuşu bu eklentiyi açar).
+Windows'ta her binary adına `.exe` uzantısı ekle. Forum eklentisi kurulu değilse forum ekranı
+olmaz (AND forumu öteki eşler için eşitlemeyi sürdürür).
 
 ### ldflags — versiyon ve repo bilgisi
 
@@ -331,7 +332,7 @@ Eklentiler `and`'ın yanındaki `Eklentiler/` klasöründe, her biri kendi klas�
   andmod[.exe]
   Eklentiler/
     admin/      plugin.json  and-plugin-admin[.exe]
-    konu_ac/    plugin.json  and-plugin-konu_ac[.exe]
+    forum/      plugin.json  and-plugin-forum[.exe]
     ozel_chat/  plugin.json  and-plugin-ozel_chat[.exe]
     …
 ```
@@ -457,7 +458,7 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 
 > Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve "Eklentiler" grubuna eklenir.
 > Seçili eklentide `space` eklentiyi kapatır/açar; kapalı eklentinin yanında "kapalı" yazar.
-> `Label: ""` olan eklentiler (örn. `konu_ac`) menüde görünmez; doğrudan forumdan açılır.
+> `Label: ""` olan eklentiler menüde görünmez. Forum da bir eklentidir: Topluluk dalında Sohbet'in üstünde durur.
 > "Yönetici Paneli" girişi yalnızca kurucuya ya da geçerli (iptal edilmemiş) bir moderatör
 > sertifikası taşıyanlara görünür — başka hiçbir kullanıcı bu girişi hiç görmez.
 
@@ -533,7 +534,7 @@ doğrular. Yeni bir metnin eksik çevirilerinin iskeleti şöyle alınır:
 DIL_ISKELET=eksik.json go test ./dil -run Kapsam
 ```
 
-Paketle gelen bütün eklentiler (DeltaX, Özel Chat, Site, Yönetici Paneli, konu_ac, Pembiş,
+Paketle gelen bütün eklentiler (Forum, DeltaX, Özel Chat, Site, Yönetici Paneli, Pembiş,
 Örnek Eklenti) AND'ın diliyle açılır: AND etkin dili başlattığı eklentiye `AND_DIL` ile iletir,
 eklenti açılışta `dil.OrtamdanAyarla()` çağırır. Her eklentinin kendi kataloğu kendi klasöründedir:
 
@@ -558,7 +559,7 @@ DIL_ISKELET=eksik.json go test ./Eklentiler/<isim> -run CeviriKapsami
 |-----|-------|
 | `↑` / `↓` ya da `j` / `k` | konu seç |
 | `enter` | konuyu aç |
-| `n` | yeni konu aç (konu_ac eklentisini açar) |
+| `n` | yeni konu aç (kategori başına taslaklarla) |
 | `tab` | kategori değiştir |
 | `esc` | ana menüye dön |
 
@@ -710,13 +711,13 @@ AND eklentileri **bağımsız yürütülebilir programlardır**. Her eklenti ayr
    | `AND_API_ADDR` | AND'ın localhost HTTP API adresi (ör. `127.0.0.1:48291`) |
    | `AND_API_TOKEN` | Eklentinin API anahtarı; açılışta eklenti başına üretilir, hiçbir dosyaya yazılmaz |
    | `AND_DATA_DIR` | AND veri dizini (taslak dosyaları için) |
-   | `AND_CATEGORY` | (yalnızca konu_ac) Forumdan seçilen kategori |
    | `AND_DIL` | Etkin arayüz dili (`tr`, `en`, `de`, `es`, `fr`, `ru`; bkz. [Arayüz dili](#arayüz-dili)) |
 
 4. Eklenti, `AND_API_ADDR` üzerinden AND'a HTTP istekleri göndererek kimlik, forum, DM ve dosya işlemlerini gerçekleştirir.
 5. Eklenti TUI'sı kapandığında AND kontrolü geri alır.
 
-> `konu_ac`'ın menüde girişi yoktur (`Label` boş); forumdaki `n` tuşu onu seçili kategoriyle başlatır.
+> Forum, Özel Chat, Site ve Yönetici Paneli masaüstü uygulamasında AND'ın kendi arayüzüyle açılır
+> (arayüz kipi, bkz. EKLENTILER.md).
 
 ### Bağımsız harici araçlar (ör. VS Code eklentisi)
 
@@ -751,7 +752,7 @@ otomatik/hatalı bir kullanımda devreye girip `429 Too Many Requests` döner.
 | Binary | Menü Etiketi | Açıklama |
 |--------|-------------|----------|
 | `and-plugin-admin` | Yönetici Paneli | Konular/Banlar/Geçmiş sekmeleri (kurucu/moderatör) + Moderatörler sekmesi (yalnızca kurucu) — bkz. [Eklentiler/admin/README.md](Eklentiler/admin/README.md) |
-| `and-plugin-konu_ac` | *(gizli)* | Yeni konu formu; forumdan `n` tuşuyla açılır (ayrı depo: [AND-community/konu_ac](https://github.com/AND-community/konu_ac)) |
+| `and-plugin-forum` | Forum | Kategoriler, konular (canlı), okuma ve taslaklı yanıt, kategori başına taslaklı yeni konu, kendi konusunu silme, yazar profili — bkz. [Eklentiler/forum/README.md](Eklentiler/forum/README.md) |
 | `and-plugin-ozel_chat` | Özel Chat | Doğrudan P2P mesajlaşma: konuşma listesi ve okunmamış sayıları, oturum geçmişi, dosya gönderme ve gelen dosya onayı (bkz. [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
 | `and-plugin-pembis` | Pembiş Tema | Arayüzü pembe tonlarda kız temasına boyar (ayrı depo: [AND-community/Pembis](https://github.com/AND-community/Pembis)) |
 | `and-plugin-DeltaX` | DeltaX | Özel gruplar + kendi sürüm kontrol sistemi; P2P uçtan uca şifreli senkronizasyon (ayrı depo: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
@@ -835,7 +836,7 @@ olduğu [GIZLILIK.md](GIZLILIK.md)'de anlatılır.
 | `bootstrap.txt` | Ek bootstrap node multiaddr'ları (isteğe bağlı) |
 | `bilinen_esler.json` | Daha önce bağlandığın AND düğümleri (Peer ID, adresler, son görülme; en çok 256, 30 gün sonra silinir); açılışta önce bunlar çevrilir |
 | `ag.json` | Sabit dinleme portu (TCP ve UDP); `AND_PORT` ortam değişkeni onu geçersiz kılar |
-| `taslaklar_<kategori>.json` | Konu taslakları (konu_ac eklentisi, yerel — gitignored) |
+| `taslaklar_<kategori>.json` | Konu taslakları (forum eklentisi, yerel — gitignored) |
 | `theme.json` | Seçili tema (Ayarlar → Temalar ya da bir tema eklentisi yazar; yoksa Klasik kullanılır) |
 | `dil.json` | Seçili arayüz dili (Ayarlar → Dil ya da giriş ekranında `ctrl+l`; yoksa Türkçe; `AND_DIL` ortam değişkeni geçersiz kılar) |
 | `kurallar_onayi.json` | Gizlilik özeti ve topluluk kurallarının hangi sürümünün ne zaman onaylandığı |

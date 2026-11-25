@@ -71,7 +71,8 @@ Eklentiler/         — plugins ("eklentiler" is Turkish for "plugins")
   ozel_chat/        — private messaging + file transfer plugin
   site/             — personal site creation/editing plugin
   ornek/            — an example plugin that uses most of the API ("örnek" means "example")
-  DeltaX/, Pembis/, konu_ac/
+  forum/            — the forum: categories, topics, replies, new topics and drafts
+  DeltaX/, Pembis/
                     — separate repositories; clone them here to build them (see Building from source)
 
 pluginapi/          — PUBLIC plugin SDK: the plugin HTTP API client and server, types, manifest, permissions
@@ -99,16 +100,16 @@ internal/
   filemgr/          — chunked file send/receive; consent mechanism
   githubverify/     — account verification through the GitHub OAuth Device Flow
   bbcode/           — simple BBCode → terminal rendering for forum bodies
-  tui/              — Bubble Tea TUI (menu, forum, chat, profiles, moderation actions, settings)
+  tui/              — Bubble Tea TUI (menu, chat, profiles, moderation actions, settings; the forum is a plugin)
   updater/          — GitHub Releases check and self-update
 ```
 
 ### Data flow — forum topic
 
 ```
-User → n key (on the forum screen)
-                ↓  AND starts and-plugin-konu_ac in the same terminal (AND_CATEGORY)
-            konu_ac → POST /api/v1/forum/post → AND → Forum.CreatePost()
+User → n key (in the forum plugin)
+                ↓  the forum plugin's new-topic form
+            forum plugin → POST /api/v1/forum/post → AND → Forum.CreatePost()
                 ↓  Ed25519 signature
             GossipSub broadcast (libp2p)
                 ↓
@@ -254,17 +255,17 @@ go build -o Eklentiler/admin/and-plugin-admin          ./Eklentiler/admin
 go build -o Eklentiler/ozel_chat/and-plugin-ozel_chat  ./Eklentiler/ozel_chat
 go build -o Eklentiler/site/and-plugin-site            ./Eklentiler/site
 
-# DeltaX, Pembiş and Konu Aç live in separate repositories; clone them under Eklentiler/ first
+go build -o Eklentiler/forum/and-plugin-forum          ./Eklentiler/forum
+
+# DeltaX and Pembiş live in separate repositories; clone them under Eklentiler/ first
 git clone https://github.com/AND-community/DeltaX.git   Eklentiler/DeltaX
 git clone https://github.com/AND-community/Pembis.git   Eklentiler/Pembis
-git clone https://github.com/AND-community/konu_ac.git  Eklentiler/konu_ac
 go build -o Eklentiler/DeltaX/and-plugin-DeltaX    ./Eklentiler/DeltaX
 go build -o Eklentiler/Pembis/and-plugin-pembis    ./Eklentiler/Pembis
-go build -o Eklentiler/konu_ac/and-plugin-konu_ac  ./Eklentiler/konu_ac
 ```
 
-On Windows add `.exe` to every binary name. Without Konu Aç ("open a topic") you can't create new
-forum topics (the `n` key opens this plugin).
+On Windows add `.exe` to every binary name. Without the forum plugin there is no forum screen
+(AND still syncs the forum for other peers).
 
 ### ldflags — version and repository
 
@@ -333,7 +334,7 @@ Plugins live in the `Eklentiler/` folder next to `and`, each in its own folder:
   andmod[.exe]
   Eklentiler/
     admin/      plugin.json  and-plugin-admin[.exe]
-    konu_ac/    plugin.json  and-plugin-konu_ac[.exe]
+    forum/      plugin.json  and-plugin-forum[.exe]
     ozel_chat/  plugin.json  and-plugin-ozel_chat[.exe]
     …
 ```
@@ -464,8 +465,8 @@ emblem hide themselves.
 
 > Installed plugin binaries (`and-plugin-*`) are discovered automatically and added to the
 > "Plugins" group. `space` on a selected plugin turns it off or on; a disabled plugin is marked
-> as such. Plugins with `Label: ""` (e.g. `konu_ac`) don't appear in the menu; they are opened
-> directly from the forum. The "Admin Panel" entry is visible only to the founder or to holders of
+> as such. Plugins with `Label: ""` don't appear in the menu. The forum is a plugin too: it sits
+> under Community above Chat. The "Admin Panel" entry is visible only to the founder or to holders of
 > a valid (unrevoked) moderator certificate — no other user ever sees it.
 
 ### Settings screen
@@ -542,7 +543,7 @@ skeleton of the missing translations of a new text is produced like this:
 DIL_ISKELET=eksik.json go test ./dil -run Kapsam
 ```
 
-All bundled plugins (DeltaX, Özel Chat, Site, Admin Panel, konu_ac, Pembiş, Example Plugin) open in
+All bundled plugins (Forum, DeltaX, Özel Chat, Site, Admin Panel, Pembiş, Example Plugin) open in
 AND's language: AND passes the active language to the plugin it starts through `AND_DIL`, and the
 plugin calls `dil.OrtamdanAyarla()` at startup. Each plugin keeps its own catalog in its own
 folder:
@@ -569,7 +570,7 @@ DIL_ISKELET=eksik.json go test ./Eklentiler/<name> -run CeviriKapsami
 |-----|--------|
 | `↑` / `↓` or `j` / `k` | select a topic |
 | `enter` | open the topic |
-| `n` | new topic (opens the konu_ac plugin) |
+| `n` | new topic (with per-category drafts) |
 | `tab` | change category |
 | `esc` | back to the main menu |
 
@@ -711,14 +712,13 @@ and can be distributed independently of AND; see [PLUGINS.md](PLUGINS.md) for th
    | `AND_API_ADDR` | AND's localhost HTTP API address (e.g. `127.0.0.1:48291`) |
    | `AND_API_TOKEN` | The plugin's API key; generated per plugin at startup and never written to a file |
    | `AND_DATA_DIR` | AND's data directory (for draft files) |
-   | `AND_CATEGORY` | (konu_ac only) The category selected in the forum |
    | `AND_DIL` | The active interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`; see [Interface language](#interface-language)) |
 
 4. The plugin performs identity, forum, DM and file operations by sending HTTP requests to AND at `AND_API_ADDR`.
 5. When the plugin's TUI exits, AND takes control back.
 
-> `konu_ac` has no menu entry (its `Label` is empty); the `n` key in the forum starts it with the
-> selected category.
+> The forum, Özel Chat, Site and the Admin Panel open with AND's own interface in the desktop app
+> (interface mode, see PLUGINS.md).
 
 ### Standalone external tools (e.g. the VS Code extension)
 
@@ -754,7 +754,7 @@ minute, and returns `429 Too Many Requests`.
 | Binary | Menu label | Description |
 |--------|-------------|----------|
 | `and-plugin-admin` | Admin Panel | Topics/Bans/History tabs (founder/moderator) + Moderators tab (founder only) — see [Eklentiler/admin/README.md](Eklentiler/admin/README.md) |
-| `and-plugin-konu_ac` | *(hidden)* | New-topic form; opened from the forum with the `n` key (separate repository: [AND-community/konu_ac](https://github.com/AND-community/konu_ac)) |
+| `and-plugin-forum` | Forum | Categories, topics (live), reading and replying with drafts, new topics with per-category drafts, deleting your own topics, author profiles — see [Eklentiler/forum/README.md](Eklentiler/forum/README.md) |
 | `and-plugin-ozel_chat` | Özel Chat (private chat) | Direct P2P messaging: conversation list with unread counts, session history, sending files and consenting to incoming ones (see [Eklentiler/ozel_chat/README.md](Eklentiler/ozel_chat/README.md)) |
 | `and-plugin-pembis` | Pembiş Theme | Paints the interface in shades of pink (separate repository: [AND-community/Pembis](https://github.com/AND-community/Pembis)) |
 | `and-plugin-DeltaX` | DeltaX | Private groups + their own version control system; end-to-end encrypted P2P sync (separate repository: [AND-community/DeltaX](https://github.com/AND-community/DeltaX)) |
@@ -840,7 +840,7 @@ All data is stored under `%APPDATA%\and\` (Windows), `~/.config/and/` (Linux) or
 | `bootstrap.txt` | Extra bootstrap node multiaddrs (optional) |
 | `bilinen_esler.json` | AND nodes you connected to before (Peer ID, addresses, last seen; at most 256, forgotten after 30 days); dialled first at start-up |
 | `ag.json` | The fixed listening port (TCP and UDP); the `AND_PORT` environment variable overrides it |
-| `taslaklar_<category>.json` | Topic drafts (konu_ac plugin, local — gitignored) |
+| `taslaklar_<category>.json` | Topic drafts (forum plugin, local — gitignored) |
 | `theme.json` | Selected theme (written by Settings → Themes or by a theme plugin; Classic is used if it is missing) |
 | `dil.json` | Selected interface language (Settings → Language or `ctrl+l` on the login screen; Turkish if it is missing; the `AND_DIL` environment variable overrides it) |
 | `kurallar_onayi.json` | Which version of the privacy summary and the community rules was accepted, and when |

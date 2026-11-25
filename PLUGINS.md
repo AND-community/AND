@@ -46,7 +46,7 @@ program's platform, the SHA-256 hashes and the permissions it asks for, and asks
   header; **nothing is executed while installing.**
 - Paths in the archive cannot point outside the package; links, device files and packages over 512 MB
   are rejected. Downloads use https only.
-- A package that uses the name of a plugin bundled with AND is refused (e.g. a fake `konu_ac`).
+- A package that uses the name of a plugin bundled with AND is refused (e.g. a fake `forum`).
 
 The plugin is installed into `eklentiler/<name>/` in the data directory (`%APPDATA%\and\eklentiler` on
 Windows, `~/.config/and/eklentiler` on Linux, `~/Library/Application Support/and/eklentiler` on macOS),
@@ -121,7 +121,7 @@ whose hash differs from the installed copy's record.
 | Field | Required | Meaning |
 |---|---|---|
 | `name` | Yes | The plugin's name; the program is called `and-plugin-<name>[.exe]`. Starts with a letter or digit; letters, digits, `_`, `-`; at most 48 characters |
-| `label` | No | The name shown in the menu. Empty means the plugin is hidden (like `konu_ac`, which only AND itself starts) |
+| `label` | No | The name shown in the menu. Empty means the plugin is hidden |
 | `version` | No | Shown in the menu and in `and plugin list` |
 | `description` | No | The short description in the menu |
 | `author` | No | The author |
@@ -154,7 +154,6 @@ Environment variables:
 | `AND_API_TOKEN` | An API key for this launch only; invalid once the plugin exits, never written to a file | `pluginapi.NewClientFromEnv()` |
 | `AND_DATA_DIR` | AND's data directory | `pluginapi.DataDir()` |
 | `AND_DIL` | The interface language (`tr`, `en`, `de`, `es`, `fr`, `ru`) | `dil.OrtamdanAyarla()` |
-| `AND_CATEGORY` | `konu_ac` only: the category selected in the forum | `pluginapi.Category()` |
 | `AND_GOMULU` | `1`: the plugin runs inside the AND desktop window. The title bar and edges belong to AND; `ui.Page` does not draw its frame (the content stays where it was) | `ui.Gomulu` |
 | `AND_ARAYUZ_PROTOKOLU` | The desktop started the plugin in interface mode (`"ui"` ≥ 1); the value is the highest protocol version AND speaks (see [Interface](#interface-ands-own-components-instead-of-a-terminal-on-the-desktop)) | `arayuz.Etkin()` |
 

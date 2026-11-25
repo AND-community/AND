@@ -50,3 +50,20 @@ func TestPaketleEklentilerinKategorisiVar(t *testing.T) {
 		}
 	}
 }
+
+// TestForumEklentisiAndlaGelir: forum bir eklentidir ve AND'la gelir;
+// yalnızca forum iznini ister, masaüstünde arayüz kipinde açılır.
+func TestForumEklentisiAndlaGelir(t *testing.T) {
+	veri, err := os.ReadFile(filepath.Join("..", "Eklentiler", "forum", "plugin.json"))
+	if err != nil {
+		t.Fatalf("Eklentiler/forum/plugin.json: %v", err)
+	}
+	var m Manifest
+	if err := json.Unmarshal(veri, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "forum" || m.Label == "" || m.Category != KategoriIletisim || m.UI != 1 ||
+		len(m.Permissions) != 1 || m.Permissions[0] != IzinForum {
+		t.Fatalf("forum manifesti: %+v", m)
+	}
+}
