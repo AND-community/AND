@@ -4,7 +4,7 @@
 
 [English](README.md) · **Türkçe**
 
-**AND** — sunucusuz, eşten eşe (P2P) terminal forum topluluğu.  
+**AND** — sunucusuz, eşten eşe (P2P) forum topluluğu; masaüstü uygulaması ve terminal arayüzüyle.  
 Hesap yok, kayıt yok, merkezi sunucu yok. Kimliğin tek bir kurtarma kodundan ibarettir.
 
 Web sitesi: **[and-community.github.io](https://and-community.github.io/tr/)**
@@ -31,7 +31,7 @@ Web sitesi: **[and-community.github.io](https://and-community.github.io/tr/)**
 
 ## Genel Bakış
 
-AND, merkezi bir sunucuya ihtiyaç duymadan çalışan terminal tabanlı bir forum uygulamasıdır.  
+AND, merkezi bir sunucuya ihtiyaç duymadan çalışan bir forum uygulamasıdır. Kendi masaüstü penceresinde ya da terminalde tam ekran açılır.  
 Her düğüm hem istemci hem sunucu işlevi görür; mesajlar [libp2p](https://libp2p.io/) GossipSub protokolü üzerinden yayılır, veriler yalnızca yerel SQLite veritabanında saklanır.
 
 Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed25519 anahtar çiftiyle temsil edilir. Bu anahtar çifti hem uygulama kimliği hem libp2p düğüm kimliği olarak kullanılır; tek bir kurtarma ifadesi her şeyi geri getirir.
@@ -53,8 +53,9 @@ Kullanıcı kimliği bir BIP-39 anımsatıcısından (12 sözcük) türetilen Ed
 | Moderasyon sistemi | Esnek süreli (1 saat–ömür boyu) ban/unban, devredilebilir/iptal edilebilir moderatör sertifikaları, Yönetici Paneli eklentisi + denetim geçmişi |
 | Dinamik eklenti sistemi | Kendi izinleriyle çalışan bağımsız programlar; `and eklenti kur` ile kur (klasör, arşiv ya da https adresi) ya da herkese açık SDK ve `and eklenti yeni` ile kendin yaz — bkz. [EKLENTILER.md](EKLENTILER.md) |
 | Otomatik güncelleme | Resmi sürümler GitHub Releases'tan, paketle gelen eklentilerle birlikte, yalnızca sürümün imzası doğrulanırsa arka planda güncellenir; kaynaktan derlenenler kendini hiç değiştirmez |
-| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI; AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`ui`) |
-| Temalar | 6 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Mono) + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
+| Masaüstü arayüzü | Varsayılan: AND kendi penceresinde açılır (Windows'ta WebView2, öteki sistemlerde varsayılan tarayıcı) ve destekleyen eklentileri kendi bileşenleriyle çizer — bkz. [Masaüstü arayüzü](#masaüstü-arayüzü) |
+| Terminal arayüzü | [Bubbletea](https://github.com/charmbracelet/bubbletea) tabanlı, tam ekran TUI (`and --terminal`); AND, eklentiler ve AND Arama Motoru aynı tasarım sistemini paylaşır (`ui`) |
+| Temalar | 10 yerleşik tema (Klasik, Turkuaz, Gece Moru, Kehribar, Orman, Gül, Okyanus, Gün Batımı, Lavanta, Mono), masaüstü arayüzünde özel vurgu rengi + tema eklentileri; seçilen tema eklentilere ve VS Code paneline de yansır |
 | Arayüz dilleri | Türkçe (varsayılan), English, Deutsch, Español, Français, Русский; Ayarlar → Dil ya da giriş ekranında `ctrl+l` ile anında değişir — bkz. [Arayüz dili](#arayüz-dili) |
 
 ---
@@ -404,10 +405,19 @@ sohbet, profil, temalar, dil ve eklentiler iki arayüzde de aynı veri dizinini 
 yapılan değişiklik ötekinde de görünür. Aynı veri dizininde aynı anda yalnızca bir AND açık olabilir.
 
 - **Ekranlar:** giriş, kayıt (kurtarma kodu ve doğrulamasıyla), kurtarma koduyla geri yükleme,
-  kurallar onayı, forum (kategoriler, arama, konu ve yanıtlar, `[code]` blokları, yeni konu),
-  genel sohbet, Ayarlar (profil, görünüm, dil, eklentiler, ağ) ve AND hakkında.
-- **Eklentiler** terminal programlarıdır; masaüstünden açılınca kendi terminal penceresinde
-  başlar. İzin onayı terminal arayüzündekiyle aynıdır.
+  kurallar onayı, genel sohbet, Ayarlar (profil, görünüm, dil, eklentiler, ağ), AND hakkında ve
+  eklentiler. Forum (kategoriler, arama, konu ve yanıtlar, `[code]` blokları, yeni konu) Forum
+  eklentisinin ekranıdır; o eklenti yoksa masaüstü Sohbet'le açılır. Ctrl+K hızlı erişim paleti
+  her ekrana, eklentiye ve konuya atlar.
+- **Eklentiler** AND'ın penceresinin içinde çalışır; kenar çubuğunda kategorilerine göre
+  gruplanır. Manifestinde `"ui"` bildiren bir eklenti (Forum, Özel Chat, Site, Yönetici Paneli ve
+  DeltaX öyle) ekranlarını AND'a gönderir; AND onları denetleyip kendi bileşenleriyle çizer, böylece
+  her sistemde uygulamanın geri kalanı gibi görünürler. Öteki eklentiler terminal programlarıdır:
+  Windows'ta pencerenin içindeki bir terminalde, Linux'ta bir terminal öykünücüsü penceresinde
+  çalışırlar; macOS'ta yalnızca terminal arayüzünden açılırlar. "Ayrı pencerede aç" çalışan bir
+  eklentiyi kendi terminal penceresine taşır. İzinleri onaylanmış açık eklentiler AND'la birlikte
+  başlar; çalışan eklentinin yanında yeşil bir nokta durur. İzin onayı terminal arayüzündekiyle
+  aynıdır (bkz. [EKLENTILER.md](EKLENTILER.md)).
 - **Pencere:** Windows'ta AND'ın kendi penceresi, Windows 10/11 ile gelen WebView2 bileşeniyle
   açılır (C derleyicisi gerekmez). WebView2 yoksa ve Linux/macOS'ta arayüz varsayılan tarayıcıda
   açılır; sekme kapatılınca AND da kapanır.
@@ -441,13 +451,20 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 │  ▌ ├── Forum                   │  Kategorilere ayrılmış konular. Bir konu yayınlandığı anda        │
 │    └── Sohbet                  │  eşlere yayılır ve 5 gün sonra kendiliğinden silinir.             │
 │                                │                                                                   │
-│  ▾ Eklentiler                  │  Son konular                                                      │
-│    ├── Yönetici Paneli         │                                                                   │
-│    ├── DeltaX                  │  ▸ libp2p ile NAT arkasından bağlantı nasıl kurulur?              │
-│    └── Site                    │    Go  ·  zeynep  ·  2 sa önce  ·  3 yanıt                        │
+│  ▾ İletişim                    │  Son konular                                                      │
+│    └── Özel Chat               │                                                                   │
+│                                │  ▸ libp2p ile NAT arkasından bağlantı nasıl kurulur?              │
+│  ▾ İçerik                      │    Go  ·  zeynep  ·  2 sa önce  ·  3 yanıt                        │
+│    └── Site                    │                                                                   │
+│                                │  ▸ Ed25519 imzalarında sık yapılan hatalar                        │
+│  ▾ Yönetim                     │    Siber Güvenlik  ·  mehmet  ·  5 sa önce                        │
+│    └── Yönetici Paneli         │                                                                   │
 │                                │                                                                   │
-│  ▾ Sistem                      │  ▸ Ed25519 imzalarında sık yapılan hatalar                        │
-│    ├── Ayarlar                 │    Siber Güvenlik  ·  mehmet  ·  5 sa önce                        │
+│  ▾ Geliştirme                  │                                                                   │
+│    └── DeltaX                  │                                                                   │
+│                                │                                                                   │
+│  ▾ Sistem                      │                                                                   │
+│    ├── Ayarlar                 │                                                                   │
 │    ├── AND hakkında            │                                                                   │
 │    └── Çıkış                   │                                                                   │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────  │
@@ -456,7 +473,9 @@ terminallerde ayrıntı paneli ve büyük amblem kendiliğinden gizlenir.
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-> Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve "Eklentiler" grubuna eklenir.
+> Yüklü eklenti binary'leri (`and-plugin-*`) otomatik keşfedilir ve kategorilerinin grubuna eklenir
+> (İletişim, İçerik, Yönetim, Geliştirme, Araçlar; bilinen bir kategorisi olmayan eklenti "Diğer"e
+> düşer, tema eklentileri menüde görünmez).
 > Seçili eklentide `space` eklentiyi kapatır/açar; kapalı eklentinin yanında "kapalı" yazar.
 > `Label: ""` olan eklentiler menüde görünmez. Forum da bir eklentidir: Topluluk dalında Sohbet'in üstünde durur.
 > "Yönetici Paneli" girişi yalnızca kurucuya ya da geçerli (iptal edilmemiş) bir moderatör
@@ -495,7 +514,14 @@ Yerleşik temalar:
 | Gece Moru | mor | Daha sıcak, mor ağırlıklı |
 | Kehribar | kehribar | Sarı/turuncu vurgu; eski fosfor ekranları andırır |
 | Orman | yeşil | Yeşil vurgu, toprak tonlu adlar |
+| Gül | pembe | Pembe vurgu, şeftali tonlu adlar |
+| Okyanus | gök mavisi | Parlak mavi vurgu, nane yeşili adlar |
+| Gün Batımı | mercan | Turuncu-kırmızı vurgu, altın sarısı adlar |
+| Lavanta | lila | Yumuşak lila vurgu, soluk turkuaz adlar |
 | Mono | beyaz/gri | Renksiz; ekran görüntüsü ve sunum için |
+
+Masaüstü arayüzünde Ayarlar › Görünüm özel bir vurgu rengi de alır: AND öteki renkleri ondan,
+yazılar okunur kalacak biçimde türetir.
 
 Her temada seçili satır metni ve ikincil metin koyu bir terminal zemininde en az 4.5:1 kontrast
 verir (WCAG AA). Yalnızca kalın başlıklarda, tuşlarda, amblemde ve çerçevede kullanılan vurgu

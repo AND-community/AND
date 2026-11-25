@@ -4,7 +4,7 @@
 
 **English** · [Türkçe](README.tr.md)
 
-**AND** — a serverless, peer-to-peer (P2P) terminal forum community.  
+**AND** — a serverless, peer-to-peer (P2P) forum community, with a desktop app and a terminal interface.  
 No accounts, no sign-up, no central server. Your identity is a single recovery code.
 
 Website: **[and-community.github.io](https://and-community.github.io/)**
@@ -31,7 +31,7 @@ Website: **[and-community.github.io](https://and-community.github.io/)**
 
 ## Overview
 
-AND is a terminal-based forum application that runs without any central server.  
+AND is a forum application that runs without any central server. It opens in its own desktop window, or full-screen in the terminal.  
 Every node is both a client and a server: messages spread over the [libp2p](https://libp2p.io/) GossipSub protocol, and data is stored only in a local SQLite database.
 
 A user's identity is an Ed25519 key pair derived from 128 bits of entropy (the equivalent of a 12-word BIP-39 mnemonic). The same key pair serves as both the application identity and the libp2p node identity, so a single recovery code brings everything back.
@@ -53,8 +53,9 @@ A user's identity is an Ed25519 key pair derived from 128 bits of entropy (the e
 | Moderation | Flexible bans (1 hour to permanent) and unbans, delegable and revocable moderator certificates, an Admin Panel plugin and an audit history |
 | Dynamic plugins | Standalone programs with their own permissions; install one with `and plugin install` (folder, archive or https address) or write your own with the public SDK and `and plugin new` — see [PLUGINS.md](PLUGINS.md) |
 | Automatic updates | Official release builds update themselves in the background from GitHub Releases, together with the bundled plugins, only if the release's signature is valid; builds made from source never replace themselves |
-| Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea); AND, its plugins and the AND Search Engine share one design system (`ui`) |
-| Themes | 6 built-in themes (Classic, Turquoise, Night Purple, Amber, Forest, Mono) plus theme plugins; the chosen theme also applies to plugins and the VS Code panel |
+| Desktop interface | The default: AND opens in its own window (WebView2 on Windows, the default browser elsewhere) and draws plugins that support it with its own components — see [Desktop interface](#desktop-interface) |
+| Terminal interface | Full-screen TUI built on [Bubble Tea](https://github.com/charmbracelet/bubbletea) (`and --terminal`); AND, its plugins and the AND Search Engine share one design system (`ui`) |
+| Themes | 10 built-in themes (Classic, Turquoise, Night Purple, Amber, Forest, Rose, Ocean, Sunset, Lavender, Mono), a custom accent colour in the desktop interface, plus theme plugins; the chosen theme also applies to plugins and the VS Code panel |
 | Interface languages | Turkish (default), English, German, Spanish, French, Russian; switch instantly in Settings → Language or with `ctrl+l` on the login screen — see [Interface language](#interface-language) |
 
 ---
@@ -409,11 +410,18 @@ chat, profile, themes, language and plugins share one data directory between bot
 a change in one shows up in the other. Only one AND can run on a data directory at a time.
 
 - **Screens:** login, registration (with the recovery code and its check), restoring from a
-  recovery code, the rules consent, the forum (categories, search, topics and replies, `[code]`
-  blocks, new topics), the public chat, Settings (profile, appearance, language, plugins,
-  network) and About AND.
-- **Plugins** are terminal programs; opened from the desktop they start in their own terminal
-  window. Permission consent works as in the terminal interface.
+  recovery code, the rules consent, the public chat, Settings (profile, appearance, language,
+  plugins, network), About AND, and the plugins. The forum (categories, search, topics and
+  replies, `[code]` blocks, new topics) is the Forum plugin's screen; without that plugin the
+  desktop opens on Chat. A Ctrl+K quick-access palette jumps to any screen, plugin or topic.
+- **Plugins** run inside AND's window, grouped in the sidebar by their category. A plugin whose
+  manifest declares `"ui"` (Forum, Private Chat, Site, Admin Panel and DeltaX do) sends its screens
+  to AND, which checks them and draws them with its own components, so they look like the rest of
+  the app on every system. Other plugins are terminal programs: on Windows they run in a terminal
+  inside the window, on Linux in a terminal emulator window, and on macOS they open only from the
+  terminal interface. "Open in a separate window" moves a running plugin to its own terminal window.
+  Enabled plugins whose permissions you approved start with AND; a green dot marks a running one.
+  Permission consent works as in the terminal interface (see [PLUGINS.md](PLUGINS.md)).
 - **Window:** on Windows AND gets its own window through the WebView2 component that ships with
   Windows 10/11 (no C compiler needed). Without WebView2, and on Linux/macOS, the interface opens
   in the default browser; closing the tab also closes AND.
@@ -448,13 +456,20 @@ emblem hide themselves.
 │  ▌ ├── Forum                   │  Topics sorted into categories. A topic spreads to peers as       │
 │    └── Chat                    │  soon as it is published and deletes itself after 5 days.         │
 │                                │                                                                   │
-│  ▾ Plugins                     │  Recent topics                                                    │
-│    ├── Admin Panel             │                                                                   │
-│    ├── DeltaX                  │  ▸ How do I connect from behind a NAT with libp2p?                │
-│    └── Website                 │    Go  ·  zeynep  ·  2h ago  ·  3 replies                         │
+│  ▾ Communication               │  Recent topics                                                    │
+│    └── Private Chat            │                                                                   │
+│                                │  ▸ How do I connect from behind a NAT with libp2p?                │
+│  ▾ Content                     │    Go  ·  zeynep  ·  2h ago  ·  3 replies                         │
+│    └── Website                 │                                                                   │
+│                                │  ▸ Common mistakes with Ed25519 signatures                        │
+│  ▾ Moderation                  │    Cybersecurity  ·  mehmet  ·  5h ago                            │
+│    └── Admin Panel             │                                                                   │
 │                                │                                                                   │
-│  ▾ System                      │  ▸ Common mistakes with Ed25519 signatures                        │
-│    ├── Settings                │    Cybersecurity  ·  mehmet  ·  5h ago                            │
+│  ▾ Development                 │                                                                   │
+│    └── DeltaX                  │                                                                   │
+│                                │                                                                   │
+│  ▾ System                      │                                                                   │
+│    ├── Settings                │                                                                   │
 │    ├── About AND               │                                                                   │
 │    └── Quit                    │                                                                   │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────  │
@@ -463,8 +478,9 @@ emblem hide themselves.
 ╰────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-> Installed plugin binaries (`and-plugin-*`) are discovered automatically and added to the
-> "Plugins" group. `space` on a selected plugin turns it off or on; a disabled plugin is marked
+> Installed plugin binaries (`and-plugin-*`) are discovered automatically and added to the group of
+> their category (Communication, Content, Moderation, Development, Tools; a plugin with no known
+> category goes under "Other", and theme plugins stay out of the menu). `space` on a selected plugin turns it off or on; a disabled plugin is marked
 > as such. Plugins with `Label: ""` don't appear in the menu. The forum is a plugin too: it sits
 > under Community above Chat. The "Admin Panel" entry is visible only to the founder or to holders of
 > a valid (unrevoked) moderator certificate — no other user ever sees it.
@@ -502,7 +518,14 @@ Built-in themes:
 | Night Purple | purple | Warmer, mostly purple |
 | Amber | amber | Yellow/orange accent, reminiscent of old phosphor screens |
 | Forest | green | Green accent, earth-toned names |
+| Rose | pink | Pink accent, warm peach names |
+| Ocean | sky blue | Bright blue accent, mint names |
+| Sunset | coral | Orange-red accent, golden names |
+| Lavender | lilac | Soft lilac accent, pale teal names |
 | Mono | white/grey | No colour; for screenshots and presentations |
+
+In the desktop interface, Settings › Appearance also takes a custom accent colour: AND derives the
+other colours from it so that text stays readable.
 
 In every theme the selected-row text and the secondary text reach a contrast of at least 4.5:1 on a
 dark terminal background (WCAG AA). The floor is 3:1 only for the accent colour, which is used for
