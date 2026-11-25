@@ -163,7 +163,27 @@ func IleHizala(s string) Ayar     { return func(o *Oge) { o.Hizala = s } }
 func DevreDisiIse(b bool) Ayar    { return func(o *Oge) { o.DevreDisi = b } }
 func IleOneriler(s ...Oneri) Ayar { return func(o *Oge) { o.Oneriler = s } }
 func IleAraclar(s ...Oge) Ayar    { return func(o *Oge) { o.Araclar = s } }
-func IleDugme(d Oge) Ayar         { return func(o *Oge) { o.Dugme = &d } }
+func IleBaslik(s string) Ayar     { return func(o *Oge) { o.Baslik = s } }
+
+// Gönderi (sürüm 2) ayarları.
+func IleYazarAlt(s string) Ayar   { return func(o *Oge) { o.YazarAlt = s } }
+func IleZaman(s string) Ayar      { return func(o *Oge) { o.Zaman = s } }
+func IleRozetler(r ...Rozet) Ayar { return func(o *Oge) { o.Rozetler = r } }
+
+var (
+	Muhurlu        Ayar = func(o *Oge) { o.Muhur = true }
+	YanitGonderisi Ayar = func(o *Oge) { o.Yanit = true }
+	KendiGonderisi Ayar = func(o *Oge) { o.Kendi = true }
+)
+
+// Gonderi (sürüm 2), yazarı ve gövdesi olan bir yazıdır (ör. forum konusu ya
+// da yanıtı). cocuklar yalnızca Metin/Zengin ve Kod olabilir; AND başkasını
+// gösteremez. Sürüm 1 AND'da bilinmeyen bileşen olarak çizilir: eklenti
+// Merhaba.Surum < 2 iken Kart + Zengin kullanmalıdır.
+func Gonderi(id, yazar string, cocuklar []Oge, a ...Ayar) Oge {
+	return yap(Oge{Tur: TurGonderi, ID: id, Yazar: yazar, Cocuklar: cocuklar}, a)
+}
+func IleDugme(d Oge) Ayar { return func(o *Oge) { o.Dugme = &d } }
 
 // IleOnay, düğmeye basılınca AND'ın olayı göndermeden önce soracağı soruyu
 // ekler.

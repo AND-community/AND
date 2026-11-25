@@ -106,3 +106,37 @@ func TestDenetle(t *testing.T) {
 		t.Error("bilinmeyen bileşen geçti")
 	}
 }
+
+// menulu, Merhaba gelince menüsünü gönderen ve son Git hedefini başlıkta
+// gösteren modeldir.
+type menulu struct{ hedef string }
+
+func (m menulu) Init() tea.Cmd { return nil }
+func (m menulu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch v := msg.(type) {
+	case arayuz.Merhaba:
+		return m, arayuz.Menu([]arayuz.MenuOgesi{{ID: "kategori:Genel", Etiket: "Genel"}})
+	case arayuz.Git:
+		m.hedef = v.Hedef
+	}
+	return m, nil
+}
+func (m menulu) View() string         { return "" }
+func (m menulu) Arayuz() arayuz.Ekran { return arayuz.Ekran{Baslik: m.hedef} }
+
+func TestSurucu_GitVeMenu(t *testing.T) {
+	s := Yeni(menulu{})
+	s.Yurut(s.Gonder(arayuz.Merhaba{Surum: 2, Dil: "tr"}), 2)
+	if m := s.Menu(); len(m) != 1 || m[0].ID != "kategori:Genel" {
+		t.Fatalf("menü: %+v", m)
+	}
+	s.Git("konu:1")
+	if s.Ekran().Baslik != "konu:1" {
+		t.Fatalf("git: %q", s.Ekran().Baslik)
+	}
+	eski := Yeni(menulu{})
+	eski.Yurut(eski.Gonder(arayuz.Merhaba{Surum: 1, Dil: "tr"}), 2)
+	if eski.Menu() != nil {
+		t.Fatal("sürüm 1 AND'da menü yazılmamalı")
+	}
+}

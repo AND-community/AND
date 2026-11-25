@@ -14,16 +14,20 @@ import (
 // satır reddedilir.
 const (
 	// SatirSiniri, eklentinin yazdığı bir satırın en büyük boyutudur.
-	SatirSiniri     = 4 << 20
-	derinlikSiniri  = 24
-	ogeSiniri       = 5000
-	listeSiniri     = 2000
-	metinSiniri     = 64 << 10
-	icerikSiniri    = 3 << 20
-	kimlikSiniri    = 512
-	turEkran        = "ekran"
-	turBildirim     = "bildirim"
-	bildirimVarsayi = "bilgi"
+	SatirSiniri    = 4 << 20
+	derinlikSiniri = 24
+	ogeSiniri      = 5000
+	listeSiniri    = 2000
+	metinSiniri    = 64 << 10
+	icerikSiniri   = 3 << 20
+	kimlikSiniri   = 512
+	// menuSiniri ve menuEtiketSiniri (rune), menü mesajının sınırlarıdır;
+	// fazlası kırpılır.
+	menuSiniri       = 50
+	menuEtiketSiniri = 80
+	turEkran         = "ekran"
+	turBildirim      = "bildirim"
+	bildirimVarsayi  = "bilgi"
 )
 
 var (
@@ -31,6 +35,10 @@ var (
 	ErrSinir = errors.New("arayuz: protokol sınırı aşıldı")
 	// ErrBicim, satır geçerli bir protokol mesajı değilse döner.
 	ErrBicim = errors.New("arayuz: geçersiz mesaj")
+	// ErrBilinmeyenTur, satır geçerli JSON ama türü bu sürümün tanımadığı bir
+	// mesajsa döner (ErrBicim'i de sarar). AND bunu yok sayar: daha yeni bir
+	// eklenti eski AND'da çalışmaya devam eder.
+	ErrBilinmeyenTur = fmt.Errorf("%w: bilinmeyen mesaj türü", ErrBicim)
 )
 
 // Bildirim, AND'ın köşede gösterdiği kısa iletidir (Durum: bilgi, iyi,
@@ -46,6 +54,8 @@ type EklentiMesaji struct {
 	Tur      string
 	Ekran    *Ekran
 	Bildirim *Bildirim
+	// Menu, Tur TurMenu iken eklentinin menüsüdür (boşsa menü kalkar).
+	Menu []MenuOgesi
 }
 
 // Bileşenlerin tanınan türleri ve anlamsal değerleri. Bunların dışındaki
@@ -57,18 +67,21 @@ var (
 		TurAnahtarDeger: true, TurBos: true, TurKod: true, TurFark: true, TurIlerleme: true,
 		TurBaglanti: true, TurDugme: true, TurListe: true, TurTablo: true, TurForm: true,
 		TurGirdi: true, TurMetinAlani: true, TurSecim: true, TurOnayKutusu: true, TurMesajAkisi: true,
+		TurGonderi: true,
 	}
-	varyantlar   = []string{"normal", "birincil", "hayalet", "tehlikeli"}
-	stiller      = []string{"normal", "soluk", "kalin", "kod", "iyi", "uyari", "hata", "vurgu"}
-	renkler      = []string{"notr", "vurgu", "iyi", "uyari", "hata"}
-	boyutlar     = []string{"kucuk", "normal", "buyuk"}
-	hizalar      = []string{"bas", "orta", "son", "yay"}
-	araliklar    = []string{"kucuk", "orta", "buyuk"}
-	tipler       = []string{"metin", "sifre"}
-	durumlar     = []string{"bilgi", "iyi", "uyari", "hata"}
-	farkDurumlar = []string{"A", "M", "D"}
-	farkTurleri  = []string{"+", "-", " ", "@"}
-	mesajDurumu  = []string{"bekliyor", "basarisiz"}
+	// gonderiCocuklari, bir gönderinin gövdesinde olabilecek bileşenlerdir.
+	gonderiCocuklari = map[string]bool{TurMetin: true, TurKod: true}
+	varyantlar       = []string{"normal", "birincil", "hayalet", "tehlikeli"}
+	stiller          = []string{"normal", "soluk", "kalin", "kod", "iyi", "uyari", "hata", "vurgu"}
+	renkler          = []string{"notr", "vurgu", "iyi", "uyari", "hata"}
+	boyutlar         = []string{"kucuk", "normal", "buyuk"}
+	hizalar          = []string{"bas", "orta", "son", "yay"}
+	araliklar        = []string{"kucuk", "orta", "buyuk"}
+	tipler           = []string{"metin", "sifre"}
+	durumlar         = []string{"bilgi", "iyi", "uyari", "hata"}
+	farkDurumlar     = []string{"A", "M", "D"}
+	farkTurleri      = []string{"+", "-", " ", "@"}
+	mesajDurumu      = []string{"bekliyor", "basarisiz"}
 )
 
 // Coz, eklentinin yazdığı bir satırı çözer, protokol sınırlarını denetler ve
@@ -81,10 +94,11 @@ func Coz(satir []byte) (EklentiMesaji, error) {
 		return EklentiMesaji{}, fmt.Errorf("%w: satır %d bayt", ErrSinir, len(satir))
 	}
 	var ham struct {
-		Tur   string `json:"tur"`
-		Ekran *Ekran `json:"ekran"`
-		Metin string `json:"metin"`
-		Durum string `json:"durum"`
+		Tur    string      `json:"tur"`
+		Ekran  *Ekran      `json:"ekran"`
+		Metin  string      `json:"metin"`
+		Durum  string      `json:"durum"`
+		Ogeler []MenuOgesi `json:"ogeler"`
 	}
 	if err := json.Unmarshal(satir, &ham); err != nil {
 		return EklentiMesaji{}, fmt.Errorf("%w: %v", ErrBicim, err)
@@ -109,8 +123,33 @@ func Coz(satir []byte) (EklentiMesaji, error) {
 			b.Durum = bildirimVarsayi
 		}
 		return EklentiMesaji{Tur: turBildirim, Bildirim: b}, nil
+	case TurMenu:
+		return EklentiMesaji{Tur: TurMenu, Menu: menuTemizle(ham.Ogeler)}, nil
 	}
-	return EklentiMesaji{}, fmt.Errorf("%w: bilinmeyen tür %q", ErrBicim, ham.Tur)
+	return EklentiMesaji{}, fmt.Errorf("%w %q", ErrBilinmeyenTur, ham.Tur)
+}
+
+// menuTemizle, menü öğelerini sınırlar ve temizler: en çok menuSiniri öğe,
+// etiket menuEtiketSiniri rune, tanınmayan ikon boş, eksi sayı sıfır.
+func menuTemizle(ogeler []MenuOgesi) []MenuOgesi {
+	if len(ogeler) > menuSiniri {
+		ogeler = ogeler[:menuSiniri]
+	}
+	out := make([]MenuOgesi, 0, len(ogeler))
+	for _, o := range ogeler {
+		o.ID = pluginui.Safe(o.ID)
+		if len(o.ID) > kimlikSiniri {
+			o.ID = o.ID[:kimlikSiniri]
+		}
+		o.Etiket = pluginui.Safe(o.Etiket)
+		if r := []rune(o.Etiket); len(r) > menuEtiketSiniri {
+			o.Etiket = string(r[:menuEtiketSiniri])
+		}
+		ikon(&o.Ikon)
+		o.Sayi = max(o.Sayi, 0)
+		out = append(out, o)
+	}
+	return out
 }
 
 func secenek(s string, gecerli []string) string {
@@ -243,8 +282,19 @@ func (d *denetci) oge(o *Oge, derinlik int) {
 		d.metin(&o.Deger)
 	}
 	for _, s := range []*string{&o.Baslik, &o.Alt, &o.Aciklama, &o.Etiket, &o.YerTutucu,
-		&o.Kisayol, &o.Kopyala, &o.Bos, &o.Hata} {
+		&o.Kisayol, &o.Kopyala, &o.Bos, &o.Hata, &o.Yazar, &o.YazarAlt, &o.Zaman} {
 		d.metin(s)
+	}
+	for i := range o.Rozetler {
+		d.metin(&o.Rozetler[i].Metin)
+		o.Rozetler[i].Renk = secenek(o.Rozetler[i].Renk, renkler)
+	}
+	if o.Tur == TurGonderi {
+		for i := range o.Cocuklar {
+			if !gonderiCocuklari[o.Cocuklar[i].Tur] {
+				o.Cocuklar[i] = Oge{Tur: TurBilinmeyen}
+			}
+		}
 	}
 	ikon(&o.Ikon)
 	o.Varyant = secenek(o.Varyant, varyantlar)

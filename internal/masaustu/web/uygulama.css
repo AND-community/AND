@@ -736,6 +736,18 @@ button.a-yol-oge:hover { color: var(--yazi); background: rgba(255, 255, 255, .04
 .a-aralik-kucuk { gap: 6px; }
 .a-aralik-orta { gap: 14px; }
 .a-aralik-buyuk { gap: 24px; }
+
+/* Gönderi (sürüm 2): forumun konu ve yanıt biçimi (.okuma, .ana-metin,
+   .yanit). Ardışık yanıtlar aralıksız dizilir ve tek bir izlek çizgisiyle
+   bağlanır; çizgi ilk yanıtın ve son yanıtın simgesinde biter. */
+.a-gonderi.okuma { width: 100%; }
+.a-gonderi-araclar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.a-yigin:has(> .a-gonderi.yanit) { gap: 0; }
+.a-gonderi.yanit::before { content: ""; position: absolute; left: 13px; top: 0; bottom: 0; width: 1px; background: var(--cizgi-2); }
+.a-gonderi.yanit:not(.yanit + .yanit)::before { top: 20px; }
+.a-gonderi.yanit:not(:has(+ .yanit))::before { bottom: calc(100% - 20px); }
+.a-gonderi.yanit:not(.yanit + .yanit):not(:has(+ .yanit))::before { display: none; }
+.a-gonderi.yanit > .avatar { position: relative; z-index: 1; }
 .a-satir { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .a-satir.sarmal { flex-wrap: wrap; }
 .a-hizala-orta { justify-content: center; }

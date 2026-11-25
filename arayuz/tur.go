@@ -1,8 +1,11 @@
 package arayuz
 
-// Surum, bu paketin konuştuğu arayüz protokolünün sürümüdür. Eklenti
-// manifest'indeki "ui" alanı bu sayıdır; protokol yalnızca eklenerek büyür.
-const Surum = 1
+// Surum, bu paketin konuştuğu arayüz protokolünün sürümüdür; protokol
+// yalnızca eklenerek büyür. Eklenti manifest'indeki "ui" alanı eklentinin
+// GEREKSİNDİĞİ en düşük sürümdür (AND kendi sürümünden büyük olanı terminalde
+// açar). Sürüm 2: gonderi bileşeni, menu (eklentiden) ve git (AND'dan)
+// mesajları; AND tanımadığı mesaj türünü yok sayar.
+const Surum = 2
 
 // OrtamDegiskeni, AND'ın eklentiyi arayüz kipinde başlattığını bildiren ortam
 // değişkenidir; değeri AND'ın konuştuğu en yüksek protokol sürümüdür.
@@ -35,6 +38,9 @@ const (
 	TurSecim        = "secim"
 	TurOnayKutusu   = "onayKutusu"
 	TurMesajAkisi   = "mesajAkisi"
+	// TurGonderi (sürüm 2), forum gönderisi gibi yazarı, zamanı ve gövdesi
+	// olan bir yazıdır; gövdesi (Cocuklar) yalnızca metin ve kod olabilir.
+	TurGonderi = "gonderi"
 	// TurBilinmeyen'i yalnızca AND koyar: bu sürümün tanımadığı bir bileşenin
 	// yerine geçer ve "gösterilemiyor" diye çizilir.
 	TurBilinmeyen = "bilinmeyen"
@@ -185,6 +191,18 @@ type Mesaj struct {
 // bağlıdır (bkz. bileşen kataloğu, EKLENTILER.md); kurucu işlevler (Liste,
 // Dugme, Girdi…) yalnızca gerekenleri doldurur.
 type Oge struct {
+	// Gönderi (sürüm 2) alanları: Yazar, YazarAlt (ör. kısa anahtar), Kendi
+	// (kullanıcının kendi yazısı), Rozetler (ör. rol), Zaman (RFC 3339), Muhur
+	// (imza doğrulandı), Yanit (iplikteki bir yanıt). Başlık Baslik'ta, gövde
+	// Cocuklar'da, düğmeler Araclar'dadır.
+	Yazar    string  `json:"yazar,omitempty"`
+	YazarAlt string  `json:"yazarAlt,omitempty"`
+	Kendi    bool    `json:"kendi,omitempty"`
+	Rozetler []Rozet `json:"rozetler,omitempty"`
+	Zaman    string  `json:"zaman,omitempty"`
+	Muhur    bool    `json:"muhur,omitempty"`
+	Yanit    bool    `json:"yanit,omitempty"`
+
 	Tur       string   `json:"tur"`
 	ID        string   `json:"id,omitempty"`
 	Metin     string   `json:"metin,omitempty"`
@@ -240,4 +258,18 @@ type Oge struct {
 	Oneriler   []Oneri       `json:"oneriler,omitempty"`
 	Dosyalar   []FarkDosyasi `json:"dosyalar,omitempty"`
 	Mesajlar   []Mesaj       `json:"mesajlar,omitempty"`
+}
+
+// TurMenu (sürüm 2), eklentinin AND'a gönderdiği menü mesajının türüdür:
+// {"tur":"menu","ogeler":[…]}. AND öğeleri kenar çubuğunda eklentinin
+// altında ve Ctrl+K'de gösterir; tıklanınca eklentiye Git{Hedef: ID} gelir.
+// Boş liste menüyü kaldırır.
+const TurMenu = "menu"
+
+// MenuOgesi, eklenti menüsünün bir öğesidir (ör. bir forum kategorisi).
+type MenuOgesi struct {
+	ID     string `json:"id"`
+	Etiket string `json:"etiket"`
+	Ikon   string `json:"ikon,omitempty"`
+	Sayi   int    `json:"sayi,omitempty"`
 }

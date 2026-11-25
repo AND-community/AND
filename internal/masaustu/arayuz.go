@@ -64,6 +64,10 @@ type arayuzOturumu struct {
 	kod         int
 	sonYayin    time.Time
 	zamanlayici *time.Timer
+	// menu, eklentinin son bildirdiği menüdür (sürüm 2; bkz. arayuz.TurMenu).
+	menu []arayuz.MenuOgesi
+	// bilinmeyenGunlendi: tanınmayan mesaj türü bu oturumda bir kez günlüklendi.
+	bilinmeyenGunlendi bool
 }
 
 type arayuzler struct {
@@ -161,6 +165,17 @@ func satirOku(r *bufio.Reader, sinir int) ([]byte, bool, error) {
 
 func (y *arayuzler) isle(o *arayuzOturumu, satir []byte) {
 	m, err := arayuz.Coz(satir)
+	if errors.Is(err, arayuz.ErrBilinmeyenTur) {
+		// Daha yeni bir eklentinin mesajı: yok sayılır, oturum sürer.
+		o.mu.Lock()
+		ilk := !o.bilinmeyenGunlendi
+		o.bilinmeyenGunlendi = true
+		o.mu.Unlock()
+		if ilk {
+			log.Printf("masaüstü: eklenti %s: %v (yok sayıldı)", o.ad, err)
+		}
+		return
+	}
 	if err != nil {
 		y.hata(o, err)
 		return
@@ -174,6 +189,11 @@ func (y *arayuzler) isle(o *arayuzOturumu, satir []byte) {
 		y.ekranGeldi(o, b)
 	case m.Bildirim != nil:
 		y.yayin.gonder("bildirim", map[string]any{"id": o.id, "metin": m.Bildirim.Metin, "durum": m.Bildirim.Durum})
+	case m.Tur == arayuz.TurMenu:
+		o.mu.Lock()
+		o.menu = m.Menu
+		o.mu.Unlock()
+		y.yayin.gonder("menu", map[string]any{"id": o.id, "ad": o.ad, "ogeler": m.Menu})
 	}
 }
 
@@ -414,6 +434,37 @@ func (u *Uygulama) arayuzOlayi(w http.ResponseWriter, r *http.Request) {
 	jsonYaz(w, map[string]bool{"tamam": true})
 }
 
+// arayuzGit, eklentiyi bir hedefe açar (menü öğesi, Ctrl+K): eklentiye
+// arayuz.Git olarak gider.
+func (u *Uygulama) arayuzGit(w http.ResponseWriter, r *http.Request) {
+	var istek struct {
+		ID    string `json:"id"`
+		Hedef string `json:"hedef"`
+	}
+	if jsonOku(r, &istek) != nil || istek.Hedef == "" || len(istek.Hedef) > hedefSiniri {
+		hataYaz(w, http.StatusBadRequest, "")
+		return
+	}
+	o := u.arayuz.bul(istek.ID)
+	if o == nil {
+		hataYaz(w, http.StatusNotFound, "")
+		return
+	}
+	err := o.gonder(arayuz.AndMesaji{Tur: "git", Hedef: istek.Hedef})
+	switch {
+	case errors.Is(err, errEklentiYanitVermiyor) && !o.bittiMi():
+		hataYaz(w, http.StatusServiceUnavailable, dil.T("Eklenti yanıt vermiyor."))
+		return
+	case err != nil || o.bittiMi():
+		hataYaz(w, http.StatusConflict, dil.T("Eklenti kapandı."))
+		return
+	}
+	jsonYaz(w, map[string]bool{"tamam": true})
+}
+
+// hedefSiniri, git hedefinin en uzun hâlidir (protokoldeki kimlik sınırı).
+const hedefSiniri = 512
+
 func (u *Uygulama) arayuzGorunur(w http.ResponseWriter, r *http.Request) {
 	var istek struct {
 		ID      string `json:"id"`
@@ -462,6 +513,8 @@ type oturumBilgisi struct {
 	Tur   string `json:"tur"`
 	Bitti bool   `json:"bitti"`
 	Kod   int    `json:"kod"`
+	// Menu, arayüz eklentisinin menüsüdür (sürüm 2).
+	Menu []arayuz.MenuOgesi `json:"menu,omitempty"`
 }
 
 // eklentiOturumlari, AND'ın içinde açık bütün eklentilerdir: arayüz
@@ -482,7 +535,7 @@ func (u *Uygulama) eklentiOturumlari(w http.ResponseWriter, _ *http.Request) {
 	u.arayuz.mu.Lock()
 	for _, o := range u.arayuz.liste {
 		o.mu.Lock()
-		out = append(out, oturumBilgisi{ID: o.id, Ad: o.ad, Tur: "arayuz", Bitti: o.bitti, Kod: o.kod})
+		out = append(out, oturumBilgisi{ID: o.id, Ad: o.ad, Tur: "arayuz", Bitti: o.bitti, Kod: o.kod, Menu: o.menu})
 		o.mu.Unlock()
 	}
 	u.arayuz.mu.Unlock()

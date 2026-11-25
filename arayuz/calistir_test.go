@@ -19,6 +19,7 @@ type sayac struct {
 	n       int
 	merhaba Merhaba
 	gorunur bool
+	hedef   string
 }
 
 func (s sayac) Init() tea.Cmd { return nil }
@@ -33,7 +34,11 @@ func (s sayac) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, Bildir("selam", "iyi")
 		case "cik":
 			return s, tea.Quit
+		case "menu":
+			return s, Menu([]MenuOgesi{{ID: "kategori:Genel", Etiket: "Genel", Ikon: "forum", Sayi: 2}})
 		}
+	case Git:
+		s.hedef = m.Hedef
 	case Merhaba:
 		s.merhaba = m
 	case Gorunurluk:
@@ -45,7 +50,7 @@ func (s sayac) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s sayac) View() string { return "" }
 
 func (s sayac) Arayuz() Ekran {
-	return Ekran{Baslik: strconv.Itoa(s.n), AltBaslik: fmt.Sprintf("%d %s %v", s.merhaba.Surum, s.merhaba.Dil, s.gorunur)}
+	return Ekran{Baslik: strconv.Itoa(s.n), AltBaslik: fmt.Sprintf("%d %s %v", s.merhaba.Surum, s.merhaba.Dil, s.gorunur), Durum: s.hedef}
 }
 
 type protokolDeneme struct {
@@ -211,5 +216,46 @@ func TestEtkin(t *testing.T) {
 		if Etkin() != beklenen {
 			t.Errorf("%q: Etkin() = %v", deger, !beklenen)
 		}
+	}
+}
+
+func TestCalistir_GitMesaji(t *testing.T) {
+	d := protokolBaslat(t)
+	d.ekran()
+	d.yaz(`{"tur":"git","hedef":"konu:abc"}`)
+	if e := d.ekran(); e["durum"] != "konu:abc" {
+		t.Fatalf("git sonrası ekran = %v", e)
+	}
+}
+
+// sessiz, süre boyunca hiç satır gelmediğini doğrular.
+func (d *protokolDeneme) sessiz(sure time.Duration) {
+	d.t.Helper()
+	select {
+	case b := <-d.satir:
+		d.t.Fatalf("beklenmeyen satır: %s", b)
+	case <-time.After(sure):
+	}
+}
+
+func TestCalistir_MenuSurum1deYazilmaz(t *testing.T) {
+	d := protokolBaslat(t)
+	d.ekran()
+	d.yaz(`{"tur":"merhaba","surum":1,"dil":"tr"}`)
+	d.ekran()
+	d.yaz(`{"tur":"olay","olay":"tikla","id":"menu"}`)
+	d.sessiz(300 * time.Millisecond)
+}
+
+func TestCalistir_MenuSurum2deYazilir(t *testing.T) {
+	d := protokolBaslat(t)
+	d.ekran()
+	d.yaz(`{"tur":"merhaba","surum":2,"dil":"tr"}`)
+	d.ekran()
+	d.yaz(`{"tur":"olay","olay":"tikla","id":"menu"}`)
+	m := d.oku()
+	ogeler, _ := m["ogeler"].([]any)
+	if m["tur"] != "menu" || len(ogeler) != 1 || ogeler[0].(map[string]any)["id"] != "kategori:Genel" {
+		t.Fatalf("menü satırı = %v", m)
 	}
 }

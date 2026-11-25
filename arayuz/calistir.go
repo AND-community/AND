@@ -55,6 +55,27 @@ type Gorunurluk struct {
 	Gorunur bool
 }
 
+// Git (sürüm 2), kullanıcının eklentiyi belli bir yere açmak istediğidir:
+// eklentinin menü öğesine (bkz. Menu) tıklandı ya da AND bir bağlantıyı
+// (ör. Ctrl+K'de bir konu) eklentiye yönlendirdi. Hedef eklentinin kendi
+// verdiği kimliktir; tanımadığı hedefi eklenti yok sayar.
+type Git struct {
+	Hedef string
+}
+
+// MenuIstegi, Menu'nün ürettiği mesajdır; Calistir onu modele vermez, AND'a
+// yazar (yalnızca AND sürüm 2 ve üstüyse).
+type MenuIstegi struct {
+	Ogeler []MenuOgesi
+}
+
+// Menu, eklentinin menüsünü AND'a bildiren komuttur (bkz. TurMenu). AND
+// sürüm 1 ise hiçbir şey yazılmaz; boş liste menüyü kaldırır. Menü Merhaba
+// geldikten sonra gönderilmelidir: AND'ın sürümü ancak o zaman bilinir.
+func Menu(ogeler []MenuOgesi) tea.Cmd {
+	return func() tea.Msg { return MenuIstegi{Ogeler: ogeler} }
+}
+
 // AndMesaji, AND'ın eklentinin standart girdisine yazdığı bir satırdır (Tur:
 // merhaba, gorunur, olay). Deger, gorunur'da bir JSON bool, olay'da bir JSON
 // dizgesidir.
@@ -66,6 +87,7 @@ type AndMesaji struct {
 	ID       string            `json:"id,omitempty"`
 	Deger    json.RawMessage   `json:"deger,omitempty"`
 	Degerler map[string]string `json:"degerler,omitempty"`
+	Hedef    string            `json:"hedef,omitempty"`
 }
 
 // Etkin, AND'ın eklentiyi arayüz kipinde başlatıp başlatmadığıdır.
@@ -138,6 +160,8 @@ func olayaCevir(satir []byte) (tea.Msg, bool) {
 		var d string
 		_ = json.Unmarshal(a.Deger, &d)
 		return Olay{Olay: a.Olay, ID: a.ID, Deger: d, Degerler: a.Degerler}, true
+	case "git":
+		return Git{Hedef: a.Hedef}, true
 	}
 	return nil, false
 }
@@ -180,6 +204,8 @@ func (y *yazici) ekran(e Ekran) {
 type sarmal struct {
 	m   Model
 	yaz *yazici
+	// surum, AND'ın merhabada bildirdiği protokol sürümüdür (0: henüz yok).
+	surum int
 }
 
 func (s *sarmal) Init() tea.Cmd {
@@ -198,6 +224,22 @@ func (s *sarmal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Bildirim
 		}{"bildirim", b})
 		return s, nil
+	}
+	switch m := msg.(type) {
+	case MenuIstegi:
+		if s.surum >= 2 {
+			ogeler := m.Ogeler
+			if ogeler == nil {
+				ogeler = []MenuOgesi{}
+			}
+			s.yaz.satir(struct {
+				Tur    string      `json:"tur"`
+				Ogeler []MenuOgesi `json:"ogeler"`
+			}{TurMenu, ogeler})
+		}
+		return s, nil
+	case Merhaba:
+		s.surum = m.Surum
 	}
 	yeni, cmd := s.m.Update(msg)
 	if m, ok := yeni.(Model); ok {

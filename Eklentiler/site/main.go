@@ -33,8 +33,8 @@ var manifest = pluginapi.Manifest{
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinSite},
 	// UI: AND masaüstünde terminal yerine AND'ın arayüzüyle açılır (bkz.
-	// arayuz.go).
-	UI: arayuz.Surum,
+	// arayuz.go); 1, gereksindiği en düşük protokol sürümüdür.
+	UI: 1,
 }
 
 func main() {

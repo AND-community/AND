@@ -3,9 +3,11 @@ package arayuz
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func ekranSatiri(t *testing.T, e Ekran) []byte {
@@ -141,5 +143,73 @@ func TestCoz_Bildirim(t *testing.T) {
 	m, _ = Coz([]byte(`{"tur":"bildirim","metin":"ok","durum":"hata"}`))
 	if m.Bildirim.Durum != "hata" {
 		t.Errorf("geçerli durum değişti: %q", m.Bildirim.Durum)
+	}
+}
+
+func TestCoz_GonderiGidisDonus(t *testing.T) {
+	g := Gonderi("k1", "ayşe", []Oge{Zengin(Parca{Metin: "merhaba"}), Kod("fmt.Println()", IleBaslik("go"))},
+		IleYazarAlt("abcd1234"), IleZaman("2026-11-25T10:00:00Z"), IleRozetler(Rozet{Metin: "Kurucu", Renk: "vurgu"}),
+		Muhurlu, KendiGonderisi, IleBaslik("Konu"), IleAraclar(Dugme("sil", "Sil")))
+	m, err := Coz(ekranSatiri(t, Ekran{Govde: &g}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := *m.Ekran.Govde
+	if o.Tur != TurGonderi || o.Yazar != "ayşe" || o.YazarAlt != "abcd1234" || o.Zaman != "2026-11-25T10:00:00Z" ||
+		!o.Muhur || !o.Kendi || o.Yanit || o.Baslik != "Konu" || len(o.Rozetler) != 1 || o.Rozetler[0].Renk != "vurgu" ||
+		len(o.Cocuklar) != 2 || o.Cocuklar[1].Tur != TurKod || o.Cocuklar[1].Baslik != "go" || len(o.Araclar) != 1 {
+		t.Fatalf("gönderi = %+v", o)
+	}
+	y := Gonderi("y1", "mert", nil, YanitGonderisi)
+	if m, _ := Coz(ekranSatiri(t, Ekran{Govde: &y})); !m.Ekran.Govde.Yanit {
+		t.Fatal("yanıt gönderisi işareti kayboldu")
+	}
+}
+
+func TestCoz_GonderiCocukSuzulur(t *testing.T) {
+	g := Gonderi("k1", "a\x1b[31mb", []Oge{Liste("l", nil), Metin("ok"), Kod("x")},
+		IleRozetler(Rozet{Metin: "r", Renk: "mor"}))
+	m, err := Coz(ekranSatiri(t, Ekran{Govde: &g}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := m.Ekran.Govde
+	if o.Cocuklar[0].Tur != TurBilinmeyen || o.Cocuklar[1].Tur != TurMetin || o.Cocuklar[2].Tur != TurKod {
+		t.Fatalf("çocuklar: %+v", o.Cocuklar)
+	}
+	if strings.ContainsRune(o.Yazar, 0x1b) || o.Rozetler[0].Renk != "" {
+		t.Fatalf("temizlenmedi: %q %+v", o.Yazar, o.Rozetler)
+	}
+}
+
+func TestCoz_MenuSinirlar(t *testing.T) {
+	var ogeler []MenuOgesi
+	for i := range 60 {
+		ogeler = append(ogeler, MenuOgesi{ID: fmt.Sprintf("kategori:%d", i), Etiket: strings.Repeat("ş", 100), Ikon: "yok", Sayi: -3})
+	}
+	satir, _ := json.Marshal(map[string]any{"tur": "menu", "ogeler": ogeler})
+	m, err := Coz(satir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Tur != TurMenu || len(m.Menu) != menuSiniri {
+		t.Fatalf("menü: %s %d", m.Tur, len(m.Menu))
+	}
+	if n := utf8.RuneCountInString(m.Menu[0].Etiket); n != menuEtiketSiniri || m.Menu[0].Ikon != "" || m.Menu[0].Sayi != 0 {
+		t.Fatalf("öğe: %d rune %+v", n, m.Menu[0])
+	}
+	bos, err := Coz([]byte(`{"tur":"menu","ogeler":[]}`))
+	if err != nil || bos.Tur != TurMenu || len(bos.Menu) != 0 {
+		t.Fatalf("boş menü (temizleme): %+v %v", bos, err)
+	}
+}
+
+func TestCoz_BilinmeyenMesajTuru(t *testing.T) {
+	_, err := Coz([]byte(`{"tur":"gelecek","bir":"sey"}`))
+	if !errors.Is(err, ErrBilinmeyenTur) || !errors.Is(err, ErrBicim) {
+		t.Fatalf("ErrBilinmeyenTur (ErrBicim de) bekleniyordu: %v", err)
+	}
+	if _, err := Coz([]byte(`{`)); errors.Is(err, ErrBilinmeyenTur) {
+		t.Fatal("bozuk JSON bilinmeyen tür sayılmamalı")
 	}
 }

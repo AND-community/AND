@@ -29,13 +29,30 @@ const komutSuresi = 2 * time.Second
 // başlangıç komutları (ör. AND'ı yoklama) testte istenmeyebilir.
 type Surucu struct {
 	m arayuz.Model
+	// surum, verilen Merhaba'nın sürümüdür; menu, eklentinin son menüsü
+	// (gerçek AND gibi yalnızca sürüm 2 ve üstünde tutulur).
+	surum int
+	menu  []arayuz.MenuOgesi
 }
 
 // Yeni, m için bir sürücü kurar.
 func Yeni(m arayuz.Model) *Surucu { return &Surucu{m: m} }
 
-// Gonder, mesajı modele verir ve modelin döndürdüğü komutu döner.
+// Gonder, mesajı modele verir ve modelin döndürdüğü komutu döner. Menü
+// istekleri (arayuz.Menu) modele gitmez: AND gibi sürücü tutar (bkz. Menu).
 func (s *Surucu) Gonder(msg tea.Msg) tea.Cmd {
+	switch m := msg.(type) {
+	case arayuz.MenuIstegi:
+		if s.surum >= 2 {
+			s.menu = m.Ogeler
+			if s.menu == nil {
+				s.menu = []arayuz.MenuOgesi{}
+			}
+		}
+		return nil
+	case arayuz.Merhaba:
+		s.surum = m.Surum
+	}
 	yeni, cmd := s.m.Update(msg)
 	if m, ok := yeni.(arayuz.Model); ok {
 		s.m = m
@@ -70,6 +87,13 @@ func (s *Surucu) FormGonder(id string, d map[string]string) tea.Cmd {
 func (s *Surucu) SekmeSec(id, deger string) tea.Cmd {
 	return s.Olay(arayuz.Olay{Olay: arayuz.OlaySekme, ID: id, Deger: deger})
 }
+
+// Git, AND'ın eklentiyi bir hedefe açmasıdır (menü öğesi, Ctrl+K).
+func (s *Surucu) Git(hedef string) tea.Cmd { return s.Gonder(arayuz.Git{Hedef: hedef}) }
+
+// Menu, eklentinin AND'a bildirdiği son menüdür; hiç bildirmediyse ya da
+// Merhaba sürümü 2'den küçükse nil.
+func (s *Surucu) Menu() []arayuz.MenuOgesi { return s.menu }
 
 func (s *Surucu) DiyalogKapat() tea.Cmd {
 	return s.Olay(arayuz.Olay{Olay: arayuz.OlayDiyalogKapat})

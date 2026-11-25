@@ -288,12 +288,12 @@
   // yazarSatiri: ad (genel anahtarın kısası üzerine gelince), rol, zaman ve
   // imza mührü. AND, ağdan gelen her konu ve yanıtın imzasını saklamadan önce
   // doğrular; mühür bunu söyler.
-  function yazarSatiri(o, ek) {
+  function yazarSatiri(o, ek, muhursuz) {
     return el("div", { class: "yazar-satiri" },
       el("span", { class: "ad" + (o.kendi ? " kendi" : ""), title: o.yazarKisa ? t("Genel anahtar") + ": " + o.yazarKisa : undefined }, o.yazar || t("adsız")),
       o.rol ? el("span", { class: "rozet rol" }, o.rol) : null,
       zamanEtiketi(o.zaman, "zaman"),
-      el("span", { class: "imza", title: t("Her konu ve mesaj Ed25519 ile imzalanır") }, ikon("muhur")),
+      muhursuz ? null : el("span", { class: "imza", title: t("Her konu ve mesaj Ed25519 ile imzalanır") }, ikon("muhur")),
       ek);
   }
 
@@ -796,6 +796,15 @@
             return el("button", { class: "nav" + (etkin ? " etkin" : ""), "aria-current": etkin ? "page" : undefined, title: e.etiket, on: { click: () => eklentiGoster(e.ad) } },
               ikon(kategoriIkonu(e.kategoriKodu)), el("span", null, e.etiket),
               eklentiCalisiyor(e.ad) ? el("i", { class: "calisiyor", title: t("Çalışıyor"), "aria-label": t("Çalışıyor") }) : null);
+          }).map((dugme, i) => {
+            const e = g.ogeler[i];
+            const menu = eklentiMenusu(e.ad);
+            if (!menu.length) return dugme;
+            const s = A[e.ad];
+            return [dugme, el("div", { class: "alt-gezinme" }, menu.map((m) => el("button", {
+              class: "alt-nav" + (D.gorunum === "eklenti" && D.eklentiAd === e.ad && s.menuSecili === m.id ? " etkin" : ""), title: m.etiket,
+              on: { click: () => eklentiMenusuAc(e.ad, m.id) },
+            }, el("span", null, m.etiket), m.sayi ? el("span", { class: "sayi" }, String(m.sayi)) : null)))];
           })])
         : [el("div", { class: "grup-basligi" }, t("Eklentiler")), el("div", { class: "gezinme-bos" }, t("Etkin eklenti yok"))],
       el("div", { class: "gezinme-alt" },
@@ -1867,6 +1876,19 @@
     git("eklenti");
   }
 
+  // eklentiMenusuAc, eklentinin menü öğesini açar: eklentinin ekranına geçer
+  // ve hedefi eklentiye iletir (arayuz.Git).
+  function eklentiMenusuAc(ad, hedef) {
+    const s = A[ad];
+    if (!s || !s.oturum || s.bitti) { eklentiGoster(ad); return; }
+    s.menuSecili = hedef;
+    eklentiGoster(ad);
+    api("/api/arayuz/git", { id: s.oturum, hedef }).catch((e) => bildir(e.message, "hata"));
+  }
+
+  // eklentiMenusu, çalışan arayüz eklentisinin menüsüdür (yoksa boş).
+  const eklentiMenusu = (ad) => (A[ad] && A[ad].oturum && !A[ad].bitti && A[ad].menu) || [];
+
   async function eklentiCiz() {
     const ad = D.eklentiAd;
     const e = eklentiBilgisi(ad);
@@ -2038,6 +2060,13 @@
       const s = bul(o.id);
       if (!s || o.surum <= s.surum) return;
       ekranAl(s, o.ekran, o.surum);
+    });
+    arayuzAkisi.addEventListener("menu", (e) => {
+      const o = oku(e);
+      const s = bul(o.id);
+      if (!s) return;
+      s.menu = o.ogeler || [];
+      gezinmeCiz();
     });
     arayuzAkisi.addEventListener("bildirim", (e) => {
       const o = oku(e);
@@ -2256,11 +2285,37 @@
     return o.parcalar.map((p) => el("span", { class: stilSinifi(p.stil).trim() || undefined }, p.metin));
   }
 
+  // gonderiCiz, eklentinin yazısını (ör. forum konusu ve yanıtları) AND'ın
+  // forumuyla aynı biçimde çizer: konu makale gibi, yanıtlar izlek çizgisiyle.
+  // Gövdede düz metin bağlantıları tıklanabilir, kod blokları kopyalanabilir.
+  function gonderiCiz(s, o, yol) {
+    const yazar = { yazar: o.yazar, yazarKisa: o.yazarAlt, kendi: o.kendi, zaman: o.zaman, rol: (o.rozetler || []).map((r) => r.metin).join(" · ") };
+    const satir = yazarSatiri(yazar, null, !o.muhur);
+    const govde = (o.cocuklar || []).map((c, i) => {
+      if (c.tur === "kod") return el("div", { class: "kod-blogu" },
+        el("div", { class: "kod-ust" }, el("span", null, c.baslik || t("kod")),
+          el("button", { class: "ikon-dugme", title: t("Kopyala"), "aria-label": t("Kopyala"), on: { click: () => kopyala(c.metin || "") } }, ikon("kopyala"))),
+        el("pre", null, el("code", null, c.metin || "")));
+      if (c.tur === "metin") return el("div", { class: "metin" }, metinDugumleri(((c.parcalar || []).map((p) => p.metin).join("") || c.metin || "").replace(/^\n+|\n+$/g, "")));
+      return ogeCiz(s, c, yol + "." + i);
+    });
+    const araclar = (o.araclar || []).length ? el("div", { class: "a-gonderi-araclar" }, o.araclar.map((d, i) => ogeCiz(s, d, yol + ".a" + i))) : null;
+    if (o.yanit) {
+      return el("div", { class: "yanit a-gonderi" + (o.kendi ? " kendi" : ""), "data-anahtar": o.id || undefined },
+        avatar(o.yazar, o.yazarAlt, "kucuk"), el("div", { class: "icerik" }, satir, govde, araclar));
+    }
+    return el("div", { class: "a-gonderi okuma", "data-anahtar": o.id || undefined },
+      el("header", { class: "detay-ust" }, o.baslik ? el("h1", null, o.baslik) : null,
+        el("div", { class: "konu-yazar" }, avatar(o.yazar, o.yazarAlt, "kucuk"), satir)),
+      el("article", { class: "ana-metin" }, govde, araclar));
+  }
+
   function ogeCiz(s, o, yol) {
     if (!o) return null;
     const anahtar = o.id || yol;
     const cocuklar = (liste) => (liste || []).map((c, i) => ogeCiz(s, c, yol + "." + i));
     switch (o.tur) {
+      case "gonderi": return gonderiCiz(s, o, yol);
       case "yigin": return el("div", { class: "a-yigin a-aralik-" + (o.aralik || "orta") }, cocuklar(o.cocuklar));
       case "satir": return el("div", { class: "a-satir" + (o.sarmala ? " sarmal" : "") + (o.hizala ? " a-hizala-" + o.hizala : "") }, cocuklar(o.cocuklar));
       case "bolunmus": return el("div", { class: "a-bolunmus" },
@@ -2571,6 +2626,7 @@
       if (x.tur === "arayuz") {
         const s = arayuzDurumu(x.ad);
         if (s.oturum !== x.id && (!s.oturum || s.bitti)) Object.assign(s, { oturum: x.id, bitti: x.bitti, kod: x.kod, ekran: null, onceki: null, surum: 0, hata: null, yazilan: {} });
+        if (s.oturum === x.id) s.menu = x.menu || [];
         if (!x.bitti) { arayuzAkisiniAc(); arayuzEkraniCek(s); }
       } else {
         const s = terminalDurumu(x.ad);
@@ -2651,7 +2707,10 @@
         ekle(t("Konular"), "sohbet", konu.baslik, () => { D.forum.secili = konu.id; git("forum"); }, konu.yazar);
       }
     }
-    for (const e of (D.oturum && D.oturum.menu) || []) ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiGoster(e.ad));
+    for (const e of (D.oturum && D.oturum.menu) || []) {
+      ekle(e.kategori, kategoriIkonu(e.kategoriKodu), e.etiket, () => eklentiGoster(e.ad));
+      for (const m of eklentiMenusu(e.ad)) ekle(e.etiket, m.ikon || kategoriIkonu(e.kategoriKodu), m.etiket, () => eklentiMenusuAc(e.ad, m.id), m.sayi ? String(m.sayi) : undefined);
+    }
     return k;
   }
 

@@ -235,7 +235,23 @@ screens as often as you like (an identical screen is not rewritten, and AND forw
 shown (the plugin's screen shows an error); paginate large lists and shorten large diffs. AND sanitizes
 all text (escape sequences, direction-changing characters).
 
-**Testing:** `arayuz/arayuztest` drives the model without AND:
+**Protocol version 2** (`arayuz.Surum`; AND reports it in `Merhaba.Surum`). The manifest's `ui` is the
+lowest version the plugin needs: a plugin that uses version 2 optionally still writes `1` and checks
+`Merhaba.Surum`. AND ignores message types it does not know (the session keeps running).
+
+- `Gonderi(id, author, body, …)`: a piece of writing such as a forum topic or reply. `IleBaslik`,
+  `IleYazarAlt` (for example a short key), `IleZaman` (RFC 3339), `IleRozetler` (for example a role),
+  `Muhurlu` (signature verified), `YanitGonderisi` (a reply in a thread; consecutive replies are joined
+  by one thread line), `KendiGonderisi`, `IleAraclar` (buttons). The body may only hold `Metin`/`Zengin`
+  and `Kod`; links in plain text are clickable and code blocks can be copied (`Kod`'s `IleBaslik` is the
+  language label). A version 1 AND cannot show it: use `Kart` + `Zengin` there.
+- The `arayuz.Menu([]MenuOgesi{{ID, Etiket, Ikon, Sayi}})` command: AND shows the items under the
+  plugin in the sidebar and in Ctrl+K (at most 50; an empty list removes the menu). Send the menu after
+  `Merhaba` has arrived; nothing is written to a version 1 AND.
+- The `arayuz.Git{Hedef}` message: the user clicked a menu item or AND routed a link to the plugin.
+  `Hedef` is the menu item's `ID`; ignore targets you do not know.
+
+**Testing:** `arayuz/arayuztest` drives the model without AND (`s.Git(target)`, `s.Menu()`):
 
 ```go
 s := arayuztest.Yeni(newModel())

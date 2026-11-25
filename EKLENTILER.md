@@ -228,7 +228,23 @@ sıklıkta gönderebilirsin (aynı ekran yeniden yazılmaz, AND pencereye en ço
 gösterilmez (eklentinin ekranında hata çıkar); büyük listeleri sayfala, büyük farkları kısalt. Metinler
 AND'da temizlenir (kaçış dizileri, yön değiştiren karakterler).
 
-**Test:** `arayuz/arayuztest` modeli AND olmadan sürer:
+**Protokol sürüm 2** (`arayuz.Surum`; AND bunu `Merhaba.Surum`'da bildirir). Manifest'teki `ui`,
+eklentinin gereksindiği en düşük sürümdür: sürüm 2'yi isteğe bağlı kullanan eklenti yine `1` yazar ve
+`Merhaba.Surum`'a bakar. AND tanımadığı mesaj türünü yok sayar (oturum sürer).
+
+- `Gonderi(id, yazar, govde, …)`: forum konusu ya da yanıtı gibi bir yazı. `IleBaslik`, `IleYazarAlt`
+  (ör. kısa anahtar), `IleZaman` (RFC 3339), `IleRozetler` (ör. rol), `Muhurlu` (imza doğrulandı),
+  `YanitGonderisi` (iplikteki yanıt; ardışık yanıtlar tek bir izlek çizgisiyle bağlanır),
+  `KendiGonderisi`, `IleAraclar` (düğmeler). Gövde yalnızca `Metin`/`Zengin` ve `Kod` olabilir; düz
+  metindeki bağlantılar tıklanabilir, kod blokları kopyalanabilir (`Kod`'un `IleBaslik`'i dil etiketidir).
+  Sürüm 1 AND bunu gösteremez: orada `Kart` + `Zengin` kullan.
+- `arayuz.Menu([]MenuOgesi{{ID, Etiket, Ikon, Sayi}})` komutu: AND öğeleri kenar çubuğunda eklentinin
+  altında ve Ctrl+K'de gösterir (en çok 50; boş liste menüyü kaldırır). Menüyü `Merhaba` geldikten sonra
+  gönder; sürüm 1 AND'a hiç yazılmaz.
+- `arayuz.Git{Hedef}` mesajı: kullanıcı bir menü öğesine tıkladı ya da AND bir bağlantıyı eklentiye
+  yönlendirdi. `Hedef` menü öğesinin `ID`'sidir; tanımadığın hedefi yok say.
+
+**Test:** `arayuz/arayuztest` modeli AND olmadan sürer (`s.Git(hedef)`, `s.Menu()`):
 
 ```go
 s := arayuztest.Yeni(yeniModel())

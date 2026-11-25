@@ -41,6 +41,9 @@ func (y yanki) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		y.son = m.ID
 	case arayuz.Merhaba:
 		y.dil = m.Dil
+		return y, arayuz.Menu([]arayuz.MenuOgesi{{ID: "kategori:Genel", Etiket: "Genel", Ikon: "forum", Sayi: 2}})
+	case arayuz.Git:
+		y.son = "git:" + m.Hedef
 	case arayuz.Gorunurluk:
 		y.gorunur = m.Gorunur
 	}
@@ -70,6 +73,10 @@ func sahteArayuzEklentisi(kip string) {
 		satir("çöp")
 		satir(`{"tur":"ekran","ekran":{"baslik":"` + strings.Repeat("a", arayuz.SatirSiniri) + `"}}`)
 		satir(`{"tur":"ekran","ekran":{"baslik":"gecerli"}}`)
+	case "gelecek":
+		// Daha yeni bir protokolün (AND'ın tanımadığı) mesajı, sonra ekran.
+		satir(`{"tur":"gelecek","bir":"sey"}`)
+		satir(`{"tur":"ekran","ekran":{"baslik":"sonra"}}`)
 	case "coker":
 		satir(`{"tur":"ekran","ekran":{"baslik":"x"}}`)
 		os.Exit(7)
@@ -277,11 +284,12 @@ func arayuzEklentisi(ad string, ui int) pluginmgr.Plugin {
 }
 
 func TestArayuz_IcerideBaslatSecimi(t *testing.T) {
-	d, cek := arayuzluCekirdek(t, arayuzEklentisi("bir", 1), arayuzEklentisi("sifir", 0), arayuzEklentisi("iki", 2))
+	d, cek := arayuzluCekirdek(t, arayuzEklentisi("bir", 1), arayuzEklentisi("sifir", 0), arayuzEklentisi("iki", 2),
+		arayuzEklentisi("gelecek", arayuz.Surum+1))
 	for _, p := range cek.eklentiler {
 		oz, err := d.u.icerideBaslat(cek, p, 80, 25)
 		beklenen := "terminal"
-		if p.Manifest.UI == 1 {
+		if p.Manifest.UI >= 1 && p.Manifest.UI <= arayuz.Surum {
 			beklenen = "arayuz"
 		}
 		switch {
@@ -301,7 +309,7 @@ func TestArayuz_IcerideBaslatSecimi(t *testing.T) {
 	// Menü, eklentinin arayüz kipinde açılacağını bilir.
 	for _, o := range jsonCoz(t, d.al("/api/oturum"))["menu"].([]any) {
 		m := o.(map[string]any)
-		if (m["ad"] == "bir") != (m["arayuz"] == true) {
+		if (m["ad"] == "bir" || m["ad"] == "iki") != (m["arayuz"] == true) {
 			t.Errorf("menü öğesi %v", m)
 		}
 	}
@@ -403,5 +411,83 @@ func TestArayuz_OkumayanEklentiKilitlemez(t *testing.T) {
 	case <-bitti:
 	case <-time.After(durdurmaSuresi + 5*time.Second):
 		t.Fatal("hepsiniDurdur kilitlendi")
+	}
+}
+
+func TestArayuz_MenuYayinlanirVeOturumlardaDoner(t *testing.T) {
+	d := yeniDeneme(t)
+	c := d.u.arayuz.yayin.abone()
+	defer d.u.arayuz.yayin.birak(c)
+	o := arayuzBaslat(t, d, "yanki", nil)
+	for zaman := time.After(10 * time.Second); ; {
+		select {
+		case ol := <-c:
+			if ol.tur != "menu" {
+				continue
+			}
+			var v struct {
+				ID     string             `json:"id"`
+				Ad     string             `json:"ad"`
+				Ogeler []arayuz.MenuOgesi `json:"ogeler"`
+			}
+			if err := json.Unmarshal(ol.veri, &v); err != nil || v.ID != o.id || v.Ad != "deneme" || len(v.Ogeler) != 1 || v.Ogeler[0].ID != "kategori:Genel" {
+				t.Fatalf("menü olayı: %s %v", ol.veri, err)
+			}
+		case <-zaman:
+			t.Fatal("menü olayı gelmedi")
+		}
+		break
+	}
+	var r struct {
+		Oturumlar []struct {
+			ID   string             `json:"id"`
+			Menu []arayuz.MenuOgesi `json:"menu"`
+		} `json:"oturumlar"`
+	}
+	if err := json.Unmarshal(d.al("/api/eklenti/oturumlar").Body.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Oturumlar) != 1 || len(r.Oturumlar[0].Menu) != 1 || r.Oturumlar[0].Menu[0].Sayi != 2 {
+		t.Fatalf("oturumlar: %+v", r.Oturumlar)
+	}
+}
+
+func TestArayuz_GitIletilir(t *testing.T) {
+	d := yeniDeneme(t)
+	o := arayuzBaslat(t, d, "yanki", nil)
+	ekranBekle(t, d, o.id, baslikOlsun("basla"))
+	if w := d.gonder("/api/arayuz/git", map[string]string{"id": o.id, "hedef": "konu:1"}); w.Code != http.StatusOK {
+		t.Fatalf("git: %d %s", w.Code, w.Body)
+	}
+	ekranBekle(t, d, o.id, baslikOlsun("git:konu:1"))
+	if w := d.gonder("/api/arayuz/git", map[string]string{"id": "yok", "hedef": "x"}); w.Code != http.StatusNotFound {
+		t.Errorf("olmayan oturum: %d", w.Code)
+	}
+	if w := d.gonder("/api/arayuz/git", map[string]string{"id": o.id, "hedef": strings.Repeat("a", 513)}); w.Code != http.StatusBadRequest {
+		t.Errorf("uzun hedef: %d", w.Code)
+	}
+}
+
+// Daha yeni bir eklentinin AND'ın tanımadığı mesajı oturumu düşürmez ve
+// kullanıcıya hata olarak gösterilmez.
+func TestArayuz_BilinmeyenTurOturumuDusurmez(t *testing.T) {
+	d := yeniDeneme(t)
+	c := d.u.arayuz.yayin.abone()
+	defer d.u.arayuz.yayin.birak(c)
+	o := arayuzBaslat(t, d, "gelecek", nil)
+	g := ekranBekle(t, d, o.id, baslikOlsun("sonra"))
+	if g["bitti"] != false {
+		t.Fatalf("oturum düştü: %v", g)
+	}
+	for zaman := time.After(500 * time.Millisecond); ; {
+		select {
+		case ol := <-c:
+			if ol.tur == "hata" {
+				t.Fatalf("bilinmeyen tür hata olarak yayınlandı: %s", ol.veri)
+			}
+			continue
+		case <-zaman:
+		}
+		break
 	}
 }

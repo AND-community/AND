@@ -76,6 +76,7 @@ func (u *Uygulama) rotalar() {
 	m.HandleFunc("GET /api/arayuz/ekran", u.arayuzEkrani)
 	m.HandleFunc("POST /api/arayuz/olay", u.arayuzOlayi)
 	m.HandleFunc("POST /api/arayuz/gorunur", u.arayuzGorunur)
+	m.HandleFunc("POST /api/arayuz/git", u.arayuzGit)
 	m.HandleFunc("POST /api/arayuz/kapat", u.arayuzuKapat)
 	m.HandleFunc("GET /api/eklenti/oturumlar", u.eklentiOturumlari)
 	m.HandleFunc("GET /api/ag", u.cekirdekle(u.agDurumu))

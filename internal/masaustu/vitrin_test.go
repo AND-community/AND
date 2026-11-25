@@ -40,6 +40,15 @@ func (v vitrin) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return v, vitrinTikla()
 	case arayuz.Gorunurluk:
 		v.gorunur = m.Gorunur
+	case arayuz.Merhaba:
+		// Sürüm 2: kenar çubuğunda vitrinin altında menü.
+		return v, arayuz.Menu([]arayuz.MenuOgesi{{ID: "sekme:genel", Etiket: "Genel", Ikon: "bilgi"},
+			{ID: "sekme:gonderi", Etiket: "Gönderi", Ikon: "forum", Sayi: 3}})
+	case arayuz.Git:
+		v.son = "git " + m.Hedef
+		if sekme, ok := strings.CutPrefix(m.Hedef, "sekme:"); ok {
+			v.sekme = sekme
+		}
 	case arayuz.Olay:
 		v.son = m.Olay + " " + m.ID
 		if m.Deger != "" {
@@ -117,6 +126,25 @@ func (v vitrin) Arayuz() arayuz.Ekran {
 			}}, arayuz.FarkDosyasi{Yol: "BENIOKU.md", Durum: "A", Eklenen: 1, Satirlar: []arayuz.FarkSatiri{{Tur: "+", Metin: "# Vitrin", Yeni: 1}}}),
 			arayuz.Kod("func main() {\n\tfmt.Println(\"merhaba\")\n}", arayuz.SatirNumarali),
 		)
+	case "gonderi":
+		kod := "func merhaba() string {\n\treturn \"dünya\"\n}"
+		icerik = arayuz.Yigin(
+			arayuz.Gonderi("k1", "Deniz", []arayuz.Oge{
+				arayuz.Metin("Yeni sürüm için notlar burada. Ayrıntılar: https://example.org/notlar"),
+				arayuz.Kod(kod, arayuz.IleBaslik("go")),
+			}, arayuz.IleBaslik("Sürüm 2 hazırlığı"), arayuz.IleYazarAlt("a1b2c3d4"), arayuz.IleZaman("2026-11-25T09:00:00Z"),
+				arayuz.IleRozetler(arayuz.Rozet{Metin: "Kurucu"}), arayuz.Muhurlu),
+			arayuz.Baslik(2, "Yanıtlar (3)"),
+			arayuz.Yigin(
+				arayuz.Gonderi("y1", "Ece", []arayuz.Oge{arayuz.Metin("Testler geçti.")}, arayuz.IleYazarAlt("e5f6a7b8"),
+					arayuz.IleZaman("2026-11-25T09:10:00Z"), arayuz.Muhurlu, arayuz.YanitGonderisi),
+				arayuz.Gonderi("y2", "Umut", []arayuz.Oge{arayuz.Metin("Harika, birleştiriyorum.")}, arayuz.IleYazarAlt("00aa11bb"),
+					arayuz.IleZaman("2026-11-25T09:20:00Z"), arayuz.Muhurlu, arayuz.YanitGonderisi, arayuz.KendiGonderisi,
+					arayuz.IleAraclar(arayuz.Dugme("ySil", "Sil", arayuz.Tehlikeli))),
+				arayuz.Gonderi("y3", "Kaan", []arayuz.Oge{arayuz.Metin("İmzasız bir yanıt (mühür yok).")}, arayuz.IleYazarAlt("cc22dd33"),
+					arayuz.IleZaman("2026-11-25T09:30:00Z"), arayuz.YanitGonderisi),
+			),
+		)
 	case "tablo":
 		icerik = arayuz.Yigin(
 			arayuz.Tablo("banlar", []arayuz.Sutun{{Baslik: "Kullanıcı"}, {Baslik: "Neden"}, {Baslik: "Süre", Hizala: "son"}},
@@ -158,7 +186,7 @@ func (v vitrin) Arayuz() arayuz.Ekran {
 		Govde: new(arayuz.Bolunmus(sol, arayuz.Yigin(
 			arayuz.SekmeCubugu("sekmeler", v.sekme, arayuz.Sekme{ID: "genel", Etiket: "Genel", Ikon: "bilgi"},
 				arayuz.Sekme{ID: "form", Etiket: "Form", Ikon: "belge"}, arayuz.Sekme{ID: "fark", Etiket: "Fark", Ikon: "kod", Sayac: 2},
-				arayuz.Sekme{ID: "tablo", Etiket: "Tablo ve mesajlar", Ikon: "sohbet"}),
+				arayuz.Sekme{ID: "tablo", Etiket: "Tablo ve mesajlar", Ikon: "sohbet"}, arayuz.Sekme{ID: "gonderi", Etiket: "Gönderi", Ikon: "forum"}),
 			icerik,
 		))),
 		Durum:  fmt.Sprintf("Sayaç %d · Son olay: %s", v.n, v.son),

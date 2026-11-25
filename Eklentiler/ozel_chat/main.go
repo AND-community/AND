@@ -32,9 +32,9 @@ var manifest = pluginapi.Manifest{
 	Description: "Eşlerle doğrudan mesajlaş, dosya gönder ve gelen dosya isteklerini onayla",
 	Author:      "AND",
 	Permissions: []string{pluginapi.IzinDM, pluginapi.IzinDosya},
-	// UI: AND masaüstünde terminal yerine AND'ın bileşenleriyle açılır (bkz.
-	// arayuz.go).
-	UI: arayuz.Surum,
+	// UI: AND masaüstünde terminal yerine AND'ın arayüzüyle açılır (bkz.
+	// arayuz.go); 1, gereksindiği en düşük protokol sürümüdür.
+	UI: 1,
 }
 
 func main() {
