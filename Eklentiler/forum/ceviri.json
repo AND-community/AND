@@ -24,5 +24,15 @@
   "Profil yüklenemedi: ": {"en": "Could not load the profile: ", "de": "Profil konnte nicht geladen werden: ", "es": "No se pudo cargar el perfil: ", "fr": "Impossible de charger le profil : ", "ru": "Не удалось загрузить профиль: "},
   "Bu kişiyi yasaklamak için Yönetici Paneli'ni kullan.": {"en": "Use the Admin Panel to ban this person.", "de": "Nutze das Admin-Panel, um diese Person zu sperren.", "es": "Usa el Panel de administración para banear a esta persona.", "fr": "Utilise le panneau d'administration pour bannir cette personne.", "ru": "Чтобы заблокировать этого человека, используй панель администратора."},
   "Yükleniyor": {"en": "Loading", "de": "Wird geladen", "es": "Cargando", "fr": "Chargement", "ru": "Загрузка"},
-  "Konu açıldı: %s": {"en": "Topic opened: %s", "de": "Thema eröffnet: %s", "es": "Tema abierto: %s", "fr": "Sujet ouvert : %s", "ru": "Тема открыта: %s"}
+  "Konu açıldı: %s": {"en": "Topic opened: %s", "de": "Thema eröffnet: %s", "es": "Tema abierto: %s", "fr": "Sujet ouvert : %s", "ru": "Тема открыта: %s"},
+  "Yayınla": {"en": "Publish", "de": "Veröffentlichen", "es": "Publicar", "fr": "Publier", "ru": "Опубликовать"},
+  "Yazarın profili": {"en": "Author's profile", "de": "Profil des Autors", "es": "Perfil del autor", "fr": "Profil de l'auteur", "ru": "Профиль автора"},
+  "Aç": {"en": "Open", "de": "Öffnen", "es": "Abrir", "fr": "Ouvrir", "ru": "Открыть"},
+  "Geri": {"en": "Back", "de": "Zurück", "es": "Atrás", "fr": "Retour", "ru": "Назад"},
+  "Sil": {"en": "Delete", "de": "Löschen", "es": "Eliminar", "fr": "Supprimer", "ru": "Удалить"},
+  "Konuları ve yanıtları burada okursun; yanıtın eşler arasında yayılır.": {"en": "Read topics and replies here; your reply spreads between peers.", "de": "Hier liest du Themen und Antworten; deine Antwort verbreitet sich zwischen den Peers.", "es": "Aquí lees los temas y las respuestas; tu respuesta se difunde entre pares.", "fr": "Lis ici les sujets et les réponses ; ta réponse se propage entre pairs.", "ru": "Здесь читаются темы и ответы; твой ответ распространяется между узлами."},
+  "Taslak olarak sakla": {"en": "Save as draft", "de": "Als Entwurf speichern", "es": "Guardar como borrador", "fr": "Enregistrer comme brouillon", "ru": "Сохранить как черновик"},
+  "Ctrl+Enter gönderir · [code]…[/code] kod bloğu": {"en": "Ctrl+Enter sends · [code]…[/code] code block", "de": "Strg+Enter sendet · [code]…[/code] Codeblock", "es": "Ctrl+Enter envía · [code]…[/code] bloque de código", "fr": "Ctrl+Entrée envoie · [code]…[/code] bloc de code", "ru": "Ctrl+Enter отправляет · [code]…[/code] блок кода"},
+  "Daha eski %d yanıtı göster": {"en": "Show %d older replies", "de": "%d ältere Antworten zeigen", "es": "Mostrar %d respuestas anteriores", "fr": "Afficher %d réponses plus anciennes", "ru": "Показать ещё %d старых ответов"},
+  "Gönder": {"en": "Send", "de": "Senden", "es": "Enviar", "fr": "Envoyer", "ru": "Отправить"}
 }

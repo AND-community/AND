@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/internal/bbcode"
 	"github.com/lucian95511/and/pluginapi"
@@ -86,11 +87,16 @@ type model struct {
 	okMsg        string
 	gonderiliyor bool
 
-	// Masaüstü (arayüz kipi, bkz. arayuz.go).
+	// Masaüstü (arayüz kipi, bkz. arayuz.go): andSurumu AND'ın protokol
+	// sürümü; yanitMetni yanıt kutusunun eklentinin verdiği değeri (konu
+	// açılınca taslak, gönderilince boş); konuGovdesi yeni konu formunun
+	// gövdesi (textarea sekmeleri boşluğa çevirdiğinden ayrı tutulur);
+	// eskiYanitlar uzun konuda gösterilen fazladan eski yanıt sayısı.
 	arayuzKipi   bool
-	protokol     int
+	andSurumu    int
 	gorunur      bool
 	yanitMetni   string
+	konuGovdesi  string
 	eskiYanitlar int
 }
 
@@ -143,7 +149,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if n := len(m.kategoriKonulari()); m.konuIdx >= n {
 			m.konuIdx = max(n-1, 0)
 		}
-		return m, nil
+		return m, m.menuGuncelle()
 
 	case konuMsg:
 		return m.konuGeldi(msg)
@@ -211,13 +217,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errMsg = ""
 		}
 		return m.tusIsle(msg)
+
+	case arayuz.Merhaba, arayuz.Gorunurluk, arayuz.Git, arayuz.Olay:
+		return m.arayuzMesaji(msg)
 	}
 	if m.ekran == ekYeniKonu {
 		yeni, cmd := m.form.Update(msg)
 		m.form = yeni.(konuFormu)
 		return m, cmd
 	}
-	return m.arayuzMesaji(msg)
+	return m, nil
 }
 
 // konuGeldi, bir konunun ayrıntısını işler: açılan ya da okunan konuysa
@@ -240,6 +249,10 @@ func (m model) konuGeldi(msg konuMsg) (tea.Model, tea.Cmd) {
 		return m, bildirimTemizle()
 	}
 	yeniYanit := m.aktif != nil && m.aktif.ID == msg.id && len(msg.detay.Replies) > len(m.aktif.Replies) && !m.altaGit
+	if m.aktif == nil || m.aktif.ID != msg.id {
+		m.yanitMetni = m.taslaklar.al(msg.id)
+		m.eskiYanitlar = 0
+	}
 	m.aktif, m.acilan = msg.detay, ""
 	m.vpGuncelle()
 	if m.altaGit {
@@ -272,7 +285,6 @@ func (m model) degisimGeldi(msg degisimMsg) (tea.Model, tea.Cmd) {
 	if m.aktif != nil && m.konuyuYenile() && (d.Hepsi || slices.Contains(d.Konular, m.aktif.ID)) {
 		cmds = append(cmds, konuYukle(m.c, m.aktif.ID))
 	}
-	cmds = append(cmds, m.menuGuncelle())
 	return m, tea.Batch(cmds...)
 }
 

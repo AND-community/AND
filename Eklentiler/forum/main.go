@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/lucian95511/and/arayuz"
 	"github.com/lucian95511/and/dil"
 	"github.com/lucian95511/and/pluginapi"
 	"github.com/lucian95511/and/ui"
@@ -54,6 +55,15 @@ func main() {
 	rol, _ := client.Role()
 
 	m := newModel(client, pluginapi.DataDir(), ben, rol)
+	if arayuz.Etkin() {
+		// AND masaüstü: ekran AND'ın bileşenleriyle çizilir (bkz. arayuz.go).
+		err := arayuz.Calistir(m)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "forum:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	son, err := tea.NewProgram(m, tea.WithAltScreen()).Run()
 	cikistaTaslaklariKaydet(son)
 	if err != nil {

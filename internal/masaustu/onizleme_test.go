@@ -131,6 +131,7 @@ func TestOnizleme(t *testing.T) {
 		{Manifest: pluginapi.Manifest{Name: "konu_ac", Label: "Konu Aç", Version: "1.2.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Foruma yeni konu açar."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "site", Label: "Site", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIcerik, Description: "Forum konularını kişisel bir web sitesi olarak yayımlar."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "ozel_chat", Label: "Özel Chat", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIletisim, Description: "Uçtan uca şifreli özel mesajlar.", Permissions: []string{pluginapi.IzinDM}}, Enabled: true},
+		{Manifest: pluginapi.Manifest{Name: "forum", Label: "Forum", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriIletisim, Description: "Kategoriler, konular ve yanıtlar.", Permissions: []string{pluginapi.IzinForum}}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "admin", Label: "Yönetici Paneli", Version: "4.2.0", Author: "AND", Category: pluginapi.KategoriYonetim, Description: "Konu yönetimi, yasaklar ve moderatörler.", Permissions: []string{pluginapi.IzinModerasyon}}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "DeltaX", Label: "DeltaX", Version: "0.9.0", Author: "AND", Category: pluginapi.KategoriGelistirme, Description: "Eşler arası sürüm denetimi."}, Enabled: true},
 		{Manifest: pluginapi.Manifest{Name: "pembis", Label: "Pembiş", Version: "1.0.0", Author: "AND", Category: pluginapi.KategoriTema, Description: "Tema paketi."}, Enabled: true},
@@ -221,6 +222,19 @@ func TestOnizleme(t *testing.T) {
 			sahte.KimlikAyarla(k)
 			sahte.YasakEkle(pluginapi.BanEntryInfo{AuthorKey: strings.Repeat("cd", 32), DisplayName: "reklamci", Reason: "reklam", ExpiresAt: time.Now().Add(70 * time.Hour), IsFounderMod: true})
 			sahte.YasakEkle(pluginapi.BanEntryInfo{PeerID: "12D3KooWEsDuzeyiYasak5555555555555555555555555", Reason: "saldırı", Permanent: true, IsFounderMod: true})
+		}
+		if arayuzAdi == "forum" {
+			// Masaüstü forumunun örnek verisine benzer konular (bkz. yukarıdaki f).
+			go1 := sahte.KonuEkle("Yazılım", "Go ile eşten eşe uygulama geliştirirken dikkat edilmesi gerekenler",
+				"Merhaba! libp2p ile küçük bir proje yapıyorum. Bağlantı kurulduktan sonra mesajları nasıl doğruluyorsunuz?\n\nŞu an şöyle yapıyorum:\n[code=go]imza := ed25519.Sign(anahtar, veri)\nif !ed25519.Verify(genel, veri, imza) {\n\treturn errors.New(\"imza geçersiz\")\n}[/code]\nBelgeler için: https://docs.libp2p.io/concepts/", "Elif")
+			sahte.YanitEkle(go1, "Ben de aynı yöntemi kullanıyorum; ek olarak mesaj kimliğini imzalı içerikten türetmek tekrar saldırılarını kolayca ayıklıyor.", "Can")
+			sahte.YanitEkle(go1, "Bağlantı başına bir oturum anahtarı da düşünülebilir.", "Mert")
+			sahte.KonuEkle("Siber Güvenlik", "Kuantum bilgisayarlar şifrelemeyi ne zaman kırar?", "Merak ediyorum, tahminleriniz neler?", "Can")
+			sahte.KonuEkle("Etkinlikler ve Duyurular", "Bu hafta sonu açık kaynak oyun gecesi?", "Katılmak isteyen?", "Mert")
+			sahte.KonuEkle("Genel", "Çalışırken dinlediğiniz albümler", "Paylaşın!", "Elif")
+			if err := sn.Istemci.CreatePost("Genel", "Kendi konum", "Bu konuyu ben açtım; silebilirim."); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if arayuzAdi == "site" {
 			for _, p := range [][3]string{

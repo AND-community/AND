@@ -206,9 +206,9 @@ kipinde açar.
 **Olaylar** (`arayuz.Olay`, modele `tea.Msg` olarak gelir): `tikla` (düğme, kırıntı, bağlantı; liste ya da
 tablo satırındaki düğmede `Deger` satırın kimliğidir), `sec` ve `ac` (listede seçim; çift tıklama ya da
 Enter), `gonder` (form; `Degerler` bütün alanları taşır, onay kutusu `"1"`/`"0"`), `degisti` (`Canli`
-girdi 250 ms susunca, `Aninda` seçim), `sekme`, `diyalogKapat` (Esc ya da ×), `geri` (diyalog yokken Esc
-ya da Alt+←). Formun içindeki bir düğmenin `tikla`sı ve `geri`, ekrandaki formun o anki
-değerlerini `Degerler`de taşır (ör. "Taslak olarak sakla" ya da kaydedilmemiş değişiklik uyarısı için); bu
+girdi 250 ms, `Canli` metin alanı 600 ms susunca; `Aninda` seçim), `sekme`, `diyalogKapat` (Esc ya da ×), `geri` (diyalog yokken Esc
+ya da Alt+←). Formun içindeki bir düğmenin `tikla`sı, `geri` ve diyaloğun `diyalogKapat`ı, ekrandaki (ya da diyalogdaki)
+formun o anki değerlerini `Degerler`de taşır (ör. "Taslak olarak sakla" ya da kaydedilmemiş değişiklik uyarısı için); bu
 alanlar kullanıcının yazdığı olarak kalır. Ayrıca `arayuz.Merhaba{Surum, Dil}` ilk mesajdır; `arayuz.Gorunurluk{Gorunur}` kullanıcı
 ekranına geçince/ayrılınca gelir (başlangıçta görünmez sayılır). `arayuz.Bildir(metin, durum)` AND'ın
 köşe bildirimini gösterir.

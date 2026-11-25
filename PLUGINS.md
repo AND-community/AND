@@ -211,9 +211,9 @@ plugin in terminal mode.
 **Events** (`arayuz.Olay`, delivered to the model as a `tea.Msg`): `tikla` (button, breadcrumb, link; for a
 button in a list or table row, `Deger` is the row's ID), `sec` and `ac` (list selection; double click or
 Enter), `gonder` (form; `Degerler` carries every field, checkboxes as `"1"`/`"0"`), `degisti` (a `Canli`
-input after 250 ms of quiet, an `Aninda` select), `sekme`, `diyalogKapat` (Esc or ×), `geri` (Esc or Alt+←
-when no dialog is open). A `tikla` from a button inside a form, and `geri`, carry the form's current
-values in `Degerler` (for example for "save as draft" or an unsaved-changes warning); those fields stay as
+input after 250 ms and a `Canli` text area after 600 ms of quiet; an `Aninda` select), `sekme`, `diyalogKapat` (Esc or ×), `geri` (Esc or Alt+←
+when no dialog is open). A `tikla` from a button inside a form, `geri`, and a dialog's `diyalogKapat` carry the current values of the
+form on the screen (or in the dialog) in `Degerler` (for example for "save as draft" or an unsaved-changes warning); those fields stay as
 the user typed them. `arayuz.Merhaba{Surum, Dil}` is the first message; `arayuz.Gorunurluk{Gorunur}`
 arrives when the user opens or leaves the plugin's screen (it starts as not visible).
 `arayuz.Bildir(text, status)` shows AND's corner notification.

@@ -2429,9 +2429,19 @@
         (o.secenekler || []).map((c) => el("option", { value: c.deger }, c.etiket)));
       girdi.value = deger;
     } else if (o.tur === "metinAlani") {
+      // Canlı metin alanı yazı durunca (600 ms) değerini "degisti" olarak
+      // gönderir (ör. taslak kaydı); eklenti alanın değerini değiştirmedikçe
+      // yazılan korunur.
+      let zaman = null;
       girdi = el("textarea", { ...ortak, class: "metin-alani" + (o.kod ? " es-aralikli a-kod" : ""), rows: o.satir || (o.kod ? 18 : 5), maxlength: o.enUzun || undefined,
         placeholder: o.yerTutucu || undefined, spellcheck: o.kod ? "false" : undefined, value: deger,
-        on: { input: (ev) => kaydet(ev.target.value), keydown: (ev) => metinAlaniTusu(ev, o) } });
+        on: {
+          input: (ev) => {
+            kaydet(ev.target.value);
+            if (o.canli) { clearTimeout(zaman); zaman = setTimeout(() => arayuzOlayi(s, "degisti", o.id, ev.target.value), 600); }
+          },
+          keydown: (ev) => metinAlaniTusu(ev, o),
+        } });
     } else {
       let zaman = null;
       girdi = el("input", { ...ortak, class: "girdi", type: o.tip === "sifre" ? "password" : "text", maxlength: o.enUzun || undefined, placeholder: o.yerTutucu || undefined,
@@ -2548,7 +2558,12 @@
       const govde = el("div", { class: "pencere-govde" });
       const alt = el("div", { class: "pencere-alt" });
       const baslik = el("h2");
-      const vazgec = () => arayuzOlayi(s, "diyalogKapat");
+      // Kapatma diyaloğun formundaki değerleri de taşır: eklenti yazılanı
+      // (ör. taslak olarak) saklayabilir.
+      const vazgec = () => {
+        const form = pencere.querySelector("form");
+        arayuzOlayi(s, "diyalogKapat", "", "", form ? formDegerleri(s, form, false) : undefined);
+      };
       const pencere = el("div", { class: "pencere genis a-diyalog", role: "dialog", "aria-modal": "true" },
         el("div", { class: "pencere-ust" }, baslik, el("button", { class: "ikon-dugme", "aria-label": t("Kapat"), on: { click: vazgec } }, ikon("kapat"))),
         govde, alt);
@@ -2594,7 +2609,8 @@
     const ad = tusAdi(ev);
     if (kendiDiyalogu && ad === "escape") {
       ev.preventDefault();
-      arayuzOlayi(s, "diyalogKapat");
+      const form = s.diyalog.pencere.querySelector("form");
+      arayuzOlayi(s, "diyalogKapat", "", "", form ? formDegerleri(s, form, false) : undefined);
       return true;
     }
     const yaziyor = ev.target && ev.target.matches && ev.target.matches("input, textarea, select");
