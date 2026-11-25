@@ -1683,3 +1683,180 @@ func TestModBan_ArkaUcYoksa501(t *testing.T) {
 		t.Fatalf("Ban'ı olmayan arka uçta 501 beklenirdi: %v", err)
 	}
 }
+
+// ─── Forum eklentisinin uçları (posts, changes, delete-own, profile) ───────
+
+// forumEklentisiArka, mockForum'a isteğe bağlı forum arayüzlerini ekler.
+type forumEklentisiArka struct {
+	mockForum
+	konular  []PostSummary
+	degisim  chan ForumChanges
+	silinen  []string
+	silErr   error
+	profil   *ProfileInfo
+	profilEr error
+}
+
+func (m *forumEklentisiArka) AllPosts() ([]PostSummary, error) { return m.konular, nil }
+func (m *forumEklentisiArka) ForumChanges(ctx context.Context, since uint64) (ForumChanges, error) {
+	select {
+	case d := <-m.degisim:
+		return d, nil
+	case <-ctx.Done():
+		return ForumChanges{Surum: since}, nil
+	}
+}
+func (m *forumEklentisiArka) DeleteOwnPost(_ context.Context, id string) error {
+	if m.silErr != nil {
+		return m.silErr
+	}
+	m.silinen = append(m.silinen, id)
+	return nil
+}
+func (m *forumEklentisiArka) Profile(string) (*ProfileInfo, error) { return m.profil, m.profilEr }
+
+func hamIstek(t *testing.T, yontem, yol string) int {
+	t.Helper()
+	req, _ := http.NewRequest(yontem, "http://"+os.Getenv("AND_API_ADDR")+yol, nil)
+	req.Header.Set("X-And-Token", os.Getenv("AND_API_TOKEN"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestForumEklentisiUclari_Izinler(t *testing.T) {
+	s := NewServer(&mockID{}, &mockForum{}, nil, nil, nil, nil, nil, "", nil)
+	beklenen := map[string]string{
+		"/api/v1/forum/posts":      IzinTemel,
+		"/api/v1/forum/changes":    IzinTemel,
+		"/api/v1/forum/delete-own": IzinForum,
+		"/api/v1/profile":          IzinTemel,
+	}
+	for _, r := range s.routeTable() {
+		if want, ok := beklenen[r.pattern]; ok {
+			if r.izin != want {
+				t.Errorf("%s: izin %q, %q olmalı", r.pattern, r.izin, want)
+			}
+			delete(beklenen, r.pattern)
+		}
+	}
+	for p := range beklenen {
+		t.Errorf("%s route'u yok", p)
+	}
+}
+
+func TestForumPosts_HerkeseAcikVeYeniAlanlar(t *testing.T) {
+	zaman := time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
+	f := &forumEklentisiArka{konular: []PostSummary{{ID: testPostID, Title: "T", CreatedAt: zaman, LastActivity: zaman.Add(time.Hour),
+		ReplyCount: 3, AuthorRole: RolModerator}}}
+	c := startTestServer(t, &mockID{}, f, nil) // sıradan kullanıcı
+	konular, err := c.ForumPosts()
+	if err != nil {
+		t.Fatalf("sıradan kullanıcı konuları okuyabilmeli: %v", err)
+	}
+	if len(konular) != 1 || !konular[0].LastActivity.Equal(zaman.Add(time.Hour)) || konular[0].ReplyCount != 3 || konular[0].AuthorRole != RolModerator {
+		t.Fatalf("konular: %+v", konular)
+	}
+}
+
+// Eski bir eklentinin (yeni alanları bilmeyen) PostSummary'si yeni yanıtı
+// sorunsuz çözer.
+func TestEskiIstemciYeniAlanlariYokSayar(t *testing.T) {
+	b, _ := json.Marshal(PostSummary{ID: "a", Title: "T", ReplyCount: 2, AuthorRole: RolKurucu, CreatedAt: time.Now()})
+	var eski struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(b, &eski); err != nil || eski.ID != "a" || eski.Title != "T" {
+		t.Fatalf("eski biçim: %+v %v", eski, err)
+	}
+}
+
+func TestForumChanges_UzunYoklama(t *testing.T) {
+	f := &forumEklentisiArka{degisim: make(chan ForumChanges, 1)}
+	c := startTestServer(t, &mockID{}, f, nil)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		f.degisim <- ForumChanges{Surum: 6, Konular: []string{testPostID}}
+	}()
+	d, err := c.ForumChanges(5)
+	if err != nil || d.Surum != 6 || len(d.Konular) != 1 || d.Konular[0] != testPostID {
+		t.Fatalf("ForumChanges: %+v %v", d, err)
+	}
+}
+
+func TestForumChanges_ZamanAsimindaDegisiklikYok(t *testing.T) {
+	eski := degisimBeklemesi
+	degisimBeklemesi = 50 * time.Millisecond
+	t.Cleanup(func() { degisimBeklemesi = eski })
+	c := startTestServer(t, &mockID{}, &forumEklentisiArka{degisim: make(chan ForumChanges)}, nil)
+	d, err := c.ForumChanges(7)
+	if err != nil || d.Surum != 7 || len(d.Konular) != 0 || d.Hepsi {
+		t.Fatalf("zaman aşımı: %+v %v", d, err)
+	}
+}
+
+func TestForumChanges_GecersizSince400(t *testing.T) {
+	startTestServer(t, &mockID{}, &forumEklentisiArka{}, nil)
+	if kod := hamIstek(t, http.MethodGet, "/api/v1/forum/changes?since=abc"); kod != http.StatusBadRequest {
+		t.Fatalf("since=abc: %d", kod)
+	}
+}
+
+func TestForumChanges_ArkaUcYoksa501(t *testing.T) {
+	c := startTestServer(t, &mockID{}, &mockForum{}, nil)
+	if _, err := c.ForumChanges(0); durumKodu(err) != http.StatusNotImplemented {
+		t.Fatalf("501 beklenirdi: %v", err)
+	}
+}
+
+func TestDeleteOwn_Silinir(t *testing.T) {
+	f := &forumEklentisiArka{}
+	c := startTestServer(t, &mockID{}, f, nil)
+	if err := c.DeleteOwnPost(testPostID); err != nil || len(f.silinen) != 1 {
+		t.Fatalf("DeleteOwnPost: %v %v", err, f.silinen)
+	}
+}
+
+func TestDeleteOwn_Baskasinin403(t *testing.T) {
+	f := &forumEklentisiArka{silErr: fmt.Errorf("%w: senin konun değil", ErrYetkisiz)}
+	c := startTestServer(t, &mockID{}, f, nil)
+	if err := c.DeleteOwnPost(testPostID); !IsForbidden(err) {
+		t.Fatalf("403 beklenirdi: %v", err)
+	}
+}
+
+func TestDeleteOwn_Yok404VeGecersiz400(t *testing.T) {
+	f := &forumEklentisiArka{silErr: fmt.Errorf("%w: konu", ErrBulunamadi)}
+	c := startTestServer(t, &mockID{}, f, nil)
+	if err := c.DeleteOwnPost(testPostID); !IsNotFound(err) {
+		t.Fatalf("404 beklenirdi: %v", err)
+	}
+	if err := c.DeleteOwnPost("../x"); durumKodu(err) != http.StatusBadRequest {
+		t.Fatalf("geçersiz kimlik 400 olmalı: %v", err)
+	}
+}
+
+func TestProfile_Doner(t *testing.T) {
+	key := strings.Repeat("ab", 32)
+	f := &forumEklentisiArka{profil: &ProfileInfo{Key: key, Name: "ayse", Role: RolKurucu, PostCount: 2, Bio: "merhaba"}}
+	c := startTestServer(t, &mockID{}, f, nil)
+	p, err := c.Profile(key)
+	if err != nil || p.Name != "ayse" || p.Role != RolKurucu || p.PostCount != 2 || p.Bio != "merhaba" {
+		t.Fatalf("Profile: %+v %v", p, err)
+	}
+}
+
+func TestProfile_GecersizAnahtar400VeBilinmeyen404(t *testing.T) {
+	f := &forumEklentisiArka{profilEr: fmt.Errorf("%w: profil", ErrBulunamadi)}
+	c := startTestServer(t, &mockID{}, f, nil)
+	if _, err := c.Profile("kisa"); durumKodu(err) != http.StatusBadRequest {
+		t.Fatalf("400 beklenirdi: %v", err)
+	}
+	if _, err := c.Profile(strings.Repeat("ab", 32)); !IsNotFound(err) {
+		t.Fatalf("404 beklenirdi: %v", err)
+	}
+}

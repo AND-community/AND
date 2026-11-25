@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +72,53 @@ type PostSummary struct {
 	Title      string `json:"title"`
 	AuthorName string `json:"author_name"`
 	AuthorKey  string `json:"author_key"`
+	// Aşağıdakiler sonradan eklendi; eski bir AND'da sıfır değerlidir.
+	CreatedAt    time.Time `json:"created_at,omitzero"`
+	LastActivity time.Time `json:"last_activity,omitzero"` // son yanıt, yoksa konunun kendisi
+	ReplyCount   int       `json:"reply_count,omitempty"`
+	AuthorRole   string    `json:"author_role,omitempty"` // RolKurucu, RolModerator ya da boş (üye)
+}
+
+// Yazar rolleri (PostSummary.AuthorRole, ProfileInfo.Role): boş, sıradan üye
+// demektir. Eklenti bunları kendi diline çevirir.
+const (
+	RolKurucu    = "founder"
+	RolModerator = "moderator"
+)
+
+// ForumChanges, GET /api/v1/forum/changes yanıtıdır: Surum'dan önceki
+// istenen sürümden beri değişen konular. Hepsi doğruysa istemci listeyi
+// baştan yüklemelidir (çok değişiklik oldu ya da AND yeniden başladı).
+type ForumChanges struct {
+	Surum   uint64   `json:"surum"`
+	Konular []string `json:"konular,omitempty"`
+	Hepsi   bool     `json:"hepsi,omitempty"`
+}
+
+// ProfileBan, bir yazarın şu anki yasağıdır.
+type ProfileBan struct {
+	Permanent bool      `json:"permanent,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitzero"`
+	Reason    string    `json:"reason,omitempty"`
+}
+
+// ProfileInfo, GET /api/v1/profile yanıtıdır: terminaldeki yazar profili
+// ekranının gösterdiği her şey.
+type ProfileInfo struct {
+	Key        string         `json:"key"`
+	Name       string         `json:"name,omitempty"`
+	Role       string         `json:"role,omitempty"`
+	PostCount  int            `json:"post_count"`
+	ReplyCount int            `json:"reply_count"`
+	FirstSeen  time.Time      `json:"first_seen,omitzero"`
+	Ban        *ProfileBan    `json:"ban,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	Tags       []string       `json:"tags,omitempty"`
+	Link       string         `json:"link,omitempty"`
+	GitHubUser string         `json:"github_user,omitempty"`
+	Bio        string         `json:"bio,omitempty"`
+	SitePages  []SitePageInfo `json:"site_pages,omitempty"`
+	RecentChat []ChatMsg      `json:"recent_chat,omitempty"`
 }
 type CreatePostReq struct {
 	Category string `json:"category"`
@@ -268,6 +316,7 @@ type ReplyInfo struct {
 	AuthorKey  string    `json:"author_key"`
 	Body       string    `json:"body"`
 	CreatedAt  time.Time `json:"created_at"`
+	AuthorRole string    `json:"author_role,omitempty"` // RolKurucu, RolModerator ya da boş
 }
 
 // PostDetail is a forum post with its full body and replies.
@@ -280,6 +329,7 @@ type PostDetail struct {
 	Body       string      `json:"body"`
 	CreatedAt  time.Time   `json:"created_at"`
 	Replies    []ReplyInfo `json:"replies"`
+	AuthorRole string      `json:"author_role,omitempty"` // RolKurucu, RolModerator ya da boş
 }
 
 // CreateReplyReq is the request body for POST /api/v1/forum/reply.
@@ -384,6 +434,56 @@ type BanBackend interface {
 // ErrYetkisiz, bir arka ucun "bu işlem için yetkin yok" hatasıdır; uç
 // noktalar onu 403 olarak döner.
 var ErrYetkisiz = errors.New("yetersiz yetki")
+
+// ErrBulunamadi, bir arka ucun "böyle bir kayıt yok" hatasıdır; uç noktalar
+// onu 404 olarak döner.
+var ErrBulunamadi = errors.New("bulunamadı")
+
+// ForumChangesBackend, ForumBackend'in isteğe bağlı uzantısıdır (tür
+// denetimiyle; eski arka uçlar derlenmeye devam eder): since'ten sonra bir
+// değişiklik olana ya da ctx bitene kadar bekler. ctx biterse değişiklik yok
+// döner (Surum == since).
+type ForumChangesBackend interface {
+	ForumChanges(ctx context.Context, since uint64) (ForumChanges, error)
+}
+
+// OwnDeleteBackend, çağıranın KENDİ konusunu ağ genelinde siler. Başkasının
+// konusunda ErrYetkisiz, olmayan konuda ErrBulunamadi sarılı hata döner.
+type OwnDeleteBackend interface {
+	DeleteOwnPost(ctx context.Context, postID string) error
+}
+
+// ProfileBackend, bir yazarın profilini döner; bilinmeyen yazarda
+// ErrBulunamadi sarılı hata.
+type ProfileBackend interface {
+	Profile(authorKey string) (*ProfileInfo, error)
+}
+
+// degisimBeklemesi, GET /api/v1/forum/changes'in bir değişikliği en çok ne
+// kadar beklediğidir (istemcinin 35 sn'lik zaman aşımının altında).
+var degisimBeklemesi = 25 * time.Second
+
+// writeBackendErr, arka uç hatasını durumuna göre yazar: ErrYetkisiz 403,
+// ErrBulunamadi 404, gerisi 500.
+func writeBackendErr(w http.ResponseWriter, err error) {
+	durum := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, ErrYetkisiz):
+		durum = http.StatusForbidden
+	case errors.Is(err, ErrBulunamadi):
+		durum = http.StatusNotFound
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(durum)
+	json.NewEncoder(w).Encode(errResp{Error: err.Error()}) //nolint:errcheck
+}
+
+// writeNotImplemented, bu AND'ın arka ucunun desteklemediği bir uçtur.
+func writeNotImplemented(w http.ResponseWriter, ne string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	json.NewEncoder(w).Encode(errResp{Error: "bu AND sürümü desteklemiyor: " + ne}) //nolint:errcheck
+}
 
 type ForumBackend interface {
 	AllPosts() ([]PostSummary, error)
@@ -586,6 +686,10 @@ func (s *Server) routeTable() []route {
 		{pattern: "/api/v1/forum/post", handler: s.handleForumPost, allowExternal: true, izin: IzinForum, okumaSerbest: true},
 		{pattern: "/api/v1/forum/reply", handler: onlyMethod(http.MethodPost, rateLimited(s.forumLimiter, s.postReply)), allowExternal: true, izin: IzinForum},
 		{pattern: "/api/v1/forum/delete", handler: onlyMethod(http.MethodPost, s.postDeletePost), allowExternal: true, izin: IzinModerasyon},
+		{pattern: "/api/v1/forum/posts", handler: onlyMethod(http.MethodGet, s.getForumPosts), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/forum/changes", handler: onlyMethod(http.MethodGet, s.getForumChanges), allowExternal: true, izin: IzinTemel},
+		{pattern: "/api/v1/forum/delete-own", handler: onlyMethod(http.MethodPost, rateLimited(s.forumLimiter, s.postDeleteOwn)), allowExternal: true, izin: IzinForum},
+		{pattern: "/api/v1/profile", handler: onlyMethod(http.MethodGet, s.getProfile), allowExternal: true, izin: IzinTemel},
 		{pattern: "/api/v1/site/pages", handler: onlyMethod(http.MethodGet, s.getSitePages), allowExternal: true, izin: IzinTemel},
 		{pattern: "/api/v1/site/publish", handler: onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSitePublish)), allowExternal: true, izin: IzinSite},
 		{pattern: "/api/v1/site/delete", handler: onlyMethod(http.MethodPost, rateLimited(s.siteLimiter, s.postSiteDelete)), allowExternal: true, izin: IzinSite},
@@ -913,6 +1017,86 @@ func (s *Server) getAllPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, nonNilSlice(posts))
+}
+
+// getForumPosts, bütün konuların özetidir. all-posts'un aksine herkese açıktır
+// (forumun kendisi gibi): forum eklentisi konu listesini buradan alır.
+func (s *Server) getForumPosts(w http.ResponseWriter, r *http.Request) {
+	posts, err := s.f.AllPosts()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, nonNilSlice(posts))
+}
+
+// getForumChanges, since'ten sonraki forum değişikliklerini uzun yoklamayla
+// döner (bkz. ForumChangesBackend).
+func (s *Server) getForumChanges(w http.ResponseWriter, r *http.Request) {
+	fc, ok := s.f.(ForumChangesBackend)
+	if !ok {
+		writeNotImplemented(w, "forum değişimleri")
+		return
+	}
+	var since uint64
+	if v := r.URL.Query().Get("since"); v != "" {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			writeBadRequest(w, "geçersiz since")
+			return
+		}
+		since = n
+	}
+	ctx, iptal := context.WithTimeout(r.Context(), degisimBeklemesi)
+	defer iptal()
+	d, err := fc.ForumChanges(ctx, since)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, d)
+}
+
+// postDeleteOwn, çağıranın kendi konusunu siler (bkz. OwnDeleteBackend).
+func (s *Server) postDeleteOwn(w http.ResponseWriter, r *http.Request) {
+	od, ok := s.f.(OwnDeleteBackend)
+	if !ok {
+		writeNotImplemented(w, "kendi konusunu silme")
+		return
+	}
+	var req DeletePostReq
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if !validPostID(req.PostID) {
+		writeBadRequest(w, "geçersiz post_id biçimi")
+		return
+	}
+	if err := od.DeleteOwnPost(r.Context(), req.PostID); err != nil {
+		writeBackendErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// getProfile, bir yazarın profilidir (bkz. ProfileBackend).
+func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
+	pb, ok := s.f.(ProfileBackend)
+	if !ok {
+		writeNotImplemented(w, "profil")
+		return
+	}
+	key := r.URL.Query().Get("key")
+	if !validAuthorKey(key) {
+		writeBadRequest(w, "geçersiz key biçimi")
+		return
+	}
+	p, err := pb.Profile(key)
+	if err != nil {
+		writeBackendErr(w, err)
+		return
+	}
+	writeJSON(w, p)
 }
 
 func (s *Server) postDeletePost(w http.ResponseWriter, r *http.Request) {
@@ -1758,6 +1942,36 @@ func (c *Client) AllBans() ([]BanEntryInfo, error) {
 // Unban lifts an active ban on authorKey.
 func (c *Client) Unban(authorKey string) error {
 	return c.post("/api/v1/mod/unban", UnbanReq{AuthorKey: authorKey})
+}
+
+// ForumPosts, bütün forum konularının özetidir (herkese açık; AllPosts
+// yalnızca moderatörlere açıktır).
+func (c *Client) ForumPosts() ([]PostSummary, error) {
+	var v []PostSummary
+	return v, c.get("/api/v1/forum/posts", &v)
+}
+
+// ForumChanges, since'ten sonraki forum değişikliklerini bekler (en çok ~25
+// sn); değişiklik yoksa Surum == since döner. Eski bir AND'da IsNotFound ya
+// da 501.
+func (c *Client) ForumChanges(since uint64) (ForumChanges, error) {
+	var v ForumChanges
+	return v, c.get("/api/v1/forum/changes?since="+strconv.FormatUint(since, 10), &v)
+}
+
+// DeleteOwnPost, çağıranın kendi konusunu ağ genelinde siler. Başkasının
+// konusunda IsForbidden(err) doğrudur.
+func (c *Client) DeleteOwnPost(postID string) error {
+	return c.post("/api/v1/forum/delete-own", DeletePostReq{PostID: postID})
+}
+
+// Profile, bir yazarın profilidir; bilinmeyen yazarda IsNotFound(err) doğrudur.
+func (c *Client) Profile(authorKey string) (*ProfileInfo, error) {
+	var v ProfileInfo
+	if err := c.get("/api/v1/profile?key="+url.QueryEscape(authorKey), &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // Ban, authorKey'i ağ genelinde yasaklar: permanent değilse duration kadar

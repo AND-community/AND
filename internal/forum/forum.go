@@ -123,6 +123,10 @@ type Forum struct {
 
 	newPosts   chan *Post
 	newReplies chan *Reply
+
+	// degisim, eklentilerin uzun yoklaması için değişim sayacıdır (bkz.
+	// degisim.go).
+	degisim degisimler
 }
 
 // SetModerator bağlar (veya nil ile çözer) bir *moderation.Moderator'ı bu
@@ -618,6 +622,7 @@ func (f *Forum) storePost(p *Post) {
 		CreatedAt: p.CreatedAt, Sig: p.Sig,
 		ExpiresAt: p.ExpiresAt,
 	})
+	f.degisim.ekle(p.ID)
 	select {
 	case f.newPosts <- p:
 	default:
@@ -647,6 +652,7 @@ func (f *Forum) removePostLocked(postID string) *Post {
 		}
 	}
 	f.posts = kept
+	f.degisim.ekle(postID)
 	return p
 }
 
@@ -683,6 +689,7 @@ func (f *Forum) storeReply(r *Reply) {
 		AuthorName: r.AuthorName, AuthorKey: r.AuthorKey,
 		Body: r.Body, CreatedAt: r.CreatedAt, Sig: r.Sig,
 	})
+	f.degisim.ekle(r.PostID)
 	select {
 	case f.newReplies <- r:
 	default:

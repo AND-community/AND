@@ -676,5 +676,8 @@
   "Emin misin?": {"en": "Are you sure?", "de": "Bist du sicher?", "es": "¿Seguro?", "fr": "Tu es sûr ?", "ru": "Ты уверен?"},
   "Süz…": {"en": "Filter…", "de": "Filtern…", "es": "Filtrar…", "fr": "Filtrer…", "ru": "Фильтр…"},
 
-  "Eklenti yanıt vermiyor.": {"en": "The plugin is not responding.", "de": "Das Plugin reagiert nicht.", "es": "El plugin no responde.", "fr": "Le plugin ne répond pas.", "ru": "Плагин не отвечает."}
+  "Eklenti yanıt vermiyor.": {"en": "The plugin is not responding.", "de": "Das Plugin reagiert nicht.", "es": "El plugin no responde.", "fr": "Le plugin ne répond pas.", "ru": "Плагин не отвечает."},
+  "Konu bulunamadı.": {"en": "Topic not found.", "de": "Thema nicht gefunden.", "es": "Tema no encontrado.", "fr": "Sujet introuvable.", "ru": "Тема не найдена."},
+  "Yalnızca kendi konunu silebilirsin.": {"en": "You can only delete your own topics.", "de": "Du kannst nur deine eigenen Themen löschen.", "es": "Solo puedes eliminar tus propios temas.", "fr": "Tu ne peux supprimer que tes propres sujets.", "ru": "Можно удалять только свои темы."},
+  "Bu yazar hakkında bilgi yok.": {"en": "No information about this author.", "de": "Keine Informationen über diesen Autor.", "es": "No hay información sobre este autor.", "fr": "Aucune information sur cet auteur.", "ru": "Об этом авторе нет сведений."}
 }

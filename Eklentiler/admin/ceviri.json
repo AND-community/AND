@@ -71,5 +71,6 @@
   "Bu konunun yazar anahtarı yok.": {"en": "This topic has no author key.", "de": "Dieses Thema hat keinen Autorenschlüssel.", "es": "Este tema no tiene clave de autor.", "fr": "Ce sujet n'a pas de clé d'auteur.", "ru": "У этой темы нет ключа автора."},
   "Konu silinsin mi?": {"en": "Delete the topic?", "de": "Thema löschen?", "es": "¿Eliminar el tema?", "fr": "Supprimer le sujet ?", "ru": "Удалить тему?"},
   "Gerekçe": {"en": "Reason", "de": "Grund", "es": "Motivo", "fr": "Motif", "ru": "Причина"},
-  "Sil": {"en": "Delete", "de": "Löschen", "es": "Eliminar", "fr": "Supprimer", "ru": "Удалить"}
+  "Sil": {"en": "Delete", "de": "Löschen", "es": "Eliminar", "fr": "Supprimer", "ru": "Удалить"},
+  "Tarih": {"en": "Date", "de": "Datum", "es": "Fecha", "fr": "Date", "ru": "Дата"}
 }

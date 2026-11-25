@@ -73,10 +73,16 @@ type Sahte struct {
 	onaylar       map[string]bool
 	temalar       []pluginapi.ThemeReq
 	yasaklar      []pluginapi.BanEntryInfo
-	gecmis        []pluginapi.HistoryEntryInfo
-	moderatorler  []pluginapi.GrantedModInfo
-	sayac         int
-	veriDizini    string
+
+	// forumSurum, forum her değiştiğinde artar (bkz. ForumChanges);
+	// forumDegisim son değişen konulardır, forumUyandir bekleyenleri uyandırır.
+	forumSurum   uint64
+	forumDegisim []forumDegisimi
+	forumUyandir chan struct{}
+	gecmis       []pluginapi.HistoryEntryInfo
+	moderatorler []pluginapi.GrantedModInfo
+	sayac        int
+	veriDizini   string
 
 	dmAbone     map[chan pluginapi.DMMsg]struct{}
 	sohbetAbone map[chan pluginapi.ChatMsg]struct{}
@@ -144,7 +150,40 @@ func (s *Sahte) konuEkle(kategori, baslik, govde, yazar, anahtar string) string 
 		AuthorName: yazar, AuthorKey: anahtar, CreatedAt: time.Now().UTC(),
 		Replies: []pluginapi.ReplyInfo{},
 	})
+	s.forumDegisti(id)
 	return id
+}
+
+type forumDegisimi struct {
+	surum uint64
+	konu  string
+}
+
+// forumDegisti, gerçek AND'ın forum sayacı gibi sürümü artırır ve
+// bekleyenleri uyandırır; s.mu tutulurken çağrılır.
+func (s *Sahte) forumDegisti(konu string) {
+	s.forumSurum++
+	s.forumDegisim = append(s.forumDegisim, forumDegisimi{surum: s.forumSurum, konu: konu})
+	if len(s.forumDegisim) > 256 {
+		s.forumDegisim = slices.Clone(s.forumDegisim[len(s.forumDegisim)-256:])
+	}
+	if s.forumUyandir != nil {
+		close(s.forumUyandir)
+		s.forumUyandir = nil
+	}
+}
+
+// rolu, sahte kimliğin rol kodudur (başka yazarlar üyedir).
+func (s *Sahte) rolu(anahtar string) string {
+	switch {
+	case anahtar != s.kimlik.PubKey:
+		return ""
+	case s.kimlik.Kurucu:
+		return pluginapi.RolKurucu
+	case s.kimlik.Moderator:
+		return pluginapi.RolModerator
+	}
+	return ""
 }
 
 // YanitEkle, bir konuya başka birinin yanıtını ekler.
@@ -160,6 +199,7 @@ func (s *Sahte) yanitEkle(konuID, govde, yazar, anahtar string) error {
 			s.konular[i].Replies = append(s.konular[i].Replies, pluginapi.ReplyInfo{
 				ID: s.yeniKimlik(), AuthorName: yazar, AuthorKey: anahtar, Body: govde, CreatedAt: time.Now().UTC(),
 			})
+			s.forumDegisti(konuID)
 			return nil
 		}
 	}
@@ -416,9 +456,98 @@ func (a forumArka) AllPosts() ([]pluginapi.PostSummary, error) {
 	defer a.s.mu.Unlock()
 	out := make([]pluginapi.PostSummary, 0, len(a.s.konular))
 	for _, k := range a.s.konular {
-		out = append(out, pluginapi.PostSummary{ID: k.ID, Category: k.Category, Title: k.Title, AuthorName: k.AuthorName, AuthorKey: k.AuthorKey})
+		son := k.CreatedAt
+		for _, r := range k.Replies {
+			if r.CreatedAt.After(son) {
+				son = r.CreatedAt
+			}
+		}
+		out = append(out, pluginapi.PostSummary{ID: k.ID, Category: k.Category, Title: k.Title, AuthorName: k.AuthorName, AuthorKey: k.AuthorKey,
+			CreatedAt: k.CreatedAt, LastActivity: son, ReplyCount: len(k.Replies), AuthorRole: a.s.rolu(k.AuthorKey)})
 	}
 	return out, nil
+}
+
+// ForumChanges, gerçek AND gibi since'ten sonraki değişikliği bekler.
+func (a forumArka) ForumChanges(ctx context.Context, since uint64) (pluginapi.ForumChanges, error) {
+	for {
+		a.s.mu.Lock()
+		if a.s.forumSurum != since {
+			d := pluginapi.ForumChanges{Surum: a.s.forumSurum}
+			if since > a.s.forumSurum || len(a.s.forumDegisim) == 0 || a.s.forumDegisim[0].surum > since+1 {
+				d.Hepsi = true
+			} else {
+				for _, k := range a.s.forumDegisim {
+					if k.surum > since && !slices.Contains(d.Konular, k.konu) {
+						d.Konular = append(d.Konular, k.konu)
+					}
+				}
+			}
+			a.s.mu.Unlock()
+			return d, nil
+		}
+		if a.s.forumUyandir == nil {
+			a.s.forumUyandir = make(chan struct{})
+		}
+		ch := a.s.forumUyandir
+		a.s.mu.Unlock()
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return pluginapi.ForumChanges{Surum: since}, nil
+		}
+	}
+}
+
+// DeleteOwnPost, sahte kullanıcının kendi konusunu siler.
+func (a forumArka) DeleteOwnPost(_ context.Context, postID string) error {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	for i, k := range a.s.konular {
+		if k.ID != postID {
+			continue
+		}
+		if k.AuthorKey != a.s.kimlik.PubKey {
+			return fmt.Errorf("%w: konu senin değil", pluginapi.ErrYetkisiz)
+		}
+		a.s.konular = append(a.s.konular[:i], a.s.konular[i+1:]...)
+		a.s.forumDegisti(postID)
+		return nil
+	}
+	return fmt.Errorf("%w: konu", pluginapi.ErrBulunamadi)
+}
+
+// Profile, yazarın sahte AND'daki konu ve yanıtlarından kurulur.
+func (a forumArka) Profile(anahtar string) (*pluginapi.ProfileInfo, error) {
+	a.s.mu.Lock()
+	defer a.s.mu.Unlock()
+	p := &pluginapi.ProfileInfo{Key: anahtar, Role: a.s.rolu(anahtar)}
+	ilk := func(ad string, t time.Time) {
+		if p.Name == "" {
+			p.Name = ad
+		}
+		if p.FirstSeen.IsZero() || t.Before(p.FirstSeen) {
+			p.FirstSeen = t
+		}
+	}
+	for _, k := range a.s.konular {
+		if k.AuthorKey == anahtar {
+			p.PostCount++
+			ilk(k.AuthorName, k.CreatedAt)
+		}
+		for _, r := range k.Replies {
+			if r.AuthorKey == anahtar {
+				p.ReplyCount++
+				ilk(r.AuthorName, r.CreatedAt)
+			}
+		}
+	}
+	if anahtar == a.s.kimlik.PubKey {
+		p.Name = a.s.kimlik.Ad
+	} else if p.PostCount+p.ReplyCount == 0 {
+		return nil, fmt.Errorf("%w: yazar", pluginapi.ErrBulunamadi)
+	}
+	return p, nil
 }
 
 func (a forumArka) DeletePost(_ context.Context, postID, _ string) error {
@@ -427,6 +556,7 @@ func (a forumArka) DeletePost(_ context.Context, postID, _ string) error {
 	for i, k := range a.s.konular {
 		if k.ID == postID {
 			a.s.konular = append(a.s.konular[:i], a.s.konular[i+1:]...)
+			a.s.forumDegisti(postID)
 			return nil
 		}
 	}

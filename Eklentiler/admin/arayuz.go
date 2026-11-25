@@ -81,14 +81,18 @@ func hucre(metin string, stil ...string) []arayuz.Parca {
 func (m model) konuTablosu() arayuz.Oge {
 	satirlar := make([]arayuz.TabloSatiri, 0, len(m.allPosts))
 	for _, p := range m.allPosts {
+		tarih := "—"
+		if !p.CreatedAt.IsZero() {
+			tarih = dil.Tarih(p.CreatedAt.Local())
+		}
 		satirlar = append(satirlar, arayuz.TabloSatiri{ID: p.ID,
-			Hucreler: [][]arayuz.Parca{hucre(p.Title, "kalin"), hucre(dil.T(p.Category), "soluk"), hucre(p.AuthorName)},
+			Hucreler: [][]arayuz.Parca{hucre(p.Title, "kalin"), hucre(dil.T(p.Category), "soluk"), hucre(p.AuthorName), hucre(tarih, "soluk")},
 			Dugmeler: []arayuz.Oge{
 				arayuz.Dugme("yasakla", dil.T("Yazarı yasakla"), arayuz.Hayalet, arayuz.DevreDisiIse(p.AuthorKey == "")),
 				arayuz.Dugme("sil", dil.T("Sil"), arayuz.Tehlikeli, arayuz.IleOnay(dil.T("Konu silinsin mi?"), p.Title, dil.T("Sil"))),
 			}})
 	}
-	return arayuz.Tablo("konuTablosu", []arayuz.Sutun{{Baslik: dil.T("Başlık")}, {Baslik: dil.T("Kategori")}, {Baslik: dil.T("Yazar")}},
+	return arayuz.Tablo("konuTablosu", []arayuz.Sutun{{Baslik: dil.T("Başlık")}, {Baslik: dil.T("Kategori")}, {Baslik: dil.T("Yazar")}, {Baslik: dil.T("Tarih")}},
 		satirlar, arayuz.Aranabilir, arayuz.IleBos(dil.T("Hiç konu yok.")))
 }
 

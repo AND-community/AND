@@ -256,7 +256,7 @@ every plugin without a permission. A request that needs a permission the plugin 
 | `dm` | Sending and receiving private messages, their history and read marks (`/api/v1/dm/*`) |
 | `file` | Sending files, seeing and answering incoming file requests (`/api/v1/file/*`) |
 | `chat` | Writing to the general chat (`POST /api/v1/chat/send`) |
-| `forum` | Opening topics and replying (`POST /api/v1/forum/post`, `/forum/reply`) |
+| `forum` | Opening topics, replying and deleting your own topics (`POST /api/v1/forum/post`, `/forum/reply`, `/forum/delete-own`) |
 | `site` | Publishing and deleting pages of the personal site (`/api/v1/site/publish`, `/site/delete`) |
 | `moderation` | Deleting topics, lifting bans and appointing moderators with the founder's or a moderator's authority (`/api/v1/forum/delete`, `/api/v1/mod/*`) |
 | `theme` | Changing AND's theme (`POST /api/v1/theme`) |
@@ -295,6 +295,10 @@ every endpoint has a `Client` method.
 | `GET /api/v1/identity`, `/role`, `/peers` | — | `Identity`, `Role`, `Peers` (peers with `AND: true` are AND nodes) |
 | `GET /api/v1/forum/post?id=` | — | `GetPost` |
 | `GET /api/v1/forum/all-posts` | — (founder or moderator only) | `AllPosts` |
+| `GET /api/v1/forum/posts` | — (open to everyone; summaries carry `created_at`, `last_activity`, `reply_count`, `author_role`) | `ForumPosts` |
+| `GET /api/v1/forum/changes?since=` | — (long poll, at most ~25 s; `{surum, konular, hepsi}`) | `ForumChanges` |
+| `POST /api/v1/forum/delete-own` | `forum` (own topics only; someone else's is 403) | `DeleteOwnPost` |
+| `GET /api/v1/profile?key=` | — (what the terminal author profile shows) | `Profile` |
 | `POST /api/v1/forum/post`, `/forum/reply` | `forum` | `CreatePost(category, title, body)`, `CreateReply` |
 | `POST /api/v1/forum/delete` | `moderation` | `DeletePost` |
 | `GET /api/v1/site/pages` | — | `SitePages` (the user's own pages) |

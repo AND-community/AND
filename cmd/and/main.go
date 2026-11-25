@@ -460,6 +460,9 @@ func run() error {
 		mod:       mod,
 		isFounder: isFounder,
 		myPubHex:  myPubHex,
+		profile:   profileStore,
+		chat:      chatStore,
+		site:      siteStore,
 	}
 	siteBackend := &siteAdapter{store: siteStore, id: id}
 	mBackend := &modAdapter{
@@ -739,6 +742,23 @@ type forumAdapter struct {
 	mod       *moderation.Moderator
 	isFounder bool
 	myPubHex  string
+	// profile, chat ve site yalnızca rolleri ve yazar profilini (forum
+	// eklentisi) doldurmak için; nil olabilirler.
+	profile *profile.Store
+	chat    *chatlog.Store
+	site    *site.Store
+}
+
+// rol, yazarın eklentiye giden rol kodudur (pluginapi.RolKurucu/RolModerator,
+// üye için boş).
+func (a *forumAdapter) rol(key string) string {
+	switch {
+	case profile.IsFounder(key):
+		return pluginapi.RolKurucu
+	case a.profile != nil && a.profile.RoleOf(key) == profile.RoleModerator:
+		return pluginapi.RolModerator
+	}
+	return ""
 }
 
 // DeletePost resolves the local identity's moderation authority and, if
@@ -758,12 +778,23 @@ func (a *forumAdapter) AllPosts() ([]pluginapi.PostSummary, error) {
 	posts := a.store.AllInMemoryPosts()
 	out := make([]pluginapi.PostSummary, 0, len(posts))
 	for _, p := range posts {
+		yanitlar := a.store.Replies(p.ID)
+		son := p.CreatedAt
+		for _, r := range yanitlar {
+			if r.CreatedAt.After(son) {
+				son = r.CreatedAt
+			}
+		}
 		out = append(out, pluginapi.PostSummary{
-			ID:         p.ID,
-			Category:   p.Category,
-			Title:      p.Title,
-			AuthorName: p.AuthorName,
-			AuthorKey:  p.AuthorKey,
+			ID:           p.ID,
+			Category:     p.Category,
+			Title:        p.Title,
+			AuthorName:   p.AuthorName,
+			AuthorKey:    p.AuthorKey,
+			CreatedAt:    p.CreatedAt,
+			LastActivity: son,
+			ReplyCount:   len(yanitlar),
+			AuthorRole:   a.rol(p.AuthorKey),
 		})
 	}
 	return out, nil
@@ -788,6 +819,7 @@ func (a *forumAdapter) GetPost(id string) (*pluginapi.PostDetail, error) {
 			AuthorKey:  r.AuthorKey,
 			Body:       r.Body,
 			CreatedAt:  r.CreatedAt,
+			AuthorRole: a.rol(r.AuthorKey),
 		}
 	}
 	return &pluginapi.PostDetail{
@@ -799,7 +831,77 @@ func (a *forumAdapter) GetPost(id string) (*pluginapi.PostDetail, error) {
 		Body:       p.Body,
 		CreatedAt:  p.CreatedAt,
 		Replies:    replyInfos,
+		AuthorRole: a.rol(p.AuthorKey),
 	}, nil
+}
+
+// ForumChanges, forum eklentisinin uzun yoklamasıdır (bkz. forum.Bekle).
+func (a *forumAdapter) ForumChanges(ctx context.Context, since uint64) (pluginapi.ForumChanges, error) {
+	surum, konular, hepsi := a.store.Bekle(ctx, since)
+	return pluginapi.ForumChanges{Surum: surum, Konular: konular, Hepsi: hepsi}, nil
+}
+
+// DeleteOwnPost, kullanıcının kendi konusunu ağ genelinde siler; konu yoksa
+// ErrBulunamadi, başkasınınsa ErrYetkisiz (forum.DeleteOwnPost da denetler).
+func (a *forumAdapter) DeleteOwnPost(ctx context.Context, postID string) error {
+	p := a.store.PostByID(postID)
+	switch {
+	case p == nil:
+		return fmt.Errorf("%w: %s", pluginapi.ErrBulunamadi, dil.T("Konu bulunamadı."))
+	case !strings.EqualFold(p.AuthorKey, a.myPubHex):
+		return fmt.Errorf("%w: %s", pluginapi.ErrYetkisiz, dil.T("Yalnızca kendi konunu silebilirsin."))
+	}
+	return a.store.DeleteOwnPost(ctx, postID)
+}
+
+// profilSohbetSiniri, profilde gösterilen son sohbet mesajı sayısıdır
+// (terminaldeki profil ekranıyla aynı).
+const profilSohbetSiniri = 5
+
+// Profile, terminaldeki yazar profili ekranının gösterdiklerini döner. Hiç
+// izi olmayan bir anahtar ErrBulunamadi.
+func (a *forumAdapter) Profile(key string) (*pluginapi.ProfileInfo, error) {
+	key = strings.ToLower(key)
+	p := &pluginapi.ProfileInfo{Key: key, Role: a.rol(key)}
+	p.PostCount, p.ReplyCount, p.FirstSeen = a.store.AuthorStats(key)
+	bilinen := p.Role != "" || p.PostCount+p.ReplyCount > 0
+	for _, post := range a.store.AllInMemoryPosts() {
+		if post.AuthorKey == key {
+			p.Name = post.AuthorName
+			break
+		}
+	}
+	if a.chat != nil {
+		for _, m := range a.chat.ByAuthor(key, profilSohbetSiniri) {
+			p.RecentChat = append(p.RecentChat, pluginapi.ChatMsg{ID: m.ID, From: m.AuthorName, Text: m.Text, SentAt: m.SentAt})
+			if p.Name == "" {
+				p.Name = m.AuthorName
+			}
+			bilinen = true
+		}
+	}
+	if a.mod != nil {
+		if info, ok := a.mod.AuthorBanInfo(key); ok {
+			p.Ban = &pluginapi.ProfileBan{Permanent: info.Permanent, ExpiresAt: info.ExpiresAt, Reason: info.Reason}
+			bilinen = true
+		}
+	}
+	if a.profile != nil {
+		if pr := a.profile.Get(key); pr != nil {
+			p.Status, p.Tags, p.Link, p.GitHubUser, p.Bio = pr.Status, pr.Tags, pr.Link, pr.GitHubUser, pr.Bio
+			bilinen = true
+		}
+	}
+	if a.site != nil {
+		for _, sp := range a.site.PagesByAuthor(key) {
+			p.SitePages = append(p.SitePages, pluginapi.SitePageInfo{Slug: sp.Slug, Title: sp.Title, Body: sp.Body, UpdatedAt: sp.UpdatedAt})
+			bilinen = true
+		}
+	}
+	if !bilinen {
+		return nil, fmt.Errorf("%w: %s", pluginapi.ErrBulunamadi, dil.T("Bu yazar hakkında bilgi yok."))
+	}
+	return p, nil
 }
 
 func (a *forumAdapter) CreateReply(ctx context.Context, postID, body string) error {

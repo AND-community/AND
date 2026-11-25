@@ -226,3 +226,47 @@ func TestYasakVeModerator(t *testing.T) {
 		t.Fatalf("moderatörler: %+v", m)
 	}
 }
+
+func TestForumEklentisiUclari(t *testing.T) {
+	s := Yeni()
+	c := s.Test(t, pluginapi.IzinForum)
+	baskasi := s.KonuEkle("Genel", "Selam", "gövde", "ayse")
+	s.YanitEkle(baskasi, "yanıt", "mert")
+	konular, err := c.ForumPosts()
+	if err != nil || len(konular) != 1 || konular[0].ReplyCount != 1 || konular[0].LastActivity.Before(konular[0].CreatedAt) {
+		t.Fatalf("ForumPosts: %+v %v", konular, err)
+	}
+	d, err := c.ForumChanges(0)
+	if err != nil || d.Surum != 2 || len(d.Konular) != 1 || d.Konular[0] != baskasi {
+		t.Fatalf("ForumChanges(0): %+v %v", d, err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		s.YanitEkle(baskasi, "bir yanıt daha", "mert")
+	}()
+	if d, err = c.ForumChanges(2); err != nil || d.Surum != 3 {
+		t.Fatalf("bekleyen ForumChanges: %+v %v", d, err)
+	}
+	if err := c.DeleteOwnPost(baskasi); !pluginapi.IsForbidden(err) {
+		t.Fatalf("başkasının konusu 403 olmalı: %v", err)
+	}
+	if err := c.CreatePost("Genel", "Benim", "gövde"); err != nil {
+		t.Fatal(err)
+	}
+	var benim string
+	for _, k := range s.Konular() {
+		if k.Title == "Benim" {
+			benim = k.ID
+		}
+	}
+	if err := c.DeleteOwnPost(benim); err != nil || len(s.Konular()) != 1 {
+		t.Fatalf("kendi konusu silinmeli: %v %d", err, len(s.Konular()))
+	}
+	p, err := c.Profile(konular[0].AuthorKey)
+	if err != nil || p.Name != "ayse" || p.PostCount != 1 {
+		t.Fatalf("Profile: %+v %v", p, err)
+	}
+	if _, err := c.Profile(strings.Repeat("ee", 32)); !pluginapi.IsNotFound(err) {
+		t.Fatalf("bilinmeyen yazar 404 olmalı: %v", err)
+	}
+}

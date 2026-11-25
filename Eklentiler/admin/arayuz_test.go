@@ -275,3 +275,14 @@ func TestArayuz_HerDilde(t *testing.T) {
 		}
 	})
 }
+
+func TestArayuz_KonuTablosundaTarih(t *testing.T) {
+	s, _ := arayuzSurucusu(t, false)
+	tb := bul(t, s.Ekran(), "konuTablosu")
+	if len(tb.Sutunlar) != 4 || tb.Sutunlar[3].Baslik != "Tarih" {
+		t.Fatalf("sütunlar: %+v", tb.Sutunlar)
+	}
+	if h := tb.Satirlar[0].Hucreler[3]; len(h) == 0 || h[0].Metin == "" {
+		t.Fatalf("tarih hücresi boş: %+v", tb.Satirlar[0].Hucreler)
+	}
+}

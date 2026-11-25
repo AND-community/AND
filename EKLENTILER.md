@@ -248,7 +248,7 @@ okunabilir. Verilmemiş bir izni gerektiren istek `403` döner (`pluginapi.IsFor
 | `dm` | Özel mesaj göndermek, almak, geçmişi ve okundu bilgisi (`/api/v1/dm/*`) |
 | `file` | Dosya göndermek, gelen dosya isteklerini görmek ve yanıtlamak (`/api/v1/file/*`) |
 | `chat` | Genel sohbete yazmak (`POST /api/v1/chat/send`) |
-| `forum` | Konu açmak ve yanıt yazmak (`POST /api/v1/forum/post`, `/forum/reply`) |
+| `forum` | Konu açmak, yanıt yazmak ve kendi konusunu silmek (`POST /api/v1/forum/post`, `/forum/reply`, `/forum/delete-own`) |
 | `site` | Kişisel sitede sayfa yayımlamak ve silmek (`/api/v1/site/publish`, `/site/delete`) |
 | `moderation` | Kurucu ya da moderatörün yetkisiyle konu silmek, ban kaldırmak, moderatör atamak (`/api/v1/forum/delete`, `/api/v1/mod/*`) |
 | `theme` | AND'ın temasını değiştirmek (`POST /api/v1/theme`) |
@@ -287,6 +287,10 @@ yöntemi vardır.
 | `GET /api/v1/identity`, `/role`, `/peers` | — | `Identity`, `Role`, `Peers` (`AND: true` olan eşler AND düğümüdür) |
 | `GET /api/v1/forum/post?id=` | — | `GetPost` |
 | `GET /api/v1/forum/all-posts` | — (yalnızca kurucu ya da moderatör) | `AllPosts` |
+| `GET /api/v1/forum/posts` | — (herkese açık; özetlerde `created_at`, `last_activity`, `reply_count`, `author_role`) | `ForumPosts` |
+| `GET /api/v1/forum/changes?since=` | — (uzun yoklama, en çok ~25 sn; `{surum, konular, hepsi}`) | `ForumChanges` |
+| `POST /api/v1/forum/delete-own` | `forum` (yalnızca kendi konusu; başkasınınki 403) | `DeleteOwnPost` |
+| `GET /api/v1/profile?key=` | — (terminaldeki yazar profilinin gösterdikleri) | `Profile` |
 | `POST /api/v1/forum/post`, `/forum/reply` | `forum` | `CreatePost(kategori, başlık, gövde)`, `CreateReply` |
 | `POST /api/v1/forum/delete` | `moderation` | `DeletePost` |
 | `GET /api/v1/site/pages` | — | `SitePages` (kullanıcının kendi sayfaları) |
