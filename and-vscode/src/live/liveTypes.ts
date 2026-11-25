@@ -24,12 +24,21 @@ export interface PeerInfo {
   and?: boolean;
 }
 
+/** Yazarın rolü (pluginapi RolKurucu/RolModerator); sıradan üyede alan yoktur. */
+export type YazarRolu = "founder" | "moderator";
+
 export interface PostSummary {
   id: string;
   category: string;
   title: string;
   author_name: string;
   author_key: string;
+  // Aşağıdakileri yalnızca /forum/posts'u olan AND gönderir; eski /forum/all-posts göndermez.
+  created_at?: string;
+  /** Son yanıtın, yoksa konunun kendisinin zamanı. */
+  last_activity?: string;
+  reply_count?: number;
+  author_role?: YazarRolu;
 }
 
 export interface ReplyInfo {
@@ -38,6 +47,7 @@ export interface ReplyInfo {
   author_key: string;
   body: string;
   created_at: string;
+  author_role?: YazarRolu;
 }
 
 export interface PostDetail {
@@ -49,6 +59,46 @@ export interface PostDetail {
   body: string;
   created_at: string;
   replies: ReplyInfo[];
+  author_role?: YazarRolu;
+}
+
+/** GET /api/v1/forum/changes: since'ten beri değişen konular ya da (geride kalındıysa) hepsi. */
+export interface ForumChanges {
+  surum: number;
+  konular?: string[];
+  hepsi?: boolean;
+}
+
+export interface ProfileBan {
+  permanent?: boolean;
+  expires_at?: string;
+  reason?: string;
+}
+
+/** GET /api/v1/profile?key=: bir yazarın AND'daki profili. */
+export interface ProfileInfo {
+  key: string;
+  name?: string;
+  role?: YazarRolu;
+  post_count: number;
+  reply_count: number;
+  first_seen?: string;
+  ban?: ProfileBan;
+  status?: string;
+  tags?: string[];
+  link?: string;
+  github_user?: string;
+  bio?: string;
+  site_pages?: SitePageInfo[];
+  recent_chat?: ChatMsg[];
+}
+
+/** POST /api/v1/mod/ban: süreli (duration_seconds) ya da kalıcı yasak; sebep zorunlu. */
+export interface BanReq {
+  author_key: string;
+  duration_seconds?: number;
+  permanent?: boolean;
+  reason: string;
 }
 
 export interface CreatePostReq {

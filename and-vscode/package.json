@@ -372,7 +372,7 @@
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc -p . --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test out-test/*.test.js out-test/live/*.test.js out-test/live/deltax/*.test.js out-test/live/site/*.test.js out-test/dil/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test out-test/*.test.js out-test/live/*.test.js out-test/live/deltax/*.test.js out-test/live/site/*.test.js out-test/live/forum/*.test.js out-test/dil/*.test.js",
     "package": "vsce package"
   },
   "devDependencies": {

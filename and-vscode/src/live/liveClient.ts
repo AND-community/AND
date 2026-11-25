@@ -1,5 +1,6 @@
 import * as http from "http";
 import {
+  BanReq,
   ChatMsg,
   ConsentResp,
   CreatePostReq,
@@ -9,10 +10,12 @@ import {
   ErrResp,
   FileConsentReq,
   FileMsg,
+  ForumChanges,
   IdentityInfo,
   PeerInfo,
   PostDetail,
   PostSummary,
+  ProfileInfo,
   PublishSitePageReq,
   RoleInfo,
   SendDMReq,
@@ -111,9 +114,37 @@ export class LiveClient {
     return this.get("/api/v1/peers");
   }
 
-  /** Yalnızca kurucu/moderatör. */
+  /** Yalnızca kurucu/moderatör. Yeni AND'da herkes listPosts'u kullanır. */
   getAllPosts(): Promise<PostSummary[]> {
     return this.get("/api/v1/forum/all-posts");
+  }
+
+  /** Bütün konular, yanıt sayısı ve son etkinlikleriyle (herkes). Eski bir AND'da 404 döner. */
+  listPosts(): Promise<PostSummary[]> {
+    return this.get("/api/v1/forum/posts");
+  }
+
+  /**
+   * since'ten sonraki forum değişikliklerini bekler (sunucu en fazla 25 sn
+   * tutar). Eski bir AND'da 404 döner.
+   */
+  forumChanges(since: number): Promise<ForumChanges> {
+    return this.get(`/api/v1/forum/changes?since=${encodeURIComponent(String(since))}`, POLL_TIMEOUT_MS);
+  }
+
+  /** Kendi konusunu ağ genelinde siler (moderatör olmak gerekmez). */
+  deleteOwnPost(postId: string): Promise<void> {
+    return this.post("/api/v1/forum/delete-own", { post_id: postId });
+  }
+
+  /** Bir yazarın profili (genel anahtarıyla). */
+  getProfile(key: string): Promise<ProfileInfo> {
+    return this.get(`/api/v1/profile?key=${encodeURIComponent(key)}`);
+  }
+
+  /** Yalnızca kurucu/moderatör: yazarı süreli ya da kalıcı yasaklar. */
+  ban(req: BanReq): Promise<void> {
+    return this.post("/api/v1/mod/ban", req);
   }
 
   getPost(id: string): Promise<PostDetail> {
